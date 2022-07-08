@@ -19,3 +19,13 @@
 - Web Server Port -> SMC_PORT=9898
 - เปิด/ปิดการแสดงรูปถ่าย -> SMC_SHOW_IMAGE=true/false default=true
 - เปิด/ปิดการแสดงข้อมูลสิทธิการรักษาจาก -> SMC_SHOW_NHSO=E=true/false default=false
+
+## Other Version
+
+- Nodejs Version: https://github.com/somprasongd/thai-smartcard-nodejs
+
+## Donate
+
+สนับสนุนได้ผ่านทาง Promptpay
+
+<img src="https://bit.ly/3gusiz8">
