@@ -9,7 +9,7 @@ import (
 
 func main() {
 	// load env
-	port := util.GetEnv("SMC_PORT", "9898")
+	port := util.GetEnv("SMC_AGENT_PORT", "9898")
 	showImage := util.GetEnvBool("SMC_SHOW_IMAGE", true)
 	showNhso := util.GetEnvBool("SMC_SHOW_NHSO", false)
 
