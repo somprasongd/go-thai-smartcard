@@ -1,0 +1,4 @@
+github.com/ebfe/scard v0.0.0-20190212122703-c3d1b1916a95 h1:OM0MnUcXBysj7ZtXvThVWHMoahuKQ8FuwIdeSLcNdP4=
+github.com/ebfe/scard v0.0.0-20190212122703-c3d1b1916a95/go.mod h1:8hHvF8DlEq5kE3KWOsZQezdWq1OTOVxZArZMscS954E=
+github.com/varokas/tis620 v0.0.0-20150423070520-3d162af2a2ad h1:xiqDjs3zgPBqXwEtjQQv6mk2+QrD1LRHBuRQ0oOi7dQ=
+github.com/varokas/tis620 v0.0.0-20150423070520-3d162af2a2ad/go.mod h1:amyplNIeBZWBeULsZWF9mwQUq+k2ua1sMHhvZjHDyrY=
