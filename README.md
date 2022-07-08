@@ -20,6 +20,35 @@
 - เปิด/ปิดการแสดงรูปถ่าย -> SMC_SHOW_IMAGE=true/false default=true
 - เปิด/ปิดการแสดงข้อมูลสิทธิการรักษาจาก -> SMC_SHOW_NHSO=E=true/false default=false
 
+### รันด้วย PM2
+
+- Windows
+
+```bash
+npm install -g pm2 pm2-windows-startup
+pm2-startup install
+pm2 start .\bin\thai-smartcard-agent.exe --name smc
+pm2 save
+```
+
+- Ubuntu
+
+```bash
+npm install -g pm2
+pm2 start ./bin/thai-smartcard-agent --name smc
+pm2 startup
+pm2 save
+```
+
+- Mac
+
+```bash
+npm install -g pm2
+pm2 start ./bin/thai-smartcard-agent --name smc
+pm2 startup
+pm2 save
+```
+
 ## Client connect with socket.io
 
 ```javascript
