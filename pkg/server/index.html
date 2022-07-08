@@ -10,11 +10,16 @@
 
   <body>
     <h1>SMC</h1>
+    <h2>Socket.io</h2>
     <p id="data"></p>
+    <h2>Websocket</h2>
+    <p id="data-ws"></p>
     <script>
       var socket = io.connect(window.location.origin);
       const dataEl = document.getElementById('data');
-      socket.on('connect', function () {});
+      socket.on('connect', function () {
+        dataEl.innerHTML = 'Connected to socket.io server';
+      });
       socket.on('smc-data', function (data) {
         console.log(data);
         dataEl.innerHTML = JSON.stringify(data);
@@ -31,6 +36,35 @@
         console.log(data);
         dataEl.innerHTML = JSON.stringify(data);
       });
+
+      // Connection to Websocker Server...
+      if (window['WebSocket']) {
+        conn = new WebSocket('ws://' + document.location.host + '/ws');
+        console.log(document.location.host);
+        conn.onopen = function (evt) {
+          var item = document.getElementById('data-ws');
+          item.innerHTML = '<b>Connection opened.</b>';
+        };
+        conn.onclose = function (evt) {
+          var item = document.getElementById('data-ws');
+          item.innerHTML = '<b>Connection closed.</b>';
+        };
+        conn.onmessage = function (evt) {
+          var messages = evt.data.split('\n');
+          console.log(messages);
+          for (var i = 0; i < messages.length; i++) {
+            var item = document.getElementById('data-ws');
+            item.innerText = messages[i];
+          }
+        };
+        conn.onerror = function (err) {
+          console.log('Socket Error: ', err);
+        };
+      } else {
+        var item = document.getElementById('data-ws');
+        item.innerHTML = '<b>Your browser does not support WebSockets.</b>';
+        appendLog(item);
+      }
     </script>
   </body>
 </html>

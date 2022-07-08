@@ -129,6 +129,7 @@ func (s *smartCard) StartDemon() error {
 
 		log.Println("Waiting for a Card Removed")
 		util.WaitUntilCardRemove(ctx, rs)
+		util.DisconnectCard(card)
 
 		if s.Broadcast != nil {
 			message := model.Message{

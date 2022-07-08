@@ -1,12 +1,14 @@
-package ws
+package server
 
 import (
 	"bytes"
+	"encoding/json"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/somprasongd/go-thai-smartcard/pkg/model"
 )
 
 // Hub maintains the set of active clients and broadcasts messages to the
@@ -14,7 +16,7 @@ type hub struct {
 	// put registered clients.
 	clients map[*connection]bool
 	// Inbound messages from the clients.
-	Broadcast chan Message
+	Broadcast chan model.Message
 
 	// Register requests from the clients.
 	register chan subscription
@@ -23,13 +25,8 @@ type hub struct {
 	unregister chan subscription
 }
 
-type Message struct {
-	Event   string `json:"event"`
-	Payload any    `json:"payload,omitempty"`
-}
-
 var Hub = &hub{
-	Broadcast:  make(chan Message),
+	Broadcast:  make(chan model.Message),
 	register:   make(chan subscription),
 	unregister: make(chan subscription),
 	clients:    make(map[*connection]bool),
@@ -100,7 +97,7 @@ type connection struct {
 	// The websocket connection.
 	ws *websocket.Conn
 	// Buffered channel of outbound messages.
-	send chan Message
+	send chan model.Message
 }
 
 func (s *subscription) readPump() {
@@ -141,12 +138,10 @@ func (s *subscription) writePump() {
 				c.write(websocket.CloseMessage, []byte{})
 				return
 			}
-			if err := c.ws.WriteJSON(message); err != nil {
+			msg, _ := json.Marshal(message)
+			if err := c.write(websocket.TextMessage, msg); err != nil {
 				return
 			}
-			// if err := c.write(websocket.TextMessage, message); err != nil {
-			// 	return
-			// }
 		case <-ticker.C:
 			if err := c.write(websocket.PingMessage, []byte{}); err != nil {
 				return
@@ -158,13 +153,13 @@ func (c *connection) write(mt int, payload []byte) error {
 	c.ws.SetWriteDeadline(time.Now().Add(writeWait))
 	return c.ws.WriteMessage(mt, payload)
 }
-func HandleWs(w http.ResponseWriter, r *http.Request) {
+func handleWs(w http.ResponseWriter, r *http.Request) {
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	c := &connection{send: make(chan Message, 256), ws: ws}
+	c := &connection{send: make(chan model.Message, 256), ws: ws}
 	s := subscription{c}
 	Hub.register <- s
 	go s.writePump()
