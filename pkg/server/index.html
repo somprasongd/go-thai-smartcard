@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>Example-SMC</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js"></script>
+  </head>
+
+  <body>
+    <h1>SMC</h1>
+    <p id="data"></p>
+    <script>
+      var socket = io.connect(window.location.origin);
+      const dataEl = document.getElementById('data');
+      socket.on('connect', function () {});
+      socket.on('smc-data', function (data) {
+        console.log(data);
+        dataEl.innerHTML = JSON.stringify(data);
+      });
+      socket.on('smc-error', function (data) {
+        console.log(data);
+        dataEl.innerHTML = JSON.stringify(data);
+      });
+      socket.on('smc-removed', function (data) {
+        console.log(data);
+        dataEl.innerHTML = JSON.stringify(data);
+      });
+      socket.on('smc-inserted', function (data) {
+        console.log(data);
+        dataEl.innerHTML = JSON.stringify(data);
+      });
+    </script>
+  </body>
+</html>

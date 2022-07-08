@@ -1,3 +1,11 @@
+SMC_PORT=9898
+SMC_SHOW_IMAGE=true
+SMC_SHOW_NHSO=false
+
+export SMC_PORT
+export SMC_SHOW_IMAGE
+export SMC_SHOW_NHSO
+
 dev:
 	go run ./cmd/agent/main.go
 
