@@ -2,11 +2,98 @@ package util
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/ebfe/scard"
 	"github.com/varokas/tis620"
 )
+
+func EstablishContext() (*scard.Context, error) {
+	return scard.EstablishContext()
+}
+
+func ReleaseContext(ctx *scard.Context) {
+	ctx.Release()
+}
+
+func ListReaders(ctx *scard.Context) ([]string, error) {
+	return ctx.ListReaders()
+}
+
+func InitReaderStates(readers []string) []scard.ReaderState {
+	rs := make([]scard.ReaderState, len(readers))
+	for i := range rs {
+		rs[i].Reader = readers[i]
+		rs[i].CurrentState = scard.StateUnaware
+	}
+	return rs
+}
+
+func WaitUntilCardPresent(ctx *scard.Context, rs []scard.ReaderState) (int, error) {
+	// fmt.Println(
+	// 	scard.StateUnaware,
+	// 	scard.StateIgnore,
+	// 	scard.StateChanged,
+	// 	scard.StateUnknown,
+	// 	scard.StateUnavailable,
+	// 	scard.StateEmpty,
+	// 	scard.StatePresent,
+	// 	scard.StateAtrmatch,
+	// 	scard.StateExclusive,
+	// 	scard.StateInuse,
+	// 	scard.StateMute,
+	// 	scard.StateUnpowered,
+	// )
+	for {
+		err := ctx.GetStatusChange(rs, -1)
+		if err != nil {
+			return -1, err
+		}
+		// fmt.Println("StatusChanged")
+		for i := range rs {
+			// fmt.Println(
+			// 	rs[i].EventState&scard.StateUnaware,
+			// 	rs[i].EventState&scard.StateIgnore,
+			// 	rs[i].EventState&scard.StateChanged,
+			// 	rs[i].EventState&scard.StateUnknown,
+			// 	rs[i].EventState&scard.StateUnavailable,
+			// 	rs[i].EventState&scard.StateEmpty,
+			// 	rs[i].EventState&scard.StatePresent,
+			// 	rs[i].EventState&scard.StateAtrmatch,
+			// 	rs[i].EventState&scard.StateExclusive,
+			// 	rs[i].EventState&scard.StateInuse,
+			// 	rs[i].EventState&scard.StateMute,
+			// 	rs[i].EventState&scard.StateUnpowered,
+			// )
+			// fmt.Println(
+			// 	rs[i].Reader,
+			// 	rs[i].CurrentState,
+			// 	rs[i].EventState,
+			// 	scard.StatePresent,
+			// 	rs[i].EventState&scard.StatePresent)
+
+			rs[i].CurrentState = rs[i].EventState
+			if rs[i].EventState&scard.StateUnpowered != 0 {
+				log.Println("Card removed")
+				continue
+			}
+			if rs[i].EventState&scard.StatePresent != 0 {
+				log.Println("Card inserted")
+				return i, nil
+			}
+		}
+
+	}
+}
+
+func ConnectCard(ctx *scard.Context, reader string) (*scard.Card, error) {
+	return ctx.Connect(reader, scard.ShareExclusive, scard.ProtocolAny)
+}
+
+func DisconnectCard(card *scard.Card) error {
+	return card.Disconnect(scard.UnpowerCard)
+}
 
 func GetResponseCommand(atr []byte) []byte {
 	if atr[0] == 0x3B && atr[1] == 0x67 {
