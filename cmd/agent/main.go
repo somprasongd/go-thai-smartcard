@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/ebfe/scard"
-	"github.com/somprasongd/gothaismartcard/smc"
+	"github.com/somprasongd/go-thai-smartcard/pkg/smc"
 )
 
 func ListReaders() ([]string, error) {

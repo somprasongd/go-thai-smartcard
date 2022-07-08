@@ -1,4 +1,4 @@
-module github.com/somprasongd/gothaismartcard
+module github.com/somprasongd/go-thai-smartcard
 
 go 1.17
 

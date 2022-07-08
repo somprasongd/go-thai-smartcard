@@ -1,6 +1,6 @@
 package main
 
-import "github.com/somprasongd/gothaismartcard/smc"
+import "github.com/somprasongd/go-thai-smartcard/pkg/smc"
 
 // var c chan bool
 
