@@ -39,7 +39,13 @@ func ListReaders() ([]string, error) {
 var cmd_get_response []byte
 
 func main() {
-	smc.Connect(nil)
+	opts := smc.Options{
+		ShowFaceImage: true,
+		ShowNhsoData:  true,
+	}
+	smc := smc.NewSmartCard(&opts)
+	err := smc.StartDemon()
+	panic(err)
 
 }
 
