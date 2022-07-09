@@ -9,6 +9,9 @@ export SMC_SHOW_NHSO
 dev:
 	go run ./cmd/agent/main.go
 
+example:
+	go run ./cmd/example/main.go
+
 build:
 	go build -o bin/thai-smartcard-agent ./cmd/agent/main.go
 

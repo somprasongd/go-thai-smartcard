@@ -21,13 +21,12 @@ func main() {
 	}
 	go server.Serve(serverCfg)
 
-	opts := smc.Options{
+	opts := smc.SmartCardConfig{
 		ShowFaceImage: showImage,
 		ShowNhsoData:  showNhso,
-		Broadcast:     broadcast,
 	}
 	smc := smc.NewSmartCard(&opts)
-	err := smc.StartDemon()
+	err := smc.StartDaemon(broadcast)
 	if err != nil {
 		panic(err)
 	}

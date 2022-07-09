@@ -4,34 +4,118 @@ import (
 	"errors"
 	"log"
 
+	"github.com/ebfe/scard"
 	"github.com/somprasongd/go-thai-smartcard/pkg/model"
 	"github.com/somprasongd/go-thai-smartcard/pkg/util"
 )
 
-type Options struct {
+type SmartCardConfig struct {
 	ShowFaceImage bool
 	ShowNhsoData  bool
-	Broadcast     chan model.Message
 }
 
 type smartCard struct {
-	Options
+	SmartCardConfig
 }
 
-func NewSmartCard(opt *Options) *smartCard {
-	if opt == nil {
-		opt = &Options{
+func NewSmartCard(cfg *SmartCardConfig) *smartCard {
+	if cfg == nil {
+		cfg = &SmartCardConfig{
 			ShowFaceImage: true,
 			ShowNhsoData:  false,
-			Broadcast:     nil,
 		}
 	}
 	return &smartCard{
-		Options: *opt,
+		SmartCardConfig: *cfg,
 	}
 }
 
-func (s *smartCard) StartDemon() error {
+func (s *smartCard) ListReaders() ([]string, error) {
+	// Establish a context
+	ctx, err := util.EstablishContext()
+	if err != nil {
+		return nil, err
+	}
+	defer util.ReleaseContext(ctx)
+
+	// List available readers
+	return util.ListReaders(ctx)
+}
+
+func (s *smartCard) Read(readerName *string) (*model.Data, error) {
+	readers := []string{}
+
+	if readerName == nil {
+		r, err := s.ListReaders()
+		if err != nil {
+			return nil, err
+		}
+		readers = r
+	} else {
+		readers = append(readers, *readerName)
+	}
+
+	if len(readers) == 0 {
+		return nil, errors.New("not available readers")
+	}
+
+	// Establish a context
+	ctx, err := util.EstablishContext()
+	if err != nil {
+		return nil, err
+	}
+	defer util.ReleaseContext(ctx)
+
+	rs := util.InitReaderStates(readers)
+
+	log.Println("Waiting for a Card Inserted")
+	index, err := util.WaitUntilCardPresent(ctx, rs)
+	if err != nil {
+		return nil, err
+	}
+
+	reader := readers[index]
+	card, data, err := s.readCard(ctx, reader)
+	defer util.DisconnectCard(card)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
+}
+
+func (s *smartCard) readCard(ctx *scard.Context, reader string) (*scard.Card, *model.Data, error) {
+	log.Printf("Connecting to card with %s", reader)
+	card, err := util.ConnectCard(ctx, reader)
+	if err != nil {
+		log.Printf("connecting card error %s", err.Error())
+		return card, nil, err
+	}
+
+	status, err := card.Status()
+	if err != nil {
+		log.Printf("get card status error %s", err.Error())
+		return card, nil, err
+	}
+
+	cmd := util.GetResponseCommand(status.Atr)
+
+	data := model.Data{}
+
+	personalReader := NewPersonalReader(card, cmd)
+	personalReader.Select()
+	data.Personal = personalReader.Read(s.ShowFaceImage)
+
+	if s.ShowNhsoData {
+		nhsoReader := NewNhsoReader(card, cmd)
+		nhsoReader.Select()
+		data.Nhso = nhsoReader.Read()
+	}
+	return card, &data, nil
+}
+
+func (s *smartCard) StartDaemon(broadcast chan model.Message) error {
 	// Establish a context
 	ctx, err := util.EstablishContext()
 	if err != nil {
@@ -65,80 +149,54 @@ func (s *smartCard) StartDemon() error {
 
 		// Connect to card
 		reader := readers[index]
-		log.Printf("Connecting to card with %s", reader)
-		card, err := util.ConnectCard(ctx, reader)
-		if err != nil {
-			log.Printf("connecting card error %s", err.Error())
-			util.DisconnectCard(card)
-			continue
-		}
 
-		if s.Broadcast != nil {
+		if broadcast != nil {
 			message := model.Message{
 				Event: "smc-inserted",
 				Payload: map[string]string{
 					"message": "Connected to " + reader,
 				},
 			}
-			s.Broadcast <- message
+			broadcast <- message
 		}
 
-		status, err := card.Status()
+		card, data, err := s.readCard(ctx, reader)
+
 		if err != nil {
-			log.Printf("get card status error %s", err.Error())
 			util.DisconnectCard(card)
-			if s.Broadcast != nil {
+			if broadcast != nil {
 				message := model.Message{
 					Event: "smc-error",
 					Payload: map[string]string{
 						"message": err.Error(),
 					},
 				}
-				s.Broadcast <- message
-				continue
+				broadcast <- message
 			}
+			continue
 		}
 
-		// log.Printf("\treader: %s\n\tstate: %x\n\tactive protocol: %x\n\tatr: % x\n",
-		// 	status.Reader, status.State, status.ActiveProtocol, status.Atr)
-
-		cmd := util.GetResponseCommand(status.Atr)
-
-		data := model.Data{}
-
-		personalReader := NewPersonalReader(card, cmd)
-		personalReader.Select()
-		data.Personal = personalReader.Read(s.ShowFaceImage)
-
-		if s.ShowNhsoData {
-			nhsoReader := NewNhsoReader(card, cmd)
-			nhsoReader.Select()
-			data.Nhso = nhsoReader.Read()
-		}
-
-		// resp, _ := json.Marshal(data)
-		// log.Println(string(resp))
-
-		if s.Broadcast != nil {
+		if broadcast != nil {
 			message := model.Message{
 				Event:   "smc-data",
 				Payload: data,
 			}
-			s.Broadcast <- message
+			broadcast <- message
 		}
 
 		log.Println("Waiting for a Card Removed")
 		util.WaitUntilCardRemove(ctx, rs)
-		util.DisconnectCard(card)
 
-		if s.Broadcast != nil {
+		if broadcast != nil {
 			message := model.Message{
 				Event: "smc-removed",
 				Payload: map[string]string{
 					"message": "Disonnected from " + reader,
 				},
 			}
-			s.Broadcast <- message
+			broadcast <- message
 		}
+
+		util.DisconnectCard(card)
 	}
 }
