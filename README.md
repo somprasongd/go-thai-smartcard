@@ -49,7 +49,7 @@ pm2 startup
 pm2 save
 ```
 
-## Client connect with socket.io
+## Example Client connect via socket.io
 
 ```javascript
 <script>
@@ -58,17 +58,52 @@ pm2 save
 
   });
   socket.on('smc-data', function (data) {
-    console.log(data); // JSON {status: 200, description:, 'Success', data: {}
+    console.log(data);
   });
   socket.on('smc-error', function (data) {
-    console.log(data); // JSON {status: 500, description:, 'Error', data: {message: ''}
+    console.log(data);
   });
   socket.on('smc-removed', function (data) {
-    console.log(data); // JSON {status: 205, description:, 'Card Removed', data: {message: ''}
+    console.log(data);
   });
   socket.on('smc-inserted', function (data) {
-    console.log(data); // JSON {status: 202, description:, 'Card Inserted', data: {message: ''}
+    console.log(data);
   });
+</script>
+```
+
+## Example Client connect via WebSokcet
+
+```javascript
+<script>
+  // Connection to Websocker Server...
+  if (window['WebSocket']) {
+    conn = new WebSocket('ws://' + document.location.host + '/ws');
+    console.log(document.location.host);
+    conn.onopen = function (evt) {
+      var item = document.getElementById('data-ws');
+      item.innerHTML = '<b>Connected to WebSocket server</b>';
+    };
+    conn.onclose = function (evt) {
+      var item = document.getElementById('data-ws');
+      item.innerHTML = '<b>Disconnected to WebSocket server</b>';
+    };
+    conn.onmessage = function (evt) {
+      var messages = evt.data.split('\n');
+      console.log(messages);
+      for (var i = 0; i < messages.length; i++) {
+        var item = document.getElementById('data-ws');
+        item.innerText = messages[i];
+      }
+    };
+    conn.onerror = function (err) {
+      console.log('Socket Error: ', err);
+    };
+  } else {
+    var item = document.getElementById('data-ws');
+    item.innerHTML = '<b>Your browser does not support WebSockets.</b>';
+    appendLog(item);
+  }
 </script>
 ```
 

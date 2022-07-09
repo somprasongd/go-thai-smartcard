@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -16,13 +15,13 @@ const (
 	writeWait = 10 * time.Second
 
 	// Time allowed to read the next pong message from the peer.
-	pongWait = 60 * time.Second
+	// pongWait = 60 * time.Second
 
 	// Send pings to peer with this period. Must be less than pongWait.
-	pingPeriod = (pongWait * 9) / 10
+	// pingPeriod = (pongWait * 9) / 10
 
 	// Maximum message size allowed from peer.
-	maxMessageSize = 512
+	// maxMessageSize = 512
 )
 
 var upgrader = websocket.Upgrader{
@@ -31,25 +30,23 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin:     func(r *http.Request) bool { return true },
 }
 
-func getCmd(input string) string {
-	inputArr := strings.Split(input, " ")
-	return inputArr[0]
-}
+// func getCmd(input string) string {
+// 	inputArr := strings.Split(input, " ")
+// 	return inputArr[0]
+// }
 
-func getMessage(input string) string {
-	inputArr := strings.Split(input, " ")
-	var result string
-	for i := 1; i < len(inputArr); i++ {
-		result += inputArr[i]
-	}
-	return result
-}
+// func getMessage(input string) string {
+// 	inputArr := strings.Split(input, " ")
+// 	var result string
+// 	for i := 1; i < len(inputArr); i++ {
+// 		result += inputArr[i]
+// 	}
+// 	return result
+// }
 
 type connection struct {
 	// The websocket connection.
 	ws *websocket.Conn
-	// Buffered channel of outbound messages.
-	send chan model.Message
 }
 
 func (c *connection) write(mt int, payload []byte) error {
@@ -96,9 +93,9 @@ func (s *ws) Handler(w http.ResponseWriter, r *http.Request) {
 	s.subscriber.register(c)
 
 	defer ws.Close()
-	ws.SetReadLimit(maxMessageSize)
-	ws.SetReadDeadline(time.Now().Add(pongWait))
-	ws.SetPongHandler(func(string) error { ws.SetReadDeadline(time.Now().Add(pongWait)); return nil })
+	// ws.SetReadLimit(maxMessageSize)
+	// ws.SetReadDeadline(time.Now().Add(pongWait))
+	// ws.SetPongHandler(func(string) error { ws.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 	// Continuosly read and write message
 	for {
 		_, _, err := ws.ReadMessage()
