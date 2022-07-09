@@ -17,7 +17,7 @@ type ServerConfig struct {
 var indexPage []byte
 
 func Serve(cfg ServerConfig) {
-	socketServer := newSocketServer()
+	socketServer := NewSocketIO()
 	go func() {
 		if err := socketServer.Serve(); err != nil {
 			log.Fatalf("socketio listen error: %s\n", err)
@@ -25,20 +25,20 @@ func Serve(cfg ServerConfig) {
 	}()
 	defer socketServer.Close()
 
-	go Hub.Run()
+	webSocket := NewWS()
 
 	go func() {
 		for {
-			m, ok := <-cfg.Broadcast
+			msg, ok := <-cfg.Broadcast
 			if ok {
-				socketServer.BroadcastToNamespace("/", m.Event, m.Payload)
-				Hub.Broadcast <- m
+				socketServer.Broadcast(msg)
+				webSocket.Broadcast(msg)
 			}
 		}
 	}()
 
 	http.Handle("/socket.io/", socketServer)
-	http.HandleFunc("/ws", handleWs)
+	http.HandleFunc("/ws", webSocket.Handler)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 		w.Write(indexPage)

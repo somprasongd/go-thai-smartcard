@@ -18,7 +18,10 @@
       var socket = io.connect(window.location.origin);
       const dataEl = document.getElementById('data');
       socket.on('connect', function () {
-        dataEl.innerHTML = 'Connected to socket.io server';
+        dataEl.innerHTML = '<b>Connected to socket.io server</b>';
+      });
+      socket.on('disconnect', function () {
+        dataEl.innerHTML = '<b>Disconnected to socket.io server</b>';
       });
       socket.on('smc-data', function (data) {
         console.log(data);
@@ -43,11 +46,11 @@
         console.log(document.location.host);
         conn.onopen = function (evt) {
           var item = document.getElementById('data-ws');
-          item.innerHTML = '<b>Connection opened.</b>';
+          item.innerHTML = '<b>Connected to WebSocket server</b>';
         };
         conn.onclose = function (evt) {
           var item = document.getElementById('data-ws');
-          item.innerHTML = '<b>Connection closed.</b>';
+          item.innerHTML = '<b>Disconnected to WebSocket server</b>';
         };
         conn.onmessage = function (evt) {
           var messages = evt.data.split('\n');
