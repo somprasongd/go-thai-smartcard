@@ -10,25 +10,16 @@ import (
 	"github.com/somprasongd/go-thai-smartcard/pkg/util"
 )
 
-type SmartCardConfig struct {
+type Options struct {
 	ShowFaceImage bool
 	ShowNhsoData  bool
 }
 
 type smartCard struct {
-	SmartCardConfig
 }
 
-func NewSmartCard(cfg *SmartCardConfig) *smartCard {
-	if cfg == nil {
-		cfg = &SmartCardConfig{
-			ShowFaceImage: true,
-			ShowNhsoData:  false,
-		}
-	}
-	return &smartCard{
-		SmartCardConfig: *cfg,
-	}
+func NewSmartCard() *smartCard {
+	return &smartCard{}
 }
 
 func (s *smartCard) ListReaders() ([]string, error) {
@@ -43,7 +34,14 @@ func (s *smartCard) ListReaders() ([]string, error) {
 	return util.ListReaders(ctx)
 }
 
-func (s *smartCard) Read(readerName *string) (*model.Data, error) {
+func (s *smartCard) Read(readerName *string, opts *Options) (*model.Data, error) {
+	if opts == nil {
+		opts = &Options{
+			ShowFaceImage: true,
+			ShowNhsoData:  false,
+		}
+	}
+
 	readers := []string{}
 
 	if readerName == nil {
@@ -76,7 +74,7 @@ func (s *smartCard) Read(readerName *string) (*model.Data, error) {
 	}
 
 	reader := readers[index]
-	card, data, err := s.readCard(ctx, reader)
+	card, data, err := s.readCard(ctx, reader, opts)
 	defer util.DisconnectCard(card)
 
 	if err != nil {
@@ -86,7 +84,7 @@ func (s *smartCard) Read(readerName *string) (*model.Data, error) {
 	return data, nil
 }
 
-func (s *smartCard) readCard(ctx *scard.Context, reader string) (*scard.Card, *model.Data, error) {
+func (s *smartCard) readCard(ctx *scard.Context, reader string, opts *Options) (*scard.Card, *model.Data, error) {
 	log.Printf("Connecting to card with %s", reader)
 	card, err := util.ConnectCard(ctx, reader)
 	if err != nil {
@@ -106,9 +104,9 @@ func (s *smartCard) readCard(ctx *scard.Context, reader string) (*scard.Card, *m
 
 	personalReader := NewPersonalReader(card, cmd)
 	personalReader.Select()
-	data.Personal = personalReader.Read(s.ShowFaceImage)
+	data.Personal = personalReader.Read(opts.ShowFaceImage)
 
-	if s.ShowNhsoData {
+	if opts.ShowNhsoData {
 		nhsoReader := NewNhsoReader(card, cmd)
 		nhsoReader.Select()
 		data.Nhso = nhsoReader.Read()
@@ -116,7 +114,13 @@ func (s *smartCard) readCard(ctx *scard.Context, reader string) (*scard.Card, *m
 	return card, &data, nil
 }
 
-func (s *smartCard) StartDaemon(broadcast chan model.Message) error {
+func (s *smartCard) StartDaemon(broadcast chan model.Message, opts *Options) error {
+	if opts == nil {
+		opts = &Options{
+			ShowFaceImage: true,
+			ShowNhsoData:  false,
+		}
+	}
 	// Establish a context
 	ctx, err := util.EstablishContext()
 	if err != nil {
@@ -192,7 +196,7 @@ func (s *smartCard) StartDaemon(broadcast chan model.Message) error {
 			broadcast <- message
 		}
 
-		card, data, err := s.readCard(ctx, reader)
+		card, data, err := s.readCard(ctx, reader, opts)
 
 		if err != nil {
 			util.DisconnectCard(card)

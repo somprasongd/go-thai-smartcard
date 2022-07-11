@@ -11,8 +11,8 @@ import "github.com/somprasongd/go-thai-smartcard/pkg/smc"
 func main() {
 	c := make(chan struct{})
 	println("Web Assembly is ready")
-	smc := smc.NewSmartCard(nil)
-	err := smc.StartDaemon(nil)
+	smc := smc.NewSmartCard()
+	err := smc.StartDaemon(nil, nil)
 	panic(err)
 	<-c
 }

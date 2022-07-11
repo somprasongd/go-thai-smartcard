@@ -8,14 +8,14 @@ import (
 )
 
 func main() {
-	cfg := smc.SmartCardConfig{
+	opts := &smc.Options{
 		ShowFaceImage: true,
 		ShowNhsoData:  true,
 	}
-	smc := smc.NewSmartCard(&cfg)
+	smc := smc.NewSmartCard()
 	// reader := "Identive CLOUD 2700 R Smart Card Reader"
-	// data, err := smc.Read(&reader)
-	data, err := smc.Read(nil)
+	// data, err := smc.Read(&reader, opts)
+	data, err := smc.Read(nil, opts)
 	if err != nil {
 		log.Println(err)
 	}
