@@ -3,6 +3,7 @@ package smc
 import (
 	"errors"
 	"log"
+	"time"
 
 	"github.com/ebfe/scard"
 	"github.com/somprasongd/go-thai-smartcard/pkg/model"
@@ -123,20 +124,37 @@ func (s *smartCard) StartDaemon(broadcast chan model.Message) error {
 	}
 	defer util.ReleaseContext(ctx)
 
-	// List available readers
-	readers, err := util.ListReaders(ctx)
-	if err != nil {
-		return err
-	}
+	chWaitReaders := make(chan []string)
+	go func(chWaitReaders chan []string) {
+		for {
+			// List available readers
+			readers, err := util.ListReaders(ctx)
+			if err != nil {
+				log.Println(err.Error())
+				if broadcast != nil {
+					message := model.Message{
+						Event: "smc-error",
+						Payload: map[string]string{
+							"message": err.Error(),
+						},
+					}
+					broadcast <- message
+				}
+				log.Println("Wait readers for 2 seconds")
+				time.Sleep(2 * time.Second)
+				continue
+			}
 
-	log.Printf("Available %d readers:\n", len(readers))
-	for i, reader := range readers {
-		log.Printf("[%d] %s\n", i, reader)
-	}
+			log.Printf("Available %d readers:\n", len(readers))
+			for i, reader := range readers {
+				log.Printf("[%d] %s\n", i, reader)
+			}
 
-	if len(readers) == 0 {
-		return errors.New("not available readers")
-	}
+			chWaitReaders <- readers
+			break
+		}
+	}(chWaitReaders)
+	readers := <-chWaitReaders
 
 	rs := util.InitReaderStates(readers)
 	for {

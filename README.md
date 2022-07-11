@@ -1,10 +1,11 @@
 # go-thai-smartcard
 
-Go application read personal and nhso data from thai id card, it run in the background and wait until inserted card then send readed data to everyone via [https://socket.io/](socket.io) and WebSockets(https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API).
+Go application read personal and nhso data from thai id card, it run in the background and wait until inserted card then send readed data to everyone via [https://socket.io/](socket.io) and [WebSockets](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API).
 
 Or use like library see in [cmd/example/main.go](https://github.com/somprasongd/go-thai-smartcard/blob/main/cmd/example/main.go)
 
 ## Other Versions
+
 - [Java](https://github.com/somprasongd/jThaiSmartCard)
 - [Nodejs](https://github.com/somprasongd/thai-smartcard-nodejs)
 
@@ -22,10 +23,10 @@ Run from binary file that builded from the previous step.
 
 ### Configurations
 
-|         ENV        | Default |                    Description                    |
-|:------------------:|:-------:|:-------------------------------------------------:|
-| **SMC_AGENT_PORT** |  "9898" | Server port                                       |
-| **SMC_SHOW_IMAGE** |  "true" | Enable or disable read face image from smartcard. |
+|        ENV         | Default |                    Description                    |
+| :----------------: | :-----: | :-----------------------------------------------: |
+| **SMC_AGENT_PORT** | "9898"  |                    Server port                    |
+| **SMC_SHOW_IMAGE** | "true"  | Enable or disable read face image from smartcard. |
 | **SMC_SHOW_NHSO**  | "flase" | Enable or disable read nsho data from smartcard.  |
 
 ### Run in daemon process with PM2
@@ -57,7 +58,7 @@ pm2 startup
 pm2 save
 ```
 
-## Example 
+## Example
 
 ### Client connect via socket.io
 
