@@ -2,7 +2,7 @@
 
 Go application read personal and nhso data from thai id card, it run in the background and wait until inserted card then send readed data to everyone via [https://socket.io/](socket.io) and WebSockets(https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API).
 
-Or use like library see in `cmd/example/main.go`
+Or use like library see in [cmd/example/main.go](https://github.com/somprasongd/go-thai-smartcard/blob/main/cmd/example/main.go)
 
 ## Other Versions
 - [Java](https://github.com/somprasongd/jThaiSmartCard)
