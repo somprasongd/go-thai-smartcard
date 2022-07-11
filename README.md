@@ -14,7 +14,11 @@ Or use like library see in [cmd/example/main.go](https://github.com/somprasongd/
 - Required version [Go](https://go.dev/dl/) version 1.18+
 - Clone this repository
 - Download all depencies with `go mod download`
+
+> Linux install `sudo apt install build-essential libpcsclite-dev`
+
 - Build with `go build -o bin/thai-smartcard-agent ./cmd/agent/main.go`
+
   > Windows `go build -o bin/thai-smartcard-agent.exe ./cmd/agent/main.go`
 
 ## How to run

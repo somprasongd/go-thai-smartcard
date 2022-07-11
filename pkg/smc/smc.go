@@ -130,7 +130,6 @@ func (s *smartCard) StartDaemon(broadcast chan model.Message) error {
 			// List available readers
 			readers, err := util.ListReaders(ctx)
 			if err != nil {
-				log.Println(err.Error())
 				if broadcast != nil {
 					message := model.Message{
 						Event: "smc-error",
@@ -140,7 +139,7 @@ func (s *smartCard) StartDaemon(broadcast chan model.Message) error {
 					}
 					broadcast <- message
 				}
-				log.Println("Wait readers for 2 seconds")
+				log.Println("Cannot find a smart card reader, Wait 2 seconds")
 				time.Sleep(2 * time.Second)
 				continue
 			}
@@ -148,6 +147,21 @@ func (s *smartCard) StartDaemon(broadcast chan model.Message) error {
 			log.Printf("Available %d readers:\n", len(readers))
 			for i, reader := range readers {
 				log.Printf("[%d] %s\n", i, reader)
+			}
+
+			if len(readers) == 0 {
+				if broadcast != nil {
+					message := model.Message{
+						Event: "smc-error",
+						Payload: map[string]string{
+							"message": "not available readers",
+						},
+					}
+					broadcast <- message
+				}
+				log.Println("Cannot find a smart card reader, Wait 2 seconds")
+				time.Sleep(2 * time.Second)
+				continue
 			}
 
 			chWaitReaders <- readers
