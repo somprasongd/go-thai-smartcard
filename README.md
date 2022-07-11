@@ -15,7 +15,7 @@ Or use like library see in [cmd/example/main.go](https://github.com/somprasongd/
 - Clone this repository
 - Download all depencies with `go mod download`
 
-> Linux install `sudo apt install build-essential libpcsclite-dev`
+> Linux install `sudo apt install build-essential libpcsclite-dev pcscd`
 
 - Build with `go build -o bin/thai-smartcard-agent ./cmd/agent/main.go`
 
