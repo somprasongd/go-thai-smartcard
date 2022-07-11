@@ -1,26 +1,34 @@
 # go-thai-smartcard
 
-โปรแกรมอ่านบัตรประชาชน ด้วยภาษา Go
+Go application read personal and nhso data from thai id card, it run in the background and wait until inserted card then send readed data to everyone via [https://socket.io/](socket.io) and WebSockets(https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API).
 
-## การ Build
+Or use like library see in `cmd/example/main.go`
 
-- ติดตั้ง [Go](https://go.dev/dl/)
-- Clone git repo https://github.com/somprasongd/go-thai-smartcard
-- รันคำสั่ง `go mod download`
-- Build ด้วยคำสั่ง `go build -o bin/thai-smartcard-agent ./cmd/agent/main.go`
-  > ถ้าเป็น Windows ใส่ .exe ด้วย go build -o bin/thai-smartcard-agent.exe ./cmd/agent/main.go
+## Other Versions
+- [Java](https://github.com/somprasongd/jThaiSmartCard)
+- [Nodejs](https://github.com/somprasongd/thai-smartcard-nodejs)
 
-## การใช้งาน
+## How to build
 
-สามารถรันโปรแกรมได้จาก binary file ที่ build ออกมาได้เลย
+- Required version [Go](https://go.dev/dl/) version 1.18+
+- Clone this repository
+- Download all depencies with `go mod download`
+- Build with `go build -o bin/thai-smartcard-agent ./cmd/agent/main.go`
+  > Windows `go build -o bin/thai-smartcard-agent.exe ./cmd/agent/main.go`
 
-**แก้ไขค่าเริ่มต้นด้วย env**
+## How to run
 
-- Web Server Port -> SMC_AGENT_PORT=9898
-- เปิด/ปิดการแสดงรูปถ่าย -> SMC_SHOW_IMAGE=true/false default=true
-- เปิด/ปิดการแสดงข้อมูลสิทธิการรักษาจาก -> SMC_SHOW_NHSO=E=true/false default=false
+Run from binary file that builded from the previous step.
 
-### รันด้วย PM2
+### Configurations
+
+|         ENV        | Default |                    Description                    |
+|:------------------:|:-------:|:-------------------------------------------------:|
+| **SMC_AGENT_PORT** |  "9898" | Server port                                       |
+| **SMC_SHOW_IMAGE** |  "true" | Enable or disable read face image from smartcard. |
+| **SMC_SHOW_NHSO**  | "flase" | Enable or disable read nsho data from smartcard.  |
+
+### Run in daemon process with PM2
 
 - Windows
 
@@ -49,7 +57,9 @@ pm2 startup
 pm2 save
 ```
 
-## Example Client connect via socket.io
+## Example 
+
+### Client connect via socket.io
 
 ```javascript
 <script>
@@ -72,7 +82,7 @@ pm2 save
 </script>
 ```
 
-## Example Client connect via WebSokcet
+### Client connect via WebSokcet
 
 ```javascript
 <script>
