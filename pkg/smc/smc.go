@@ -115,9 +115,6 @@ func (s *smartCard) readCard(ctx *scard.Context, reader string, opts *Options) (
 }
 
 func (s *smartCard) StartDaemon(broadcast chan model.Message, opts *Options) error {
-	if true {
-		return errors.New("test error start daemon")
-	}
 	if opts == nil {
 		opts = &Options{
 			ShowFaceImage: true,
