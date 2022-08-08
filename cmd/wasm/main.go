@@ -12,7 +12,7 @@ func main() {
 	c := make(chan struct{})
 	println("Web Assembly is ready")
 	smc := smc.NewSmartCard()
-	err, _ := smc.StartDaemon(nil, nil)
+	err := smc.StartDaemon(nil, nil)
 	panic(err)
 	<-c
 }
