@@ -31,26 +31,31 @@ func main() {
 		ShowFaceImage: showImage,
 		ShowNhsoData:  showNhso,
 	}
-	smc := smc.NewSmartCard()
-	err := smc.StartDaemon(broadcast, opts)
-	if err != nil {
-		log.Println("Error occurred while start daemon process, press Ctrl+C to exit.")
-		go func() {
-			for {
+
+	go func() {
+		smc := smc.NewSmartCard()
+		for {
+			err := smc.StartDaemon(broadcast, opts)
+			if err != nil {
+				log.Printf("Error occurred in daemon process (%v), wait 2 seconds to retry or press Ctrl+C to exit.", err.Error())
+
 				message := model.Message{
 					Event: "smc-error",
 					Payload: map[string]string{
-						"message": fmt.Sprintf("Error occurred while start daemon process, %v", err.Error()),
+						"message": fmt.Sprintf("Error occurred in daemon process, %v.", err.Error()),
 					},
 				}
 				broadcast <- message
-				time.Sleep(1 * time.Second)
+
+				time.Sleep(2 * time.Second)
 			}
-		}()
-		// Listen for syscall signals for process to interrupt/quit
-		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, os.Interrupt)
-		s := <-sig
-		log.Printf("Received %v signal...", s)
-	}
+		}
+	}()
+
+	// Listen for syscall signals for process to interrupt/quit
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt)
+	s := <-sig
+	log.Printf("Received %v signal to shutdown.", s)
+
 }

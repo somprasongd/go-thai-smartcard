@@ -124,6 +124,7 @@ func (s *smartCard) StartDaemon(broadcast chan model.Message, opts *Options) err
 	// Establish a context
 	ctx, err := util.EstablishContext()
 	if err != nil {
+		log.Printf("establish context error %s\n", err.Error())
 		return err
 	}
 	defer util.ReleaseContext(ctx)
@@ -179,8 +180,8 @@ func (s *smartCard) StartDaemon(broadcast chan model.Message, opts *Options) err
 		log.Println("Waiting for a Card Inserted")
 		index, err := util.WaitUntilCardPresent(ctx, rs)
 		if err != nil {
-			log.Printf("waiting card error %s", err.Error())
-			continue
+			log.Printf("waiting card error %s\n", err.Error())
+			return err
 		}
 
 		// Connect to card
