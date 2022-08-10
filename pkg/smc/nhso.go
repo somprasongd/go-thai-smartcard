@@ -1,7 +1,7 @@
 package smc
 
 import (
-	"fmt"
+	"log"
 
 	"github.com/ebfe/scard"
 	"github.com/somprasongd/go-thai-smartcard/pkg/apdu"
@@ -44,7 +44,7 @@ func (r *nhsoReader) Read() *model.Nhso {
 func (r *nhsoReader) ReadMainInscl() string {
 	s, err := util.ReadDataThai(r.card, apdu.NhsoCMD.MainInscl, r.respCmd)
 	if err != nil {
-		fmt.Println("Error Read MainInscl:", err)
+		log.Println("Error Read MainInscl:", err)
 		return ""
 	}
 	return s
@@ -53,7 +53,7 @@ func (r *nhsoReader) ReadMainInscl() string {
 func (r *nhsoReader) ReadSubInscl() string {
 	s, err := util.ReadDataThai(r.card, apdu.NhsoCMD.SubInscl, r.respCmd)
 	if err != nil {
-		fmt.Println("Error Read SubInscl:", err)
+		log.Println("Error Read SubInscl:", err)
 		return ""
 	}
 	return s
@@ -62,7 +62,7 @@ func (r *nhsoReader) ReadSubInscl() string {
 func (r *nhsoReader) ReadMainHospitalName() string {
 	s, err := util.ReadDataThai(r.card, apdu.NhsoCMD.MainHospitalName, r.respCmd)
 	if err != nil {
-		fmt.Println("Error Read MainHospitalName:", err)
+		log.Println("Error Read MainHospitalName:", err)
 		return ""
 	}
 	return s
@@ -71,7 +71,7 @@ func (r *nhsoReader) ReadMainHospitalName() string {
 func (r *nhsoReader) ReadSubHospitalName() string {
 	s, err := util.ReadDataThai(r.card, apdu.NhsoCMD.SubHospitalName, r.respCmd)
 	if err != nil {
-		fmt.Println("Error Read SubHospitalName:", err)
+		log.Println("Error Read SubHospitalName:", err)
 		return ""
 	}
 	return s
@@ -80,7 +80,7 @@ func (r *nhsoReader) ReadSubHospitalName() string {
 func (r *nhsoReader) ReadPaidType() string {
 	s, err := util.ReadDataThai(r.card, apdu.NhsoCMD.PaidType, r.respCmd)
 	if err != nil {
-		fmt.Println("Error Read PaidType:", err)
+		log.Println("Error Read PaidType:", err)
 		return ""
 	}
 	return s
@@ -89,7 +89,7 @@ func (r *nhsoReader) ReadPaidType() string {
 func (r *nhsoReader) ReadIssueDate() string {
 	s, err := util.ReadData(r.card, apdu.NhsoCMD.IssueDate, r.respCmd)
 	if err != nil {
-		fmt.Println("Error Read IssueDate:", err)
+		log.Println("Error Read IssueDate:", err)
 		return ""
 	}
 	return string(model.NewFormatedDate(s))
@@ -98,7 +98,7 @@ func (r *nhsoReader) ReadIssueDate() string {
 func (r *nhsoReader) ReadExpireDate() string {
 	s, err := util.ReadData(r.card, apdu.NhsoCMD.ExpireDate, r.respCmd)
 	if err != nil {
-		fmt.Println("Error Read ExpireDate:", err)
+		log.Println("Error Read ExpireDate:", err)
 		return ""
 	}
 	return string(model.NewFormatedDate(s))
@@ -107,7 +107,7 @@ func (r *nhsoReader) ReadExpireDate() string {
 func (r *nhsoReader) ReadUpdateDate() string {
 	s, err := util.ReadData(r.card, apdu.NhsoCMD.UpdateDate, r.respCmd)
 	if err != nil {
-		fmt.Println("Error Read UpdateDate:", err)
+		log.Println("Error Read UpdateDate:", err)
 		return ""
 	}
 	return string(model.NewFormatedDate(s))
@@ -116,7 +116,7 @@ func (r *nhsoReader) ReadUpdateDate() string {
 func (r *nhsoReader) ReadChangeHospitalAmount() string {
 	s, err := util.ReadData(r.card, apdu.NhsoCMD.ChangeHospitalAmount, r.respCmd)
 	if err != nil {
-		fmt.Println("Error Read ChangeHospitalAmount:", err)
+		log.Println("Error Read ChangeHospitalAmount:", err)
 		return ""
 	}
 	return s

@@ -1,7 +1,7 @@
 package util
 
 import (
-	"fmt"
+	"errors"
 	"log"
 	"strings"
 
@@ -31,7 +31,7 @@ func InitReaderStates(readers []string) []scard.ReaderState {
 }
 
 func WaitUntilCardPresent(ctx *scard.Context, rs []scard.ReaderState) (int, error) {
-	// fmt.Println(
+	// log.Println(
 	// 	scard.StateUnaware,
 	// 	scard.StateIgnore,
 	// 	scard.StateChanged,
@@ -50,9 +50,9 @@ func WaitUntilCardPresent(ctx *scard.Context, rs []scard.ReaderState) (int, erro
 		if err != nil {
 			return -1, err
 		}
-		// fmt.Println("StatusChanged")
+		// log.Println("StatusChanged")
 		for i := range rs {
-			// fmt.Println(
+			// log.Println(
 			// 	rs[i].EventState&scard.StateUnaware,
 			// 	rs[i].EventState&scard.StateIgnore,
 			// 	rs[i].EventState&scard.StateChanged,
@@ -66,7 +66,7 @@ func WaitUntilCardPresent(ctx *scard.Context, rs []scard.ReaderState) (int, erro
 			// 	rs[i].EventState&scard.StateMute,
 			// 	rs[i].EventState&scard.StateUnpowered,
 			// )
-			// fmt.Println(
+			// log.Println(
 			// 	rs[i].Reader,
 			// 	rs[i].CurrentState,
 			// 	rs[i].EventState,
@@ -87,7 +87,7 @@ func WaitUntilCardPresent(ctx *scard.Context, rs []scard.ReaderState) (int, erro
 }
 
 func WaitUntilCardRemove(ctx *scard.Context, rs []scard.ReaderState) (int, error) {
-	// fmt.Println(
+	// log.Println(
 	// 	scard.StateUnaware,
 	// 	scard.StateIgnore,
 	// 	scard.StateChanged,
@@ -106,9 +106,9 @@ func WaitUntilCardRemove(ctx *scard.Context, rs []scard.ReaderState) (int, error
 		if err != nil {
 			return -1, err
 		}
-		// fmt.Println("StatusChanged")
+		// log.Println("StatusChanged")
 		for i := range rs {
-			// fmt.Println(
+			// log.Println(
 			// 	rs[i].EventState&scard.StateUnaware,
 			// 	rs[i].EventState&scard.StateIgnore,
 			// 	rs[i].EventState&scard.StateChanged,
@@ -122,7 +122,7 @@ func WaitUntilCardRemove(ctx *scard.Context, rs []scard.ReaderState) (int, error
 			// 	rs[i].EventState&scard.StateMute,
 			// 	rs[i].EventState&scard.StateUnpowered,
 			// )
-			// fmt.Println(
+			// log.Println(
 			// 	rs[i].Reader,
 			// 	rs[i].CurrentState,
 			// 	rs[i].EventState,
@@ -147,6 +147,9 @@ func ConnectCard(ctx *scard.Context, reader string) (*scard.Card, error) {
 }
 
 func DisconnectCard(card *scard.Card) error {
+	if card == nil {
+		return errors.New("card is nil")
+	}
 	return card.Disconnect(scard.UnpowerCard)
 }
 
@@ -169,19 +172,19 @@ func readDataToString(card *scard.Card, cmd []byte, cmdGetResponse []byte, isTIS
 	// Send command APDU
 	_, err := card.Transmit(cmd)
 	if err != nil {
-		fmt.Println("Error Transmit:", err)
+		log.Println("Error Transmit:", err)
 		return "", err
 	}
-	// fmt.Println(rsp)
+	// log.Println(rsp)
 
 	// get respond command
 	cmd_respond := append(cmdGetResponse[:], cmd[len(cmd)-1])
 	rsp, err := card.Transmit(cmd_respond)
 	if err != nil {
-		fmt.Println("Error Transmit:", err)
+		log.Println("Error Transmit:", err)
 		return "", err
 	}
-	// fmt.Println(rsp)
+	// log.Println(rsp)
 
 	if isTIS620 {
 		rsp = tis620.ToUTF8(rsp)

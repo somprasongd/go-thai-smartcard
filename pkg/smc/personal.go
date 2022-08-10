@@ -3,6 +3,7 @@ package smc
 import (
 	"encoding/hex"
 	"fmt"
+	"log"
 
 	"github.com/ebfe/scard"
 	"github.com/somprasongd/go-thai-smartcard/pkg/apdu"
@@ -48,7 +49,7 @@ func (r *personalReader) Read(isReadFaceImage bool) *model.Personal {
 func (r *personalReader) ReadCID() string {
 	s, err := util.ReadData(r.card, apdu.PersonalCMD.Cid, r.respCmd)
 	if err != nil {
-		fmt.Println("Error Read CID:", err)
+		log.Println("Error Read CID:", err)
 		return ""
 	}
 	return s
@@ -57,7 +58,7 @@ func (r *personalReader) ReadCID() string {
 func (r *personalReader) ReadRawName() string {
 	s, err := util.ReadDataThai(r.card, apdu.PersonalCMD.NameThai, r.respCmd)
 	if err != nil {
-		fmt.Println("Error Read Thai name:", err)
+		log.Println("Error Read Thai name:", err)
 		return ""
 	}
 	return s
@@ -65,6 +66,11 @@ func (r *personalReader) ReadRawName() string {
 
 func (r *personalReader) ReadName() string {
 	raw := r.ReadRawName()
+	defer func() {
+		if r := recover(); r != nil {
+			log.Println("Recovered in ReadName", r)
+		}
+	}()
 	name := model.NewNameFromRaw(raw)
 
 	return name.FullName
@@ -73,7 +79,7 @@ func (r *personalReader) ReadName() string {
 func (r *personalReader) ReadRawNameEng() string {
 	s, err := util.ReadDataThai(r.card, apdu.PersonalCMD.NameEng, r.respCmd)
 	if err != nil {
-		fmt.Println("Error Read English name:", err)
+		log.Println("Error Read English name:", err)
 		return ""
 	}
 	return s
@@ -89,7 +95,7 @@ func (r *personalReader) ReadNameEng() string {
 func (r *personalReader) ReadDob() string {
 	s, err := util.ReadData(r.card, apdu.PersonalCMD.Dob, r.respCmd)
 	if err != nil {
-		fmt.Println("Error Read Dob:", err)
+		log.Println("Error Read Dob:", err)
 		return ""
 	}
 	return string(model.NewFormatedDate(s))
@@ -98,7 +104,7 @@ func (r *personalReader) ReadDob() string {
 func (r *personalReader) ReadGender() string {
 	s, err := util.ReadData(r.card, apdu.PersonalCMD.Gender, r.respCmd)
 	if err != nil {
-		fmt.Println("Error Read Gender:", err)
+		log.Println("Error Read Gender:", err)
 		return ""
 	}
 	return s
@@ -107,7 +113,7 @@ func (r *personalReader) ReadGender() string {
 func (r *personalReader) ReadCardIssuer() string {
 	s, err := util.ReadDataThai(r.card, apdu.PersonalCMD.CardIssuer, r.respCmd)
 	if err != nil {
-		fmt.Println("Error Read CardIssuer:", err)
+		log.Println("Error Read CardIssuer:", err)
 		return ""
 	}
 	return s
@@ -116,7 +122,7 @@ func (r *personalReader) ReadCardIssuer() string {
 func (r *personalReader) ReadIssueDate() string {
 	s, err := util.ReadData(r.card, apdu.PersonalCMD.IssueDate, r.respCmd)
 	if err != nil {
-		fmt.Println("Error Read IssueDate:", err)
+		log.Println("Error Read IssueDate:", err)
 		return ""
 	}
 	return string(model.NewFormatedDate(s))
@@ -125,7 +131,7 @@ func (r *personalReader) ReadIssueDate() string {
 func (r *personalReader) ReadExpireDate() string {
 	s, err := util.ReadData(r.card, apdu.PersonalCMD.ExpireDate, r.respCmd)
 	if err != nil {
-		fmt.Println("Error Read ExpireDate:", err)
+		log.Println("Error Read ExpireDate:", err)
 		return ""
 	}
 	return string(model.NewFormatedDate(s))
@@ -134,7 +140,7 @@ func (r *personalReader) ReadExpireDate() string {
 func (r *personalReader) ReadRawAddress() string {
 	s, err := util.ReadDataThai(r.card, apdu.PersonalCMD.Address, r.respCmd)
 	if err != nil {
-		fmt.Println("Error Read Address:", err)
+		log.Println("Error Read Address:", err)
 		return ""
 	}
 	return s
@@ -142,6 +148,10 @@ func (r *personalReader) ReadRawAddress() string {
 
 func (r *personalReader) ReadAddress() string {
 	raw := r.ReadRawAddress()
+	if raw == "" {
+		log.Panicln("Cannot read address")
+		return raw
+	}
 	addr := model.NewAddressFromRaw(raw)
 
 	return addr.Address
@@ -152,7 +162,7 @@ func (r *personalReader) ReadFaceImage() string {
 	for _, v := range apdu.PersonalCMD.FaceImage {
 		raw, err := util.ReadData(r.card, v, r.respCmd)
 		if err != nil {
-			fmt.Println("Error Read Face Image:", err)
+			log.Println("Error Read Face Image:", err)
 			return ""
 		}
 		if len(raw) == 0 {

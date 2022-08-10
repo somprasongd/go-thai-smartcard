@@ -92,6 +92,17 @@ func (s *smartCard) readCard(ctx *scard.Context, reader string, opts *Options) (
 		return card, nil, err
 	}
 
+	defer func(card *scard.Card) {
+		if rcv := recover(); rcv != nil {
+			_, e := card.Status()
+			if e != nil {
+				log.Println("Recover readCard:", e.Error())
+				return
+			}
+			log.Println("Recover readCard:", rcv)
+		}
+	}(card)
+
 	status, err := card.Status()
 	if err != nil {
 		log.Printf("get card status error %s", err.Error())
@@ -213,7 +224,7 @@ func (s *smartCard) StartDaemon(broadcast chan model.Message, opts *Options) err
 			continue
 		}
 
-		if broadcast != nil {
+		if data != nil && broadcast != nil {
 			message := model.Message{
 				Event:   "smc-data",
 				Payload: data,
