@@ -169,10 +169,14 @@ func ReadDataThai(card *scard.Card, cmd []byte, cmdGetResponse []byte) (string, 
 }
 
 func readDataToString(card *scard.Card, cmd []byte, cmdGetResponse []byte, isTIS620 bool) (string, error) {
-	// Send command APDU
-	_, err := card.Transmit(cmd)
+	_, err := card.Status()
 	if err != nil {
-		log.Println("Error Transmit:", err)
+		return "", err
+	}
+	// Send command APDU
+	_, err = card.Transmit(cmd)
+	if err != nil {
+		// log.Println("Error Transmit:", err)
 		return "", err
 	}
 	// log.Println(rsp)
@@ -181,7 +185,7 @@ func readDataToString(card *scard.Card, cmd []byte, cmdGetResponse []byte, isTIS
 	cmd_respond := append(cmdGetResponse[:], cmd[len(cmd)-1])
 	rsp, err := card.Transmit(cmd_respond)
 	if err != nil {
-		log.Println("Error Transmit:", err)
+		// log.Println("Error Transmit:", err)
 		return "", err
 	}
 	// log.Println(rsp)
