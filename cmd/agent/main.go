@@ -17,6 +17,7 @@ func main() {
 	// load env
 	port := util.GetEnv("SMC_AGENT_PORT", "9898")
 	showImage := util.GetEnvBool("SMC_SHOW_IMAGE", true)
+	showLaser := util.GetEnvBool("SMC_SHOW_LASER", true)
 	showNhso := util.GetEnvBool("SMC_SHOW_NHSO", false)
 
 	broadcast := make(chan model.Message)
@@ -30,6 +31,7 @@ func main() {
 	opts := &smc.Options{
 		ShowFaceImage: showImage,
 		ShowNhsoData:  showNhso,
+		ShowLaserData: showLaser,
 	}
 
 	go func() {

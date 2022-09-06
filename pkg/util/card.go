@@ -199,3 +199,23 @@ func readDataToString(card *scard.Card, cmd []byte, cmdGetResponse []byte, isTIS
 	// }
 	return strings.TrimSpace(string(rsp[:len(rsp)-2])), nil
 }
+
+func ReadLaserData(card *scard.Card, cmd []byte, cmdGetResponse []byte) (string, error) {
+	_, err := card.Status()
+	if err != nil {
+		return "", err
+	}
+	// Send command APDU
+	_, err = card.Transmit(cmd)
+	if err != nil {
+		return "", err
+	}
+
+	// get respond command
+	cmd_respond := append(cmdGetResponse[:], 12)
+	rsp, err := card.Transmit(cmd_respond)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(rsp[:len(rsp)-2])), nil
+}

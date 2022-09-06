@@ -32,6 +32,7 @@ Run from binary file that builded from the previous step.
 | **SMC_AGENT_PORT** | "9898"  |                    Server port                    |
 | **SMC_SHOW_IMAGE** | "true"  | Enable or disable read face image from smartcard. |
 | **SMC_SHOW_NHSO**  | "flase" | Enable or disable read nsho data from smartcard.  |
+| **SMC_SHOW_LASER** | "flase" |  Enable or disable read laser id from smartcard.  |
 
 ### Run in daemon process with PM2
 

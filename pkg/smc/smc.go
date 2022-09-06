@@ -13,6 +13,7 @@ import (
 type Options struct {
 	ShowFaceImage bool
 	ShowNhsoData  bool
+	ShowLaserData bool
 }
 
 type smartCard struct {
@@ -39,6 +40,7 @@ func (s *smartCard) Read(readerName *string, opts *Options) (*model.Data, error)
 		opts = &Options{
 			ShowFaceImage: true,
 			ShowNhsoData:  false,
+			ShowLaserData: false,
 		}
 	}
 
@@ -117,6 +119,10 @@ func (s *smartCard) readCard(ctx *scard.Context, reader string, opts *Options) (
 	personalReader.Select()
 	data.Personal = personalReader.Read(opts.ShowFaceImage)
 
+	admReader := NewAdmReader(card, cmd)
+	admReader.Select()
+	data.Personal.LaserId = admReader.ReadLaserId()
+
 	if opts.ShowNhsoData {
 		nhsoReader := NewNhsoReader(card, cmd)
 		nhsoReader.Select()
@@ -130,6 +136,7 @@ func (s *smartCard) StartDaemon(broadcast chan model.Message, opts *Options) err
 		opts = &Options{
 			ShowFaceImage: true,
 			ShowNhsoData:  false,
+			ShowLaserData: false,
 		}
 	}
 	// Establish a context
