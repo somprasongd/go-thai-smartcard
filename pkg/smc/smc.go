@@ -119,9 +119,11 @@ func (s *smartCard) readCard(ctx *scard.Context, reader string, opts *Options) (
 	personalReader.Select()
 	data.Personal = personalReader.Read(opts.ShowFaceImage)
 
-	admReader := NewAdmReader(card, cmd)
-	admReader.Select()
-	data.Personal.LaserId = admReader.ReadLaserId()
+	if opts.ShowLaserData {
+		cardReader := NewCardReader(card, cmd)
+		cardReader.Select()
+		data.Card = &model.Card{LaserId: cardReader.ReadLaserId()}
+	}
 
 	if opts.ShowNhsoData {
 		nhsoReader := NewNhsoReader(card, cmd)

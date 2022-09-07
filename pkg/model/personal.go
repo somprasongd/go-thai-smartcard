@@ -16,7 +16,6 @@ type Personal struct {
 	ExpireDate FormatedDate `json:"expire_date"`
 	Address    Address      `json:"address"`
 	FaceImage  string       `json:"base64_img"`
-	LaserId    string       `json:"laser_id"`
 }
 
 type Name struct {

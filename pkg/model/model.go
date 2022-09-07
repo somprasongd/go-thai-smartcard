@@ -7,6 +7,7 @@ import (
 
 type Data struct {
 	Personal *Personal `json:"personal"`
+	Card     *Card     `json:"card,omitempty"`
 	Nhso     *Nhso     `json:"nhso,omitempty"`
 }
 

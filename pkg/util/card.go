@@ -1,6 +1,7 @@
 package util
 
 import (
+	"bytes"
 	"errors"
 	"log"
 	"strings"
@@ -212,10 +213,11 @@ func ReadLaserData(card *scard.Card, cmd []byte, cmdGetResponse []byte) (string,
 	}
 
 	// get respond command
-	cmd_respond := append(cmdGetResponse[:], 12)
+	cmd_respond := append(cmdGetResponse[:], 0x10) // Java use 0x80
 	rsp, err := card.Transmit(cmd_respond)
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(string(rsp[:len(rsp)-2])), nil
+	// fmt.Printf("%v, %s, %v\n", rsp, string(bytes.Trim(rsp[:len(rsp)-2], "\x00")), len(string(bytes.Trim(rsp[:len(rsp)-2], "\x00"))))
+	return strings.TrimSpace(string(bytes.Trim(rsp[:len(rsp)-2], "\x00"))), nil
 }

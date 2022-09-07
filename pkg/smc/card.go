@@ -8,26 +8,26 @@ import (
 	"github.com/somprasongd/go-thai-smartcard/pkg/util"
 )
 
-type admReader struct {
+type cardReader struct {
 	card    *scard.Card
 	respCmd []byte
 }
 
-func NewAdmReader(card *scard.Card, respCmd []byte) *admReader {
-	return &admReader{
+func NewCardReader(card *scard.Card, respCmd []byte) *cardReader {
+	return &cardReader{
 		card,
 		respCmd,
 	}
 }
 
-func (r *admReader) Select() error {
+func (r *cardReader) Select() error {
 	// Send command APDU
-	_, err := r.card.Transmit(apdu.AdmCMD.Select)
+	_, err := r.card.Transmit(apdu.CardCMD.Select)
 	return err
 }
 
-func (r *admReader) ReadLaserId() string {
-	s, err := util.ReadLaserData(r.card, apdu.AdmCMD.LaserId, r.respCmd)
+func (r *cardReader) ReadLaserId() string {
+	s, err := util.ReadLaserData(r.card, apdu.CardCMD.LaserId, r.respCmd)
 	if err != nil {
 		log.Println("Error Read LaserId:", err)
 		return ""
