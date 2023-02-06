@@ -34,6 +34,52 @@ Run from binary file that builded from the previous step.
 | **SMC_SHOW_NHSO**  | "flase" | Enable or disable read nsho data from smartcard.  |
 | **SMC_SHOW_LASER** | "flase" |  Enable or disable read laser id from smartcard.  |
 
+### Run in daemon process
+
+- Ubuntu
+
+1. Clone an Build this program
+
+```bash
+cd ~
+
+git clone https://github.com/somprasongd/go-thai-smartcard
+
+cd go-thai-smartcard
+
+go build -o ./bin/thai-smartcard-agent ./cmd/agent/main.go
+```
+
+2. Create System Service file
+
+```bash
+nano /lib/systemd/system/thai-smartcard-agent.service
+```
+
+```bash
+[Unit]
+Description=thai-smartcard-agent
+
+[Service]
+Environment="SMC_AGENT_PORT=9898"
+Environment="SMC_SHOW_IMAGE=true"
+Environment="SMC_SHOW_NHSO=flase"
+Environment="SMC_SHOW_LASER=flase"
+Type=simple
+Restart=always
+RestartSec=5s
+ExecStart=~/go-thai-smartcard/bin/thai-smartcard-agent
+
+[Install]
+WantedBy=multi-user.target
+```
+
+3. Start the service with system service command
+
+```bash
+service thai-smartcard-agent start
+```
+
 ### Run in daemon process with PM2
 
 - Windows
