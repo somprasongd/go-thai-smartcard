@@ -10,6 +10,11 @@
 
   <body>
     <h1>SMC</h1>
+    <div>
+      <p id="name"></p>
+      <p id="address"></p>
+      <img src="" alt="image" />
+    </div>
     <h2>Socket.io</h2>
     <p id="data"></p>
     <h2>Websocket</h2>
@@ -17,27 +22,51 @@
     <script>
       var socket = io.connect(window.location.origin);
       const dataEl = document.getElementById('data');
+      const nameEl = document.getElementById('name');
+      const addrEl = document.getElementById('address');
+      const imgEl = document.querySelector('img');
       socket.on('connect', function () {
         dataEl.innerHTML = '<b>Connected to socket.io server</b>';
+        nameEl.innerHTML = '';
+        addrEl.innerHTML = '';
+        imgEl.setAttribute('src', `data:image/png;base64, `);
       });
       socket.on('disconnect', function () {
         dataEl.innerHTML = '<b>Disconnected to socket.io server</b>';
+        nameEl.innerHTML = '';
+        addrEl.innerHTML = '';
+        imgEl.setAttribute('src', `data:image/png;base64, `);
       });
       socket.on('smc-data', function (data) {
         console.log(data);
-        dataEl.innerHTML = JSON.stringify(data);
+        dataEl.innerHTML = JSON.stringify(data, null, '\t');
+        nameEl.innerHTML = data.personal.name.full_name;
+        addrEl.innerHTML = data.personal.address.address;
+        imgEl.setAttribute(
+          'src',
+          `data:image/png;base64, ${data.personal.base64_img}`
+        );
       });
       socket.on('smc-error', function (data) {
         console.log(data);
-        dataEl.innerHTML = JSON.stringify(data);
+        dataEl.innerHTML = JSON.stringify(data, null, '\t');
+        nameEl.innerHTML = '';
+        addrEl.innerHTML = '';
+        imgEl.setAttribute('src', `data:image/png;base64, `);
       });
       socket.on('smc-removed', function (data) {
         console.log(data);
-        dataEl.innerHTML = JSON.stringify(data);
+        dataEl.innerHTML = JSON.stringify(data, null, '\t');
+        nameEl.innerHTML = '';
+        addrEl.innerHTML = '';
+        imgEl.setAttribute('src', `data:image/png;base64, `);
       });
       socket.on('smc-inserted', function (data) {
         console.log(data);
-        dataEl.innerHTML = JSON.stringify(data);
+        dataEl.innerHTML = JSON.stringify(data, null, '\t');
+        nameEl.innerHTML = '';
+        addrEl.innerHTML = '';
+        imgEl.setAttribute('src', `data:image/png;base64, `);
       });
 
       // Connection to Websocker Server...
