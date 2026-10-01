@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -54,12 +55,19 @@ func (c *connection) write(mt int, payload []byte) error {
 	return c.ws.WriteMessage(mt, payload)
 }
 
+// subscriber is touched from two sides at once: every connection's handler
+// goroutine registers and unregisters it, while the broadcast goroutine walks
+// it on each card event. An unguarded map there is a data race, and Go aborts
+// the process on a concurrent map iteration and write, so every access takes mu.
 type subscriber struct {
+	mu sync.Mutex
 	// put registered clients.
 	clients map[*connection]bool
 }
 
 func (s *subscriber) register(c *connection) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.clients == nil {
 		s.clients = make(map[*connection]bool)
 	}
@@ -67,9 +75,23 @@ func (s *subscriber) register(c *connection) {
 }
 
 func (s *subscriber) unregister(c *connection) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.clients != nil {
 		delete(s.clients, c)
 	}
+}
+
+// snapshot returns the clients registered now. Broadcast writes to them after
+// the lock is released, so a slow peer cannot hold up a page that is connecting.
+func (s *subscriber) snapshot() []*connection {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	conns := make([]*connection, 0, len(s.clients))
+	for c := range s.clients {
+		conns = append(conns, c)
+	}
+	return conns
 }
 
 type ws struct {
@@ -85,8 +107,6 @@ func NewWS(command chan model.Command) *ws {
 }
 
 func (s *ws) Handler(w http.ResponseWriter, r *http.Request) {
-	upgrader.CheckOrigin = func(r *http.Request) bool { return true }
-
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
@@ -125,7 +145,7 @@ func (s *ws) Handler(w http.ResponseWriter, r *http.Request) {
 
 func (s *ws) Broadcast(msg model.Message) {
 	m, _ := json.Marshal(msg)
-	for c := range s.subscriber.clients {
+	for _, c := range s.subscriber.snapshot() {
 		c.write(websocket.TextMessage, m)
 	}
 }

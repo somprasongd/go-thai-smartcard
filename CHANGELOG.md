@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A data race in the WebSocket transport. The set of connected clients was a
+  plain map that each connection's goroutine wrote while the broadcast goroutine
+  iterated it, so a page opening or closing as a card event went out could
+  abort the agent with "concurrent map iteration and map write". Access is now
+  guarded by a mutex, and the handler no longer reassigns the shared
+  `CheckOrigin` on every request.
+
 ## [2.0.0] - 2026-10-01
 
 The transport split below is a breaking change for anyone importing
