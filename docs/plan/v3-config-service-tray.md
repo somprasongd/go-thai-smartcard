@@ -39,6 +39,7 @@ management API, auto-update.
 | 12 | The agent is always a system service. Installers install and start it; the tray **never spawns** the agent. If it cannot reach the agent it says so and shows how to start it. `agent run` (foreground) is for development | A tray that can also spawn an agent creates a second run mode with its own config path, its own PC/SC permissions and a possible port clash, and doubles the test matrix. Ollama can spawn because it has no service mode on the desktop; this project must also serve kiosks and headless hosts |
 | 13 | No `migrate` subcommand. The upgrade path is a changelog table mapping each `SMC_*` variable to its config key, plus a startup log that prints the equivalent TOML for any stale `SMC_*` it finds | A service's environment lives in its unit file or plist, not in the shell an administrator would run `migrate` from, so the subcommand would not see the values in use |
 | 14 | A save from `/settings` or the tray refuses to overwrite a config file that changed on disk since it was loaded | Otherwise a hand edit made after the agent started is lost silently by the next save |
+| 15 | No "Start at login" toggle in the tray. The installer registers the tray at login and users turn it off in the OS's login items | The agent runs without the tray, so the toggle only affects the icon; it would cost three platform mechanisms and drift from the OS setting. See [Start at login](#start-at-login) |
 
 ## Findings in the current code
 
@@ -266,7 +267,8 @@ keeps polling. `agent run` in a terminal remains for development.
 ### Tray
 
 - Menu: reader and card state, Open test page, Open settings, Expose to network,
-  read image / laser ID / NHSO toggles, Start at login, Quit.
+  read image / laser ID / NHSO toggles, Quit. Quit closes the tray for the
+  current session only; the agent keeps running.
 - Library: [`fyne-io/systray`](https://github.com/fyne-io/systray) (requires
   cgo; on Linux it uses the StatusNotifier DBus interface).
 - Linux: GNOME needs the AppIndicator extension to show the icon. At start the
@@ -277,21 +279,33 @@ keeps polling. `agent run` in a terminal remains for development.
 
 #### Start at login
 
-"Start at login" belongs to the tray, a GUI program in the user's session, so it
-is unrelated to the service and `kardianos/service` has no part in it. The
-library has a `UserService` setting but nothing for run-at-login. The tray
-implements the toggle itself on each platform, none of which needs
-administrator rights:
+There is no "Start at login" toggle in the tray (decision 15). The installer
+registers the tray to start at login, and a user who does not want it turns it
+off in the operating system's own list of login items.
 
-| Platform | On | Off |
-| :------- | :- | :-- |
-| Windows | write the tray's path under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (a service cannot show a tray icon, so this is the only way to get one at login) | delete the value |
-| macOS | a LaunchAgent in `~/Library/LaunchAgents/` that runs the tray, or a login item registered from the `.app` (`SMAppService` on recent macOS; to be checked against the minimum macOS version supported) | unload and remove it |
-| Linux | the package installs `/etc/xdg/autostart/thai-smartcard-tray.desktop` as the default; a user turning it off writes `~/.config/autostart/thai-smartcard-tray.desktop` with `Hidden=true`, and turning it back on removes that override | |
+| Platform | What the installer registers | Where a user turns it off |
+| :------- | :--------------------------- | :------------------------ |
+| Windows | a value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` pointing at the tray (a service cannot show a tray icon, so this is the only way to get one at login) | Settings > Apps > Startup, or Task Manager > Startup |
+| macOS | a login item or LaunchAgent for the tray's `.app` (`SMAppService` on recent macOS; to be checked against the minimum macOS version supported) | System Settings > General > Login Items |
+| Linux | `/etc/xdg/autostart/thai-smartcard-tray.desktop`, installed by the package | the desktop's startup applications settings, which write a per-user override in `~/.config/autostart/` |
 
-A small library for XDG autostart, LaunchAgents and the Windows Run key may
-exist (`emersion/go-autostart` was seen in passing) but has not been checked;
-decide whether to depend on one when writing phase 4.
+This is unrelated to the service. The agent runs whether or not the tray does,
+so a tray that is not running costs the user only the icon and the shortcut to
+`/settings`, and `kardianos/service` has no part in it.
+
+Why not a toggle: it would need three platform-specific mechanisms and three
+test paths; the toggle would drift from reality whenever the user changes the
+operating system's own setting, unless the menu re-reads it from the OS each
+time it opens; and the operating systems already give users a place to do this.
+The part of Ollama's settings screen visible in the reference screenshot does
+not offer it either.
+
+If a toggle is wanted later: read the state from the OS every time the menu
+opens and keep none of its own, use only per-user mechanisms that need no
+administrator rights, and hide the toggle where the OS or a policy does not
+allow it. A small library for XDG autostart, LaunchAgents and the Windows Run
+key may exist (`emersion/go-autostart` was seen in passing) but has not been
+checked.
 
 ### TLS
 
@@ -324,7 +338,7 @@ required there). Not needed for `http://` pages, which is the normal kiosk case.
 | 1 | `config.toml` loader (no env), `listen`, `transports`, `allowed_origins`, `token`; `/api/settings`, `/settings`, `/api/info`; split `web/`; remove `set-options`, `set-reader`, `remote_control`, `util` env helpers; fix the ws subscriber race; README, CHANGELOG, Makefile | **v3.0.0** |
 | 2 | `service` subcommand, systemd unit template, `.deb`/`.rpm` for the agent | v3.1.0 |
 | 3 | TLS `files` mode | v3.2.0 |
-| 4 | Tray (macOS, Windows, Linux), tray packages, installers that install and start the agent service, start-at-login | v3.3.0 |
+| 4 | Tray (macOS, Windows, Linux), tray packages, installers that install and start the agent service and register the tray at login | v3.3.0 |
 | 5 | TLS `auto` mode | later |
 
 Phase 1 is one release on purpose. Shipping the config file without
