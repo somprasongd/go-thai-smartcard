@@ -31,3 +31,13 @@ build-win:
 
 build-wasm:
 	GOOS=js GOARCH=wasm go build -o bin/wasm/thai-smartcard-agent.wasm ./cmd/agent
+
+# The .deb/.rpm are built by the packaging workflow on a release tag, and
+# locally by these targets when nfpm is installed. One config serves both.
+package-deb:
+	go build -o ./bin/thai-smartcard-agent.linux-amd64 ./cmd/agent
+	nfpm package -p deb -f packaging/nfpm.yaml -t ./bin/thai-smartcard-agent_amd64.deb
+
+package-rpm:
+	go build -o ./bin/thai-smartcard-agent.linux-amd64 ./cmd/agent
+	nfpm package -p rpm -f packaging/nfpm.yaml -t ./bin/thai-smartcard-agent.x86_64.rpm

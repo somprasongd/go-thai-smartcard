@@ -36,11 +36,25 @@ type pcscTransport struct {
 
 var _ transport.Transport = (*pcscTransport)(nil)
 
+// explain annotates a PC/SC error that came back as
+// SCARD_W_SECURITY_VIOLATION. pcsc-lite enables polkit by default upstream
+// (since late 2023) and its default denies any process without an active
+// local session — exactly what a system service is. Root would pass for free,
+// but the service runs as a dedicated user (decision 17), so the refusal is
+// expected until the packaged polkit rule grants it, and the error says so
+// instead of failing generically.
+func explain(err error) error {
+	if !errors.Is(err, scard.ErrSecurityViolation) {
+		return err
+	}
+	return fmt.Errorf("%w (SCARD_W_SECURITY_VIOLATION): pcscd's polkit policy denies a system service by default. Install the rule packaged at /etc/polkit-1/rules.d/50-thai-smartcard.pcscd.rules, which grants the service user org.debian.pcsc-lite.access_pcsc and org.debian.pcsc-lite.access_card, then restart pcscd", err)
+}
+
 // New establishes a PC/SC context and returns a transport using it.
 func New() (transport.Transport, error) {
 	ctx, err := scard.EstablishContext()
 	if err != nil {
-		return nil, fmt.Errorf("establish pc/sc context: %w", err)
+		return nil, fmt.Errorf("establish pc/sc context: %w", explain(err))
 	}
 	return &pcscTransport{ctx: ctx}, nil
 }
@@ -49,7 +63,7 @@ func New() (transport.Transport, error) {
 func (t *pcscTransport) ListReaders() ([]string, error) {
 	readers, err := t.ctx.ListReaders()
 	if err != nil {
-		return nil, fmt.Errorf("list readers: %w", err)
+		return nil, fmt.Errorf("list readers: %w", explain(err))
 	}
 	return readers, nil
 }
@@ -58,7 +72,7 @@ func (t *pcscTransport) ListReaders() ([]string, error) {
 func (t *pcscTransport) Connect(reader string) (transport.Card, error) {
 	card, err := t.ctx.Connect(reader, scard.ShareExclusive, scard.ProtocolAny)
 	if err != nil {
-		return nil, fmt.Errorf("connect to %q: %w", reader, err)
+		return nil, fmt.Errorf("connect to %q: %w", reader, explain(err))
 	}
 	return &pcscCard{card: card}, nil
 }
@@ -114,7 +128,7 @@ func (t *pcscTransport) wait(ctx context.Context, want scard.StateFlag) (int, er
 			if isTimeout(err) {
 				return -1, transport.ErrCardTimeout
 			}
-			return -1, fmt.Errorf("get status change: %w", err)
+			return -1, fmt.Errorf("get status change: %w", explain(err))
 		}
 		for i := range t.states {
 			t.states[i].CurrentState = t.states[i].EventState

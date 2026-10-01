@@ -452,31 +452,64 @@ position, so an intentional APDU change means re-recording the trace.
 
 ## Run as a service
 
-The config file is the whole configuration, so a unit file has nothing to say
-beyond which binary and which config file to run:
+The agent is a system service on every platform (Windows Service, systemd,
+launchd); a tray app, where one is installed, is only a viewer and never starts
+the agent. The `.deb`/`.rpm` do all of this for you — they install the service,
+start it, and ship the polkit rule and the default config — and are built by
+the packaging workflow from a release tag. By hand:
+
+### Linux
+
+```sh
+sudo install -m 0755 ./bin/thai-smartcard-agent /usr/local/bin/thai-smartcard-agent
+sudo thai-smartcard-agent service install
+sudo thai-smartcard-agent service start
+thai-smartcard-agent service status
+```
+
+`service install` registers the service with the manager, pointed at the config
+file in the service location. It is driven by
+[kardianos/service](https://github.com/kardianos/service), which cannot express
+`After=pcscd.service` on Linux — the packaged unit file sets that itself, which
+is one reason to prefer the `.deb`:
 
 ```ini
 [Unit]
-Description=thai-smartcard-agent
+Description=Thai Smartcard Agent
 After=pcscd.service
+Wants=pcscd.service
 
 [Service]
 Type=simple
+User=thai-smartcard
+Group=thai-smartcard
+ExecStart=/usr/bin/thai-smartcard-agent --config /etc/thai-smartcard/config.toml
 Restart=always
 RestartSec=5s
-ExecStart=/usr/local/bin/thai-smartcard-agent --config /etc/thai-smartcard/config.toml
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-```bash
-systemctl enable --now thai-smartcard-agent
-```
+**pcsc-lite and polkit.** Upstream pcsc-lite has enabled polkit by default since
+late 2023, and its default denies any process without an active local session —
+exactly what a system service is. The packaged rule
+(`/etc/polkit-1/rules.d/50-thai-smartcard.pcscd.rules`) grants the dedicated
+`thai-smartcard` service user the two pcsc-lite actions
+(`org.debian.pcsc-lite.access_pcsc`, `org.debian.pcsc-lite.access_card`), and is
+inert where pcscd has no polkit. If the agent logs
+`SCARD_W_SECURITY_VIOLATION`, that rule is what is missing: install it, restart
+`pcscd`, and the reader shows up. Hand-installing without the package means
+writing that rule by hand, or running the service as root — which works but
+widens the agent for no gain.
 
-On Linux the service needs to reach pcscd; on distributions where pcsc-lite
-restricts access with polkit, a system service is denied by default — see the
-troubleshooting note in the changelog when the packaged service arrives.
+### Windows and macOS
+
+`service install`, `service start` and `service status` work the same way
+through the Windows Service Control Manager and launchd. The service runs with
+`--config` pointed at the config file in the service location
+(`%ProgramData%\ThaiSmartcard\config.toml` on Windows,
+`/Library/Application Support/ThaiSmartcard/config.toml` on macOS).
 
 ### PM2
 

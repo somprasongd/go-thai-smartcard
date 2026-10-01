@@ -2,9 +2,11 @@
 // connected clients.
 //
 // Configuration comes from one config.toml file (see pkg/config): --config
-// points at the file, --version prints the version. There are no other flags
-// and no environment variables; a stale SMC_* variable only earns a warning
-// naming its replacement.
+// points at the file, --version prints the version. There are no environment
+// variables; a stale SMC_* variable only earns a warning naming its
+// replacement. `agent service install|uninstall|start|stop|restart|status`
+// manages the system service; a bare invocation runs in the foreground when
+// typed at a terminal and under the service manager otherwise.
 package main
 
 import (
@@ -30,18 +32,45 @@ import (
 var version = "dev"
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "service" {
+		serviceCommand(os.Args[2:])
+		return
+	}
+
+	// `agent run` is the spelled-out form of a bare invocation, so
+	// `run --config x` parses the same as `--config x`.
+	args := os.Args[1:]
+	if len(args) > 0 && args[0] == "run" {
+		args = args[1:]
+	}
 	var (
 		configPath  = flag.String("config", "", "path to config.toml (default: the service config directory)")
 		showVersion = flag.Bool("version", false, "print the version and exit")
 	)
-	flag.Parse()
+	flag.CommandLine.Parse(args)
 
 	if *showVersion {
 		fmt.Println(version)
 		return
 	}
 
-	cfg := loadConfig(*configPath)
+	if runManaged(*configPath) {
+		// A service manager drove Start and Stop; the agent ran inside it.
+		return
+	}
+
+	// Foreground: a terminal, or a manager the service wrapper does not know.
+	// Shut down cleanly on Ctrl+C and SIGTERM, so the card and the PC/SC
+	// context are released rather than abandoned.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	runAgent(ctx, *configPath)
+}
+
+// runAgent is the whole agent: config, listener, read loop. It blocks until
+// ctx is done. The foreground run and the service wrapper both land here.
+func runAgent(ctx context.Context, configPath string) {
+	cfg := loadConfig(configPath)
 
 	for _, warning := range config.EnvWarnings(os.LookupEnv) {
 		log.Printf("WARNING: %s", warning)
@@ -94,7 +123,7 @@ func main() {
 		if !reflect.DeepEqual(next.Server, prev.Server) || !reflect.DeepEqual(next.TLS, prev.TLS) {
 			// A token change lands here too, because the socket guard of the
 			// running listener holds the old one.
-			if err := mgr.Replace(serverCfg(next, *configPath, broadcast, command, applySave)); err != nil {
+			if err := mgr.Replace(serverCfg(next, configPath, broadcast, command, applySave)); err != nil {
 				log.Printf("could not restart the listener: %v; the old listener keeps serving", err)
 			} else {
 				log.Printf("listener restarted on %s:%d", next.Server.Listen, next.Server.Port)
@@ -102,7 +131,7 @@ func main() {
 		}
 	}
 
-	mgr, err := server.Start(serverCfg(cfg, *configPath, broadcast, command, applySave))
+	mgr, err := server.Start(serverCfg(cfg, configPath, broadcast, command, applySave))
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -112,11 +141,6 @@ func main() {
 		broadcast: broadcast,
 		control:   control,
 	}
-
-	// Shut the read loop down cleanly on Ctrl+C, so the card and the PC/SC
-	// context are released rather than abandoned.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	go controller.run(ctx, command)
 

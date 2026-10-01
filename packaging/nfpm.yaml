@@ -1,0 +1,49 @@
+# One config for both the .deb and the .rpm (decision 20 builds them in CI
+# from this file with `nfpm package -p deb|-p rpm --version <tag>`).
+#
+# The package carries the systemd unit (with After=pcscd.service, which the
+# `service install` command cannot express on Linux), the polkit rule that
+# lets the dedicated service user reach pcscd (decision 17), and a default
+# config the agent rewrites on first save.
+name: thai-smartcard-agent
+arch: amd64
+platform: linux
+version: "0.0.0"
+section: utils
+priority: optional
+maintainer: Somprasong Damyos <somprasongd@gmail.com>
+description: |-
+  Reads a Thai national ID card and broadcasts the data (and face image) to
+  connected clients over WebSockets. Installs and starts a system service
+  running as the dedicated thai-smartcard user.
+homepage: https://github.com/somprasongd/go-thai-smartcard
+license: MIT
+
+contents:
+  - src: ./bin/thai-smartcard-agent.linux-amd64
+    dst: /usr/bin/thai-smartcard-agent
+  - src: packaging/systemd/thai-smartcard-agent.service
+    dst: /lib/systemd/system/thai-smartcard-agent.service
+  - src: packaging/polkit/50-thai-smartcard.pcscd.rules
+    dst: /etc/polkit-1/rules.d/50-thai-smartcard.pcscd.rules
+  # The config directory is owned by the service user: the agent is the only
+  # writer of the config file (decision 3), and a first run writes the
+  # defaults there when no config came with the package.
+  - type: dir
+    path: /etc/thai-smartcard
+    file_info:
+      owner: thai-smartcard
+      group: thai-smartcard
+      mode: 0700
+  - src: packaging/config.toml
+    dst: /etc/thai-smartcard/config.toml
+    type: config
+    file_info:
+      owner: thai-smartcard
+      group: thai-smartcard
+      mode: 0600
+
+scripts:
+  preinstall: packaging/scripts/preinstall.sh
+  postinstall: packaging/scripts/postinstall.sh
+  postremove: packaging/scripts/postremove.sh

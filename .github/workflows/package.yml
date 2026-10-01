@@ -1,0 +1,51 @@
+# Packaging CI (decision 20): every installer in the v3 plan is built by
+# GitHub Actions on GitHub-hosted runners — one workflow, one job per OS,
+# triggered by the release tags the manual release workflow pushes. CI adds
+# packages to the hand-cut GitHub release; it never cuts a release, and it
+# does not run tests: the gate for a PR stays local (AGENTS.md).
+
+name: package
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # Phase 2: the agent's .deb and .rpm, from one nfpm config. The package
+  # carries the systemd unit, the polkit rule and the default config.
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build the agent
+        run: go build -o ./bin/thai-smartcard-agent.linux-amd64 ./cmd/agent
+
+      - name: Install nfpm
+        run: |
+          curl -sSLo /tmp/nfpm.deb \
+            https://github.com/goreleaser/nfpm/releases/download/v2.41.1/nfpm_amd64.deb
+          sudo dpkg -i /tmp/nfpm.deb
+
+      - name: Package .deb and .rpm
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p ./dist
+          nfpm package -p deb -f packaging/nfpm.yaml \
+            -t "./dist/thai-smartcard-agent_${VERSION}_amd64.deb" --version "$VERSION"
+          nfpm package -p rpm -f packaging/nfpm.yaml \
+            -t "./dist/thai-smartcard-agent-${VERSION}.x86_64.rpm" --version "$VERSION"
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" ./dist/* --clobber

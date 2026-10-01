@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `thai-smartcard-agent service install|uninstall|start|stop|restart|status`
+  ([kardianos/service](https://github.com/kardianos/service)), which registers
+  the agent as a system service on Windows, Linux and macOS. A bare invocation
+  runs in the foreground at a terminal and under the service manager otherwise;
+  `run` is the spelled-out foreground form. The installed service points at the
+  config file in the service location.
+- `.deb` and `.rpm` for the agent, built from one nfpm config by the packaging
+  workflow when a release tag is pushed (one job, `ubuntu-latest`; artifacts
+  attach to the hand-cut release). The package installs and starts the service,
+  and carries the systemd unit — which sets `After=pcscd.service`, something
+  `service install` cannot express on Linux — the default config, and the
+  polkit rule below.
+- The service runs as the dedicated `thai-smartcard` system user, not root,
+  with a polkit rule (`/etc/polkit-1/rules.d/50-thai-smartcard.pcscd.rules`)
+  granting it pcsc-lite's `org.debian.pcsc-lite.access_pcsc` and
+  `org.debian.pcsc-lite.access_card` actions. Upstream pcsc-lite enables polkit
+  by default and denies any process without an active local session, which is
+  exactly what a system service is; the rule is inert where pcscd has no
+  polkit, so one package works everywhere.
+
+### Changed
+
+- When pcscd refuses the connection the agent names
+  `SCARD_W_SECURITY_VIOLATION` and points at the polkit rule instead of
+  failing generically.
+
 ## [3.0.0] - 2026-10-02
 
 This release is breaking. In one sentence each: **environment variables are not

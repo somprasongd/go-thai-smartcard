@@ -12,7 +12,9 @@ image) to clients over socket.io and WebSockets.
 - Lint:         `go vet ./...` and `gofmt -l .` (no linter config in the repo)
 - Run agent:    `go run ./cmd/agent` — add `--config <path>` to choose a config
   file; without it the service config directory is used. `make dev` runs with a
-  git-ignored `config.dev.toml`, written with the defaults on first run
+  git-ignored `config.dev.toml`, written with the defaults on first run.
+  `go run ./cmd/agent service install|uninstall|start|stop|restart|status`
+  manages the system service (`service.go`, hidden behind `!js`)
 - Library demo: `go run ./cmd/example`
 
 Go 1.18+ per `go.mod`. `make dev`, `make example`, the `build-*` targets and
@@ -32,6 +34,7 @@ commands; `build-wasm` targets `cmd/agent`.
 - `pkg/model` — response types and raw-field parsers
 - `pkg/server` — socket.io, WebSocket and the bundled pages (`pkg/server/web`, embedded)
 - `pkg/util` — `GetResponseCommand` and the small byte helpers (hex decode, base64)
+- `packaging/` — the nfpm config, systemd unit, polkit rule and install scripts the packages ship
 - `docs/plan/` — written plans for larger changes, kept as the record of what was decided
 - `testdata/` — trace files, **gitignored**
 
@@ -98,6 +101,10 @@ file, or the whole module stops building there.
   `make check`, which wraps it including the wasm build:
   `go build ./... && go test ./... && go vet ./... && test -z "$(gofmt -l .)"`,
   plus `go test -race ./pkg/server/` when you touch the server
+- There is no test CI, and the gate for a PR stays local (above). The one
+  workflow (`.github/workflows/package.yml`) is packaging only: triggered by a
+  pushed release tag, one job per OS on hosted runners, attaching the packages
+  to the hand-cut GitHub release. It never cuts a release and never runs tests
 - Commit messages in this repo are short, lowercase and imperative, without
   conventional-commit prefixes — e.g. `add get laser id`, `check card.Status
   before card.Transmit`. Match that rather than introducing a new format

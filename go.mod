@@ -14,4 +14,5 @@ require (
 require (
 	github.com/gofrs/uuid v4.0.0+incompatible // indirect
 	github.com/gomodule/redigo v1.8.4 // indirect
+	github.com/kardianos/service v1.2.2 // indirect
 )
