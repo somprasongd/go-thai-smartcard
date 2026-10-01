@@ -56,11 +56,13 @@ func main() {
 	control := make(chan smc.Control, 8)
 
 	serverCfg := server.ServerConfig{
-		Listen:     cfg.Server.Listen,
-		Port:       cfg.Server.Port,
-		Transports: cfg.Server.Transports,
-		Broadcast:  broadcast,
-		Command:    command,
+		Listen:         cfg.Server.Listen,
+		Port:           cfg.Server.Port,
+		Transports:     cfg.Server.Transports,
+		AllowedOrigins: cfg.Server.AllowedOrigins,
+		Token:          cfg.Server.Token,
+		Broadcast:      broadcast,
+		Command:        command,
 	}
 	go server.Serve(serverCfg)
 

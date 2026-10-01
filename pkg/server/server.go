@@ -4,7 +4,9 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -25,7 +27,14 @@ type ServerConfig struct {
 	// disabled transport is never constructed: no handler, no engine.io
 	// server, no goroutines.
 	Transports []string
-	Broadcast  chan model.Message
+	// AllowedOrigins are the origins allowed to open a card socket, from
+	// config.toml [server] allowed_origins. "*" allows any origin. A request
+	// with no Origin header is a non-browser client and skips the check.
+	AllowedOrigins []string
+	// Token is the socket token, checked in one middleware in front of both
+	// transports. It is required when Listen is not loopback.
+	Token     string
+	Broadcast chan model.Message
 	// Command carries control commands from the clients to the agent. It may
 	// be nil, which leaves the control channel off: inbound frames are then
 	// dropped instead of reaching a consumer that is not there.
@@ -41,47 +50,64 @@ func Serve(cfg ServerConfig) {
 		// that built a ServerConfig by hand.
 		log.Fatal("server: no transports configured, refusing to start")
 	}
+	mux := newMux(cfg)
+	addr := net.JoinHostPort(cfg.Listen, strconv.Itoa(cfg.Port))
+	log.Println("Serving at " + addr + " (" + strings.Join(cfg.Transports, ", ") + ")")
+	log.Fatal(http.ListenAndServe(addr, mux))
+}
+
+// newMux builds the handler: the enabled transports behind one socket guard,
+// the bundled page, and the pump that fans every broadcast out to them. The
+// transports are never torn down: a server runs until the process exits, and
+// go-socket.io's Close is not safe to call while Serve runs.
+func newMux(cfg ServerConfig) *http.ServeMux {
+	guard := newSocketGuard(cfg.AllowedOrigins, cfg.Token, cfg.Listen)
 
 	var socketServer *socketIO
 	if hasTransport(cfg.Transports, config.TransportSocketIO) {
 		socketServer = NewSocketIO(cfg.Command)
 		go func() {
-			if err := socketServer.Serve(); err != nil {
+			// io.EOF is what Serve returns when Close stops it, which only
+			// tests do; a server that is being shut down is not an error.
+			if err := socketServer.Serve(); err != nil && !errors.Is(err, io.EOF) {
 				log.Fatalf("socketio listen error: %s\n", err)
 			}
 		}()
-		defer socketServer.Close()
-		http.Handle("/socket.io/", socketServer)
 	}
 
 	var webSocket *ws
 	if hasTransport(cfg.Transports, config.TransportWS) {
 		webSocket = NewWS(cfg.Command)
-		http.HandleFunc("/ws", webSocket.Handler)
 	}
 
-	go func() {
-		for {
-			msg, ok := <-cfg.Broadcast
-			if ok {
-				if socketServer != nil {
-					socketServer.Broadcast(msg)
-				}
-				if webSocket != nil {
-					webSocket.Broadcast(msg)
-				}
-			}
-		}
-	}()
-
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	if socketServer != nil {
+		mux.Handle("/socket.io/", guard.wrap(socketServer))
+	}
+	if webSocket != nil {
+		mux.Handle("/ws", guard.wrap(http.HandlerFunc(webSocket.Handler)))
+	}
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 		w.Write(indexPage)
 	})
 
-	addr := net.JoinHostPort(cfg.Listen, strconv.Itoa(cfg.Port))
-	log.Println("Serving at " + addr + " (" + strings.Join(cfg.Transports, ", ") + ")")
-	log.Fatal(http.ListenAndServe(addr, nil))
+	if cfg.Broadcast != nil {
+		go func() {
+			for {
+				msg, ok := <-cfg.Broadcast
+				if ok {
+					if socketServer != nil {
+						socketServer.Broadcast(msg)
+					}
+					if webSocket != nil {
+						webSocket.Broadcast(msg)
+					}
+				}
+			}
+		}()
+	}
+	return mux
 }
 
 // hasTransport reports whether the list names the transport.

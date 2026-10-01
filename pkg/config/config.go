@@ -255,23 +255,28 @@ func IsLoopbackListen(listen string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// OriginAllowed reports whether origin may open a card socket: it must be
-// listed in allowed_origins, or the list must contain "*". Comparison is
-// case-insensitive, because a browser sends the host lowercased and a
-// hand-written uppercase origin should not silently fail. An empty origin is
-// the caller's business: only a request that carries no Origin header at all
-// (a non-browser client) may skip this check.
-func (c Config) OriginAllowed(origin string) bool {
+// OriginAllowed reports whether origin is listed in origins, or origins
+// contains "*". Comparison is case-insensitive, because a browser sends the
+// host lowercased and a hand-written uppercase origin should not silently
+// fail. An empty origin is the caller's business: only a request that carries
+// no Origin header at all (a non-browser client) may skip this check.
+func OriginAllowed(origins []string, origin string) bool {
 	origin = strings.TrimSpace(origin)
 	if origin == "" {
 		return true
 	}
-	for _, o := range c.Server.AllowedOrigins {
+	for _, o := range origins {
 		if strings.EqualFold(o, "*") || strings.EqualFold(o, origin) {
 			return true
 		}
 	}
 	return false
+}
+
+// OriginAllowed reports whether origin may open a card socket under this
+// config: it must be listed in allowed_origins, or the list must contain "*".
+func (c Config) OriginAllowed(origin string) bool {
+	return OriginAllowed(c.Server.AllowedOrigins, origin)
 }
 
 // Fingerprint returns the hash of the file's bytes, or "" when the file does
