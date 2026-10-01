@@ -27,6 +27,7 @@ the same commands; `build-wasm` targets `cmd/agent`.
 - `pkg/model` — response types and raw-field parsers
 - `pkg/server` — socket.io, WebSocket and the bundled example page
 - `pkg/util` — env helpers, `GetResponseCommand`
+- `docs/plan/` — written plans for larger changes, kept as the record of what was decided
 - `testdata/` — trace files, **gitignored**
 
 ## Architecture constraints
@@ -59,6 +60,9 @@ file, or the whole module stops building there.
 ## Testing instructions
 
 - Unit tests: `go test ./...` (standard library `testing`, no assertion library)
+- Run concurrency tests under the race detector: `go test -race ./pkg/server/`.
+  `TestWebSocketBroadcastWhileClientsChurn` is written for it, and a plain
+  `go test` is not a reliable check on its own
 - **No reader is required.** `pkg/transport.FakeCard` replays a recorded trace,
   and `NewFakeTransport` injects it via `smc.NewSmartCardWith`
 - `TestReadFromRecordedTrace` skips itself until `testdata/trace-real.json`
@@ -73,8 +77,15 @@ file, or the whole module stops building there.
 
 ## PR & commit conventions
 
-- Branch from `main`; never push to it directly. There is no CI yet, so
-  `go build ./... && go test ./... && go vet ./...` is the gate to run locally
+- Branch from `main`; never push feature or fix work to it directly. The one
+  exception is a release: the versioned-changelog commit and its tag are pushed
+  to `main`, as the release workflow below says. A change too large for one PR
+  can use an integration branch (the v3 work uses `v3`, see `docs/plan/`): each
+  PR targets it, and it merges into `main` once, so `main` never holds half of a
+  breaking change
+- There is no CI yet, so this is the gate to run locally before a PR:
+  `go build ./... && go test ./... && go vet ./... && test -z "$(gofmt -l .)"`,
+  plus `go test -race ./pkg/server/` when you touch the server
 - Commit messages in this repo are short, lowercase and imperative, without
   conventional-commit prefixes — e.g. `add get laser id`, `check card.Status
   before card.Transmit`. Match that rather than introducing a new format
@@ -92,9 +103,10 @@ There is no CI, so every step is run by hand and each one has to be checked.
 
 Semantic Versioning, on the API surface rather than the commit count:
 
-- **MAJOR** — an exported symbol is removed or changed incompatibly. The
-  current `[Unreleased]` work is one of these: it deletes the `pkg/util` PC/SC
-  helpers and `cmd/wasm`, so it ships as **v2.0.0**, not a patch.
+- **MAJOR** — an exported symbol is removed or changed incompatibly, or
+  something a deployment relies on changes: a default, a configuration source, a
+  protocol action. v2.0.0 was one of these (it deleted the `pkg/util` PC/SC
+  helpers and `cmd/wasm`); the planned v3 is another (`docs/plan/`)
 - **MINOR** — new capability, e.g. a new `SMC_*` option or a new broadcast event
 - **PATCH** — bug fixes only
 
