@@ -647,3 +647,14 @@ Pending, in order:
 3. Apple Developer secrets (`MACOS_SIGNING_IDENTITY`, `APPLE_API_KEY_*`) for
    the tray's signing and notarization (decision 20).
 4. Phase 5 stays "later".
+
+Additional local verification since the implementation record (2026-10-02):
+`actionlint` passes on the packaging workflow; the tray builds with the
+workflow's exact Windows command (`-trimpath -ldflags "-H=windowsgui"`); a
+live TLS end-to-end run confirmed the forced loopback ("TLS is on, forcing
+the plain HTTP listener to loopback"), `/api/info` reporting `tls: true`,
+`wss://` answering `401` without the token and `101` with it, and the strict
+loader refusing an exposure without a token at startup. `packaging/VERIFY.md`
+is the Debian/Ubuntu/Fedora checklist for the remaining on-host verification,
+and `packaging/macos/SIGNING.md` documents the four Apple secrets. The full
+uncached gate (`go test -count=1 ./...`, vet, gofmt, wasm) is green.
