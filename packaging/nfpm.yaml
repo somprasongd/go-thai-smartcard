@@ -8,7 +8,7 @@
 name: thai-smartcard-agent
 arch: amd64
 platform: linux
-version: "0.0.0"
+version: ${NFPM_VERSION}
 section: utils
 priority: optional
 maintainer: Somprasong Damyos <somprasongd@gmail.com>
@@ -30,7 +30,7 @@ contents:
   # writer of the config file (decision 3), and a first run writes the
   # defaults there when no config came with the package.
   - type: dir
-    path: /etc/thai-smartcard
+    dst: /etc/thai-smartcard
     file_info:
       owner: thai-smartcard
       group: thai-smartcard

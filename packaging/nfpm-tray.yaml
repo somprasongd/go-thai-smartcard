@@ -3,7 +3,7 @@
 name: thai-smartcard-tray
 arch: amd64
 platform: linux
-version: "0.0.0"
+version: ${NFPM_VERSION}
 section: utils
 priority: optional
 maintainer: Somprasong Damyos <somprasongd@gmail.com>

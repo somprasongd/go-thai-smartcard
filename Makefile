@@ -34,6 +34,8 @@ build-wasm:
 
 # The .deb/.rpm are built by the packaging workflow on a release tag, and
 # locally by these targets when nfpm is installed. One config serves both.
+# NFPM_VERSION sets the package version (the config expands it); a release
+# build passes the tag, e.g. `make package-deb NFPM_VERSION=3.1.0`.
 package-deb:
 	go build -o ./bin/thai-smartcard-agent.linux-amd64 ./cmd/agent
 	nfpm package -p deb -f packaging/nfpm.yaml -t ./bin/thai-smartcard-agent_amd64.deb

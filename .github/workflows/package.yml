@@ -36,13 +36,17 @@ jobs:
           sudo dpkg -i /tmp/nfpm.deb
 
       - name: Package .deb and .rpm
+        # nfpm takes the version from the config file, which expands
+        # $NFPM_VERSION; there is no --version flag.
+        env:
+          NFPM_VERSION: ${{ github.ref_name }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p ./dist
-          nfpm package -p deb -f packaging/nfpm.yaml \
-            -t "./dist/thai-smartcard-agent_${VERSION}_amd64.deb" --version "$VERSION"
-          nfpm package -p rpm -f packaging/nfpm.yaml \
-            -t "./dist/thai-smartcard-agent-${VERSION}.x86_64.rpm" --version "$VERSION"
+          NFPM_VERSION="$VERSION" nfpm package -p deb -f packaging/nfpm.yaml \
+            -t "./dist/thai-smartcard-agent_${VERSION}_amd64.deb"
+          NFPM_VERSION="$VERSION" nfpm package -p rpm -f packaging/nfpm.yaml \
+            -t "./dist/thai-smartcard-agent-${VERSION}.x86_64.rpm"
 
       - name: Attach to the release
         env:
