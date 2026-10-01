@@ -130,7 +130,10 @@ func (t *tray) watchCardState() {
 // whether it ever got connected, so a down agent earns the "not running" line.
 func (t *tray) connectCardState() bool {
 	wsURL := strings.Replace(*agentURL, "http", "ws", 1) + "/ws"
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	// A dial without a timeout would park this goroutine forever on an agent
+	// that accepts but never answers, and the status line would never recover.
+	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
+	conn, _, err := dialer.Dial(wsURL, nil)
 	if err != nil {
 		return false
 	}
