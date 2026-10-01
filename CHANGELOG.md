@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-10-01
+
 ### Fixed
 
 - A data race in the WebSocket transport. The set of connected clients was a
@@ -210,7 +212,8 @@ First release.
   and a fix for waiting on readers in macOS.
 - PM2 and systemd run instructions in the README.
 
-[unreleased]: https://github.com/somprasongd/go-thai-smartcard/compare/v2.0.0...HEAD
+[unreleased]: https://github.com/somprasongd/go-thai-smartcard/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/somprasongd/go-thai-smartcard/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v1.3.1...v2.0.0
 [1.3.1]: https://github.com/somprasongd/go-thai-smartcard/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v1.2.1...v1.3.0
