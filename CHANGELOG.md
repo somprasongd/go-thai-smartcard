@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TLS `files` mode (`[tls]` in `config.toml`): the operator supplies
+  `cert_file` and `key_file`, the agent serves HTTPS on `tls.port` and reloads
+  the files when their mtime changes, so a renewed certificate needs no
+  restart. With TLS on, the plain HTTP listener is forced to loopback. A bad
+  certificate stops the listener restart rather than leaving the agent
+  claiming `https` it cannot serve; `/api/info` reports whether TLS is on.
 - `thai-smartcard-agent service install|uninstall|start|stop|restart|status`
   ([kardianos/service](https://github.com/kardianos/service)), which registers
   the agent as a system service on Windows, Linux and macOS. A bare invocation

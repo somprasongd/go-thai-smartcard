@@ -41,8 +41,10 @@ type ServerConfig struct {
 	Command chan model.Command
 	// Version is the agent's own version, reported by /api/info.
 	Version string
-	// TLS reports whether the agent serves HTTPS, for /api/info.
-	TLS bool
+	// TLS is the [tls] table. When Enabled, the agent serves HTTPS on
+	// TLS.Port from TLS.CertFile/TLS.KeyFile and forces the plain listener
+	// to loopback.
+	TLS config.TLS
 	// ConfigPath is the config file the settings API reads and writes. Empty
 	// leaves /api/* and /settings unregistered.
 	ConfigPath string
@@ -86,7 +88,7 @@ func newMux(cfg ServerConfig, done <-chan struct{}) *http.ServeMux {
 		path:       cfg.ConfigPath,
 		transports: cfg.Transports,
 		version:    cfg.Version,
-		tlsEnabled: cfg.TLS,
+		tlsEnabled: cfg.TLS.Enabled,
 		onChange:   cfg.OnChange,
 	}
 

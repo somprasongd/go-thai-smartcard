@@ -198,7 +198,7 @@ func serverCfg(cfg config.Config, path string, broadcast chan model.Message, com
 		Broadcast:      broadcast,
 		Command:        command,
 		Version:        version,
-		TLS:            cfg.TLS.Enabled,
+		TLS:            cfg.TLS,
 		ConfigPath:     path,
 		OnChange:       onChange,
 	}

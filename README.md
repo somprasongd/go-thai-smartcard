@@ -311,6 +311,25 @@ The loading rules worth knowing:
 - A stale `SMC_*` environment variable is not read; the agent logs a warning
   with the TOML that replaces it, for pasting into the file.
 
+### TLS
+
+TLS is needed when an `https://` page talks to the agent — on a LAN IP in any
+browser, and even on loopback in Safari (see
+[Browsers](#browsers)). It is not needed for `http://` pages, which is the
+normal kiosk case.
+
+In `files` mode the operator supplies `cert_file` and `key_file`; the agent
+serves HTTPS on `tls.port` and reloads the files when their mtime changes, so a
+renewed certificate needs no restart. When TLS is on the plain HTTP listener is
+forced to loopback — anything that needs the LAN uses `https`.
+
+A real certificate for a LAN **IP** cannot come from a public CA. The usable
+routes are a hospital-owned domain with an internal DNS record and a DNS-01
+certificate, or the organisation's own PKI. A lone self-signed certificate is
+not a solution: a script's `wss://` fails silently and a locked-down kiosk
+cannot accept the per-browser warning. The certificate must be trusted by the
+machine running the **browser**, not by the agent's machine.
+
 ## Use as a library
 
 See [cmd/example/main.go](cmd/example/main.go) for a minimal read. The shape of
