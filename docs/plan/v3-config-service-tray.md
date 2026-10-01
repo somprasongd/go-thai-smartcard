@@ -1,7 +1,8 @@
 # Plan: config file, service, settings UI and tray (v3)
 
-Status: proposal, nothing here is implemented yet. Written 2026-10-01 against
-`main` at v2.0.0.
+Status: proposal, work not started on `v3` yet. Written 2026-10-01 against
+`main` at v2.0.0; since then the ws race fix shipped from `main` as v2.0.1
+(decision 8), and `v3` branched from `main` after that release.
 
 ## Goal
 
@@ -37,9 +38,10 @@ management API, auto-update.
 | 10 | The socket token is passed as `?token=` (browsers) or `Authorization: Bearer` (other clients), checked once before the upgrade (see [Socket token](#socket-token)) | One check for both transports, no unauthenticated state to manage |
 | 11 | `remote_control` is removed from `smc-options` and `smc-status` | It only reported whether `set-options`/`set-reader` were accepted; both are gone, so it would be a constant |
 | 12 | The agent is always a system service. Installers install and start it; the tray **never spawns** the agent. If it cannot reach the agent it says so and shows how to start it. `agent run` (foreground) is for development | A tray that can also spawn an agent creates a second run mode with its own config path, its own PC/SC permissions and a possible port clash, and doubles the test matrix. Ollama can spawn because it has no service mode on the desktop; this project must also serve kiosks and headless hosts |
-| 13 | No `migrate` subcommand. The upgrade path is a changelog table mapping each `SMC_*` variable to its config key, plus a startup log that prints the equivalent TOML for any stale `SMC_*` it finds | A service's environment lives in its unit file or plist, not in the shell an administrator would run `migrate` from, so the subcommand would not see the values in use |
-| 14 | A save from `/settings` or the tray refuses to overwrite a config file that changed on disk since it was loaded | Otherwise a hand edit made after the agent started is lost silently by the next save |
+| 13 | No `migrate` subcommand. The upgrade path is a changelog table mapping each `SMC_*` variable to its config key — including a row for `SMC_ALLOW_REMOTE_OPTIONS`, the one variable with no replacement, saying so rather than leaving a silent gap — plus a startup log that prints the equivalent TOML for any stale `SMC_*` it finds (see [Migration table](#migration-table)) | A service's environment lives in its unit file or plist, not in the shell an administrator would run `migrate` from, so the subcommand would not see the values in use. An administrator grepping a unit file against the table must find every variable accounted for |
+| 14 | A save from `/settings` or the tray refuses to overwrite a config file that changed on disk since it was **served**. The check is the file's fingerprint — the hash of its bytes — carried through the API: `GET /api/settings` returns it, `PUT /api/settings` echoes it back, and a mismatch is a `409` | Otherwise a hand edit made after the agent started is lost silently by the next save. The fingerprint rather than the mtime: mtime granularity depends on the filesystem, and nanoseconds since the epoch do not survive JavaScript's float64 numbers. See [Loading rules](#loading-rules) |
 | 15 | No "Start at login" toggle in the tray. The installer registers the tray at login and users turn it off in the OS's login items | The agent runs without the tray, so the toggle only affects the icon; it would cost three platform mechanisms and drift from the OS setting. See [Start at login](#start-at-login) |
+| 16 | The agent generates the socket token, not the client. Any `PUT` that turns exposure on while `token` is empty makes a random 128-bit `crypto/rand` token, writes it in the same save, and returns it in that response only; `GET /api/settings` never returns the value, only `token_set`. The tray's "Expose to network" is a toggle only while a token exists and otherwise opens `/settings`; turning exposure off is always a direct toggle | One generation path for the page, the tray and any future caller, and no way to expose the agent to the LAN without the token ceremony having happened somewhere the token can be shown and copied. See [Socket token](#socket-token) |
 
 ## Findings in the current code
 
@@ -49,11 +51,16 @@ management API, auto-update.
   and receive the card data. This is true even with `listen = 127.0.0.1`, so
   `allowed_origins` matters on loopback too (see
   [Open decisions](#open-decisions)).
-- `pkg/server/websocket.go`: `subscriber.clients` is a plain map written by each
-  connection's handler goroutine and iterated by the broadcast goroutine, with
-  no lock. That is a data race and can crash the process with "concurrent map
-  iteration and map write". `upgrader.CheckOrigin` is also reassigned on every
-  request. Fix this in phase 1, since transports become configurable.
+- `pkg/server/websocket.go`: `subscriber.clients` was a plain map written by
+  each connection's handler goroutine while the broadcast goroutine iterated
+  it, with no lock — a data race that could abort the process with "concurrent
+  map iteration and map write" — and `upgrader.CheckOrigin` was reassigned on
+  every request. **Fixed in v2.0.1**: a mutex now guards every access, the
+  broadcast iterates a snapshot taken under the lock so a slow peer cannot
+  stall a connecting one, `CheckOrigin` is set once at the package level, and
+  `TestWebSocketBroadcastWhileClientsChurn` exercises it under
+  `go test -race`. `v3` branched from `main` after that release, so the fix is
+  already in the branch.
 - The `Makefile` exports `SMC_PORT`, but `cmd/agent/main.go` reads
   `SMC_AGENT_PORT`, so `make dev` has never changed the port. The migration
   table in the changelog must use the names the agent actually reads
@@ -121,18 +128,40 @@ hostnames = []
   is therefore **lost on the next save from the UI**. Three places say so: a
   banner at the top of the written file, a line above the save button on
   `/settings`, and the README.
-- A save also compares the file's mtime with the one recorded when it was
-  loaded. If it differs, the save is refused with "the file changed on disk,
-  reload before saving", so a hand edit made after the agent started is not
-  overwritten by the agent's in-memory copy (decision 14).
-- If a `SMC_*` variable is present at start, log a warning that it is no longer
-  read, and print the TOML that matches it, e.g. `SMC_SHOW_NHSO=true` becomes
-  `read_nhso = true` under `[card]`, for the administrator to paste. Do not
-  honour the variable. The changelog carries the full mapping as a table
-  (decision 13).
+- A save also refuses to overwrite a file that changed since it was served
+  (decision 14). `GET /api/settings` returns the file's fingerprint next to
+  the config, and `PUT /api/settings` echoes it back. The agent re-hashes the
+  file at request time, never from a value cached at startup, so a hand edit
+  made after the agent started is caught too. A mismatch is a `409` with "the
+  file changed on disk, reload before saving". Two pages editing at once get
+  the same refusal — the second save is told to reload rather than silently
+  undo the first — and the tray answers a `409` by refetching and asking the
+  user to repeat the action.
+- If a `SMC_*` variable is present at start, log a warning that it is no
+  longer read, and print the TOML that matches it, e.g. `SMC_SHOW_NHSO=true` becomes
+  `read_nhso = true` under `[card]`, for the administrator to paste. A variable
+  with no replacement prints a comment naming it as removed, never a fabricated
+  key: `# SMC_ALLOW_REMOTE_OPTIONS is no longer read and has no replacement;
+  settings change only through /settings`. Do not honour the variable. The
+  changelog carries the full mapping, including the no-replacement row, as a
+  table (decision 13).
 - Hand edits need a restart (`service restart`). No file watcher at first.
 - Changed from a UI: `card.*` apply on the next card insert; `server.*` and
   `tls.*` restart the listener.
+
+### Migration table
+
+The changelog's upgrade note carries this table as-is. It uses the variable
+names the agent actually reads (see
+[Findings](#findings-in-the-current-code)); `SMC_PORT` never existed.
+
+| v2 variable | v3 config key | Note |
+| :---------- | :------------ | :--- |
+| `SMC_AGENT_PORT` | `[server] port` | |
+| `SMC_SHOW_IMAGE` | `[card] read_face_image` | |
+| `SMC_SHOW_LASER` | `[card] read_laser_id` | |
+| `SMC_SHOW_NHSO` | `[card] read_nhso` | |
+| `SMC_ALLOW_REMOTE_OPTIONS` | — no replacement | What it gated no longer exists: the card socket is read-only, and settings change only through `/settings`. Delete the line from the unit file; there is nothing to set instead. Both `true` and `false` users lose nothing — a `false` install's pinned values now live in `config.toml`, and a `true` install's remote reconfiguration is gone by design |
 
 ## Transports
 
@@ -161,7 +190,17 @@ hostnames = []
 - `GET /settings` is a self-contained page: plain HTML and JS, no CDN, because
   hospital networks often cannot reach the internet. It reads and writes
   `/api/settings`.
-- `GET/PUT /api/settings` reads and writes the config file and applies changes.
+- `GET/PUT /api/settings` reads and writes the config file and applies changes:
+
+  ```
+  GET /api/settings → { "config": { … }, "version": "<hash of the file bytes>", "token_set": true }
+  PUT /api/settings ← { "config": { … }, "version": "<as served by the GET>" }
+                    → 200, or 409 "the file changed on disk, reload before saving"
+  ```
+
+  `version` is the optimistic-concurrency check of decision 14, re-verified
+  against the file at request time. `token` never appears in a response;
+  `token_set` reports whether one exists (decision 16).
 - The tray calls the same API. It never touches the file.
 
 ### Rules for `/settings` and `/api/*`
@@ -206,9 +245,15 @@ Required when `listen` is not loopback, optional otherwise.
   upgrade or handshake. A bad token gets `401` and never sees an event, so
   there is no unauthenticated connection state and no per-client bookkeeping.
 - Constant-time comparison. The agent never logs request URLs or queries.
-- The settings page generates a random 128-bit token the first time "expose to
-  network" is turned on and shows it once. The config file holds it, so the file
-  is mode `0600`.
+- The agent generates the token, not the client (decision 16). The first `PUT`
+  that turns exposure on while `token` is empty makes a random 128-bit
+  `crypto/rand` token, writes it in the same save, and returns it **in that
+  response only**; `GET /api/settings` reports `token_set` and never the value.
+  The settings page shows it once with a copy button and offers "Regenerate
+  token" through the same path, for a token shown and lost. The config file
+  holds it, so the file is mode `0600`. The strict loader still refuses a
+  hand-written file that exposes without a token; the UI path cannot produce
+  that state, because generation and write are one save.
 - Limits to state in the README: without TLS the token and the card data cross
   the LAN in clear text however the token is sent, and a token embedded in a
   web app's JavaScript keeps other hosts and other sites out but not the person
@@ -269,6 +314,10 @@ keeps polling. `agent run` in a terminal remains for development.
 - Menu: reader and card state, Open test page, Open settings, Expose to network,
   read image / laser ID / NHSO toggles, Quit. Quit closes the tray for the
   current session only; the agent keeps running.
+- "Expose to network" is a checkable toggle only while a token exists
+  (`token_set`); before that, choosing it opens `/settings`, where the token is
+  generated and shown once (decision 16). Turning exposure **off** is always a
+  direct toggle, in every state, because it is the safe direction.
 - Library: [`fyne-io/systray`](https://github.com/fyne-io/systray) (requires
   cgo; on Linux it uses the StatusNotifier DBus interface).
 - Linux: GNOME needs the AppIndicator extension to show the icon. At start the
@@ -285,9 +334,20 @@ off in the operating system's own list of login items.
 
 | Platform | What the installer registers | Where a user turns it off |
 | :------- | :--------------------------- | :------------------------ |
-| Windows | a value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` pointing at the tray (a service cannot show a tray icon, so this is the only way to get one at login) | Settings > Apps > Startup, or Task Manager > Startup |
+| Windows | a value under `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run` pointing at the tray — machine-wide, deliberately not `HKCU` (see below). A service cannot show a tray icon, so a login entry is the only way to get one | Settings > Apps > Startup, or Task Manager > Startup — these write a per-user `StartupApproved\Run` override, so each user can still turn the machine-wide entry off for themselves |
 | macOS | a login item or LaunchAgent for the tray's `.app` (`SMAppService` on recent macOS; to be checked against the minimum macOS version supported) | System Settings > General > Login Items |
 | Linux | `/etc/xdg/autostart/thai-smartcard-tray.desktop`, installed by the package | the desktop's startup applications settings, which write a per-user override in `~/.config/autostart/` |
+
+On Windows the entry is machine-wide on purpose. The installer runs elevated,
+usually as an administrator who is not the kiosk user, so an `HKCU` value would
+land in the administrator's hive and the tray would never start for the person
+actually at the machine — and a development machine, where the two are the same
+account, would never catch it. Every interactive login gets the tray, which is
+acceptable because it is only a viewer for the machine-wide service. The
+installer offers "start the tray at login (all users)", on by default, and the
+uninstaller removes the value. The all-users Startup folder under
+`%ProgramData%` is an equivalent; the registry is chosen because installers
+conventionally manage it and it uninstalls cleanly.
 
 This is unrelated to the service. The agent runs whether or not the tray does,
 so a tray that is not running costs the user only the icon and the shortcut to
@@ -354,26 +414,101 @@ half-changed wire contract. The gate for each PR is the local one from
 
 | PR | Content | Touches the wire contract |
 | :- | :------ | :------------------------ |
-| 1 | Fix the ws subscriber race in `pkg/server/websocket.go` (lock around `clients`, set `CheckOrigin` once). Independent of everything below, so it can ship from `main` as v2.0.1 first (open decision 8) | no |
-| 2 | `pkg/config`: schema, defaults, strict load, templated write with the banner, mtime check, tests (table-driven, no reader needed). Not wired into the agent yet | no |
-| 3 | Wire the config into `cmd/agent`: `--config`, `listen`, `transports`, the stale-`SMC_*` warning with its TOML snippet; delete `pkg/util/env.go` and the `Makefile` variables | no (listening address and default transport change) |
+| 1 | ~~Fix the ws subscriber race in `pkg/server/websocket.go` (lock around `clients`, set `CheckOrigin` once)~~ **Done**: shipped from `main` as v2.0.1 (2026-10-01) before `v3` branched, so the branch already carries it | no |
+| 2 | `pkg/config`: schema, defaults, strict load, templated write with the banner, the fingerprint of decision 14 with its refusal on a stale one, tests (table-driven, no reader needed). Not wired into the agent yet | no |
+| 3 | Wire the config into `cmd/agent`: `--config`, `listen`, `transports`, the stale-`SMC_*` warning with its TOML snippet; delete `pkg/util/env.go`; update the `Makefile` (see [Makefile and documentation](#makefile-and-documentation)) and the `AGENTS.md` setup commands and layout | no (listening address and default transport change) |
 | 4 | `allowed_origins` and token middleware in front of `/ws` and `/socket.io/`, with tests for each rule | no (new rejections) |
-| 5 | `/api/info`, `/api/settings`, `/settings`, the `web/` split, read-only test page; remove `set-options`, `set-reader` and `remote_control`. These go together because removing the toggles without `/settings` leaves nothing to replace them | **yes** |
-| 6 | README rewrite (connect over ws first, the stale-comment warning, the proxy warning), CHANGELOG with the upgrade note and the `SMC_*` → config key table | docs |
+| 5 | `/api/info`, `/api/settings`, `/settings`, the `web/` split, read-only test page; remove `set-options`, `set-reader` and `remote_control`. These go together because removing the toggles without `/settings` leaves nothing to replace them. `/api/settings` carries the `version` round-trip (decision 14) and the server-side token generation with `token_set` and the regenerate action (decision 16) | **yes** |
+| 6 | Update every Markdown file (`README.md`, `AGENTS.md`, `CHANGELOG.md`) as listed under [Makefile and documentation](#makefile-and-documentation): connect over ws first, the stale-comment warning, the proxy warning, the upgrade note and the `SMC_*` → config key table | docs |
 
 ### Phase 1 checklist
 
-- [ ] PR 1: ws race fixed, with a test run under `go test -race`
+- [x] PR 1: ws race fixed; `TestWebSocketBroadcastWhileClientsChurn` runs
+      clean under `go test -race ./pkg/server/`. Shipped from `main` as
+      v2.0.1, already in `v3` through its base
 - [ ] PR 2: `pkg/config` loader and writer, unknown-key and bad-value cases, the
-      mtime refusal, the banner
-- [ ] PR 3: agent uses the config only; stale `SMC_*` prints a TOML snippet
+      fingerprint refusal on a stale save, the banner
+- [ ] PR 3: agent uses the config only; stale `SMC_*` prints a TOML snippet;
+      `Makefile` has no `SMC_*`, runs packages not files, and has `check`;
+      `.gitignore` covers `config.dev.toml`
 - [ ] PR 4: origin and token checks; tests for each disabled transport
 - [ ] PR 5: `/settings` with the pre-save comment warning; the five route rules
+      tested; the `version` round-trip (a `409` on a stale save), token
+      generation shown once, `token_set` on GET and the regenerate action
       tested
-- [ ] PR 6: CHANGELOG table uses `SMC_AGENT_PORT`, not `SMC_PORT`
+- [ ] PR 6: README, AGENTS.md and CHANGELOG match the code; the CHANGELOG
+      table uses `SMC_AGENT_PORT`, not `SMC_PORT`; no remaining mention of
+      `SMC_*`, `set-options`, `set-reader`, `remote_control` or
+      `./cmd/agent/main.go` outside the changelog's history (check with
+      `grep -rn`)
 - [ ] `go build ./... && go test ./... && go vet ./... && test -z "$(gofmt -l .)"`
       and `GOOS=js GOARCH=wasm go build ./pkg/smc/` on `v3` before the merge to
       `main`
+
+## Makefile and documentation
+
+Every phase leaves the `Makefile` and the Markdown files matching the code it
+ships. The v3 work changes enough of both that they are listed here, and phase 1
+is not done until they are updated (PR 3 for the `Makefile`, PR 6 for the
+Markdown).
+
+### Makefile
+
+Today it exports `SMC_*` variables and runs single files
+(`go run ./cmd/agent/main.go`), which stops working as soon as `cmd/agent` has
+more than one file.
+
+- Remove the `SMC_*` assignments and `export` lines. They are dead after PR 3,
+  and `SMC_PORT` was already wrong (the agent reads `SMC_AGENT_PORT`).
+- `dev` runs the package, `go run ./cmd/agent --config ./config.dev.toml`, with a
+  git-ignored `config.dev.toml` that the agent writes with defaults on first run.
+  Add `config.dev.toml` to `.gitignore` next to `/testdata`.
+- `example` runs `./cmd/example` as a package for the same reason.
+- Add `test` (`go test -race ./...`), `vet`, `fmt-check`
+  (`test -z "$(gofmt -l .)"`), and `check`, which runs the whole local gate from
+  `AGENTS.md` including `GOOS=js GOARCH=wasm go build ./pkg/smc/`.
+- `build-*` targets build the packages `./cmd/agent` (not `main.go`), and
+  `build-mac` gains an arm64 target. `build-linux` currently tars the whole
+  `./bin/...` path; fix that when touching it.
+- `cmd/tray` (phase 4) builds with `CGO_ENABLED=1` and natively per OS, so it
+  gets its own target and is left out of the cross-compiling `build-*` targets.
+- `build-wasm` builds `cmd/agent` today and works. The `service` subcommand
+  (phase 2) may stop it building for `js`; at that point either hide the
+  service code behind a `!js` build constraint or drop the target, and keep
+  `GOOS=js GOARCH=wasm go build ./pkg/smc/` as the check.
+
+### Markdown files
+
+| File | What changes |
+| :--- | :----------- |
+| `README.md` | **Quick start:** run with `--config`, command is `go run ./cmd/agent`. **The bundled page:** now read-only, links to `/settings`. **Connect a client:** WebSocket first (it is the default), then socket.io with the `transports` setting; document `?token=` and `Authorization: Bearer`. **Configuration** and **Runtime options:** rewritten around `config.toml` (locations, every key, the loading rules, that the UI rewrites the file and drops hand-written comments, that hand edits need a restart); `set-options`, `set-reader`, `remote_control` and `SMC_ALLOW_REMOTE_OPTIONS` removed. **Architecture:** the two binaries, the service and the settings API rules, including the reverse-proxy warning. **Run as a service:** `service install` replaces the hand-written systemd unit with `Environment=` lines; keep a short manual-unit and PM2 section only if still supported, pointing at the config file. **Upgrading from v2:** the `SMC_*` to config key table. Table of contents updated to match |
+| `AGENTS.md` | See below |
+| `CHANGELOG.md` | The v3.0.0 entry: Added, Changed and Removed, the `SMC_*` to config key table, and a first paragraph that names each breaking change (env no longer read, default listen is loopback, default transport is `ws`, `set-options`/`set-reader`/`remote_control` gone, `pkg/util` env helpers gone) |
+| `docs/plan/` | This file is marked done phase by phase and kept as the record |
+
+`AGENTS.md` needs these changes, most in PR 3 and PR 6:
+
+- **Setup commands:** `go run ./cmd/agent` instead of `./cmd/agent/main.go`,
+  mention `--config`, add `go test -race ./...`, and refer to `make check`.
+- **Project layout:** add `pkg/config`, `pkg/server/web`, `docs/plan`, and
+  `cmd/tray` once it exists; `pkg/util` now holds only `GetResponseCommand`.
+- **Architecture constraints:** only `cmd/*` reads the config file, and
+  `pkg/smc` keeps receiving plain `Options`; cgo and GUI dependencies stay in
+  `cmd/tray` so the agent stays cross-compilable.
+- **Code style / Security:** replace "configured entirely through `SMC_*`
+  environment variables" with the config file. The file can hold the socket
+  token, so it is mode `0600` and a real `config.toml` is never committed.
+- **Testing instructions:** config tests are table-driven and need no reader;
+  `pkg/server` tests run under `-race`.
+- **PR & commit conventions:** describe the integration-branch convention used
+  for `v3` (PRs target it, it merges to `main` once), and fix the contradiction
+  between "never push to `main` directly" and the release workflow, which pushes
+  `main` and the tag. State which one wins (the release workflow, for a release
+  commit only).
+- **Release workflow:** the paragraph that says the current `[Unreleased]` work
+  "ships as v2.0.0" is stale since v2.0.0 and v2.0.1 are out; update the MAJOR
+  example, and change the MINOR example from "a new `SMC_*` option" to "a new
+  config key".
 
 ## Open decisions
 
@@ -397,10 +532,13 @@ half-changed wire contract. The gate for each PR is the local one from
    IP need a per-site permission, and WebSocket is covered in recent releases.
    Kiosks need the policy set in advance. The version numbers came from
    secondary sources and should be checked against Chrome's documentation.
-8. **Ship the ws race fix as v2.0.1 first?** It is a crash bug in the released
-   v2.0.0 and independent of the rest. Releasing it from `main` ahead of v3
-   means affected users do not wait for the whole change. It adds one release to
-   cut by hand under the `AGENTS.md` workflow.
+8. **Decided:** the ws race fix shipped from `main` as **v2.0.1**
+   (2026-10-01) ahead of the v3 work: it is a crash bug in the released
+   v2.0.0 and independent of the rest, so affected users do not wait for the
+   whole change. Changelog versioned and committed, annotated tag on the
+   changelog commit, tag and `main` pushed, GitHub release cut from the
+   changelog section, and the fix plus its race test verified on `v3`, which
+   branched from `main` after the release.
 
 ## Sources
 
