@@ -51,12 +51,8 @@ type DaemonConfig struct {
 	// Reader names the reader to watch from the start, which is where a
 	// configured [card] reader lands. Empty watches every attached one. A
 	// name that is not attached falls back to watching everything on the
-	// first resolve, exactly like a set-reader request naming a missing
-	// reader.
+	// first resolve, exactly like a select request naming a missing reader.
 	Reader string
-	// RemoteControl reports whether the host allows a client to change options
-	// and readers. It is read only while broadcasting. Nil means no.
-	RemoteControl func() bool
 }
 
 // errNoCard is the answer to a read request when nothing is inserted.
@@ -79,7 +75,6 @@ type daemon struct {
 	store     *OptionsStore
 	broadcast chan model.Message
 	control   <-chan Control
-	remote    func() bool
 
 	readers  []string
 	selected string
@@ -114,7 +109,6 @@ func (s *SmartCard) StartDaemonWith(ctx context.Context, cfg DaemonConfig) error
 		store:     store,
 		broadcast: cfg.Broadcast,
 		control:   cfg.Control,
-		remote:    cfg.RemoteControl,
 		selected:  cfg.Reader,
 		state:     model.StateWaiting,
 	}
@@ -438,9 +432,6 @@ func (d *daemon) broadcastStatus() {
 		Readers:  append([]string(nil), d.readers...),
 		Selected: d.selected,
 		State:    d.state,
-	}
-	if d.remote != nil {
-		payload.RemoteControl = d.remote()
 	}
 	d.publish(model.Message{Event: "smc-status", Payload: payload})
 }

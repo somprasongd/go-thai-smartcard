@@ -39,36 +39,63 @@ type ServerConfig struct {
 	// be nil, which leaves the control channel off: inbound frames are then
 	// dropped instead of reaching a consumer that is not there.
 	Command chan model.Command
+	// Version is the agent's own version, reported by /api/info.
+	Version string
+	// TLS reports whether the agent serves HTTPS, for /api/info.
+	TLS bool
+	// ConfigPath is the config file the settings API reads and writes. Empty
+	// leaves /api/* and /settings unregistered.
+	ConfigPath string
+	// OnChange is called with the saved config after a successful PUT and
+	// after the response is written; the agent applies the card options and
+	// restarts the listener there. It may be nil.
+	OnChange func(config.Config)
 }
 
-//go:embed index.html
+//go:embed web/index.html
 var indexPage []byte
 
+//go:embed web/settings.html
+var settingsPage []byte
+
+// Serve serves forever on one listener. The agent uses Manager instead, so a
+// settings save can restart the listener; Serve is the one-generation form
+// for callers that never reconfigure.
 func Serve(cfg ServerConfig) {
 	if len(cfg.Transports) == 0 {
 		// config.Load refuses an empty list already; this guards a caller
 		// that built a ServerConfig by hand.
 		log.Fatal("server: no transports configured, refusing to start")
 	}
-	mux := newMux(cfg)
+	mux := newMux(cfg, nil)
 	addr := net.JoinHostPort(cfg.Listen, strconv.Itoa(cfg.Port))
 	log.Println("Serving at " + addr + " (" + strings.Join(cfg.Transports, ", ") + ")")
 	log.Fatal(http.ListenAndServe(addr, mux))
 }
 
-// newMux builds the handler: the enabled transports behind one socket guard,
-// the bundled page, and the pump that fans every broadcast out to them. The
-// transports are never torn down: a server runs until the process exits, and
-// go-socket.io's Close is not safe to call while Serve runs.
-func newMux(cfg ServerConfig) *http.ServeMux {
+// newMux builds one generation of the handler: the enabled transports behind
+// the socket guard, the settings routes behind their own guard, the bundled
+// pages, and the pump that fans every broadcast out to the transports. done
+// is closed when the generation stops, which ends the pump. The transports
+// themselves are never torn down: go-socket.io's Close is not safe to call
+// while Serve runs, and a generation lives until the process does.
+func newMux(cfg ServerConfig, done <-chan struct{}) *http.ServeMux {
 	guard := newSocketGuard(cfg.AllowedOrigins, cfg.Token, cfg.Listen)
+	settings := &settingsGuard{}
+	api := &settingsAPI{
+		path:       cfg.ConfigPath,
+		transports: cfg.Transports,
+		version:    cfg.Version,
+		tlsEnabled: cfg.TLS,
+		onChange:   cfg.OnChange,
+	}
 
 	var socketServer *socketIO
 	if hasTransport(cfg.Transports, config.TransportSocketIO) {
 		socketServer = NewSocketIO(cfg.Command)
 		go func() {
-			// io.EOF is what Serve returns when Close stops it, which only
-			// tests do; a server that is being shut down is not an error.
+			// io.EOF is what Serve returns when the server is closed; it is
+			// not an error to report.
 			if err := socketServer.Serve(); err != nil && !errors.Is(err, io.EOF) {
 				log.Fatalf("socketio listen error: %s\n", err)
 			}
@@ -87,27 +114,43 @@ func newMux(cfg ServerConfig) *http.ServeMux {
 	if webSocket != nil {
 		mux.Handle("/ws", guard.wrap(http.HandlerFunc(webSocket.Handler)))
 	}
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(200)
-		w.Write(indexPage)
-	})
+	if cfg.ConfigPath != "" {
+		mux.Handle("/api/info", settings.wrap(http.HandlerFunc(api.serveInfo)))
+		mux.Handle("/api/settings", settings.wrap(http.HandlerFunc(api.serveSettings)))
+		mux.Handle("/settings", settings.wrap(servePage(settingsPage)))
+	}
+	mux.HandleFunc("/", servePage(indexPage))
 
 	if cfg.Broadcast != nil {
 		go func() {
 			for {
-				msg, ok := <-cfg.Broadcast
-				if ok {
-					if socketServer != nil {
-						socketServer.Broadcast(msg)
-					}
-					if webSocket != nil {
-						webSocket.Broadcast(msg)
+				select {
+				case <-done:
+					return
+				case msg, ok := <-cfg.Broadcast:
+					if ok {
+						if socketServer != nil {
+							socketServer.Broadcast(msg)
+						}
+						if webSocket != nil {
+							webSocket.Broadcast(msg)
+						}
 					}
 				}
 			}
 		}()
 	}
 	return mux
+}
+
+// servePage writes one embedded page with its content type set, so neither
+// page depends on content sniffing.
+func servePage(page []byte) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		w.Write(page)
+	}
 }
 
 // hasTransport reports whether the list names the transport.

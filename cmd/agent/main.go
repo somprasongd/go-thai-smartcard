@@ -15,6 +15,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"reflect"
+	"sync"
 	"syscall"
 	"time"
 
@@ -55,24 +57,56 @@ func main() {
 	// loop to finish a card before it is even offered.
 	control := make(chan smc.Control, 8)
 
-	serverCfg := server.ServerConfig{
-		Listen:         cfg.Server.Listen,
-		Port:           cfg.Server.Port,
-		Transports:     cfg.Server.Transports,
-		AllowedOrigins: cfg.Server.AllowedOrigins,
-		Token:          cfg.Server.Token,
-		Broadcast:      broadcast,
-		Command:        command,
-	}
-	go server.Serve(serverCfg)
-
-	store := smc.NewOptionsStore(smc.Options{
-		ShowFaceImage: cfg.Card.ReadFaceImage,
-		ShowNhsoData:  cfg.Card.ReadNHSO,
-		ShowLaserData: cfg.Card.ReadLaserID,
-	})
 	// The daemon re-reads this store on every card insert, which is what lets
 	// a settings change apply to the next card without a restart.
+	store := smc.NewOptionsStore(cardOptions(cfg.Card))
+
+	// A save from /settings or the tray comes back here: card options apply to
+	// the next insert, a server or TLS change restarts the listener.
+	var mu sync.Mutex
+	current := cfg
+	var mgr *server.Manager
+	// Declared first so the closure can hand itself to the next listener
+	// generation: a restarted listener keeps applying saves.
+	var applySave func(config.Config)
+	applySave = func(next config.Config) {
+		mu.Lock()
+		prev := current
+		current = next
+		mu.Unlock()
+
+		if !reflect.DeepEqual(next.Card, prev.Card) {
+			store.Set(cardOptions(next.Card))
+			if next.Card.Reader != prev.Card.Reader {
+				// The read loop drains this channel between poll windows; a
+				// dropped request is recoverable and the tray retries.
+				select {
+				case control <- smc.Control{Kind: smc.ControlSelectReader, Reader: next.Card.Reader}:
+				default:
+					log.Printf("dropping a reader control request, the read loop is busy")
+				}
+			}
+			// Tell the pages what is read now, so their displays catch up
+			// without waiting for the next card.
+			broadcast <- model.Message{Event: "smc-options", Payload: toModelOptions(store.Get())}
+		}
+
+		if !reflect.DeepEqual(next.Server, prev.Server) || !reflect.DeepEqual(next.TLS, prev.TLS) {
+			// A token change lands here too, because the socket guard of the
+			// running listener holds the old one.
+			if err := mgr.Replace(serverCfg(next, *configPath, broadcast, command, applySave)); err != nil {
+				log.Printf("could not restart the listener: %v; the old listener keeps serving", err)
+			} else {
+				log.Printf("listener restarted on %s:%d", next.Server.Listen, next.Server.Port)
+			}
+		}
+	}
+
+	mgr, err := server.Start(serverCfg(cfg, *configPath, broadcast, command, applySave))
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+
 	controller := &optionsController{
 		store:     store,
 		broadcast: broadcast,
@@ -100,9 +134,6 @@ func main() {
 				Options:   store,
 				Control:   control,
 				Reader:    cfg.Card.Reader,
-				// The control actions are accepted, so the status broadcast
-				// reports remote control as on.
-				RemoteControl: func() bool { return true },
 			})
 			if ctx.Err() != nil {
 				return
@@ -132,6 +163,31 @@ func main() {
 	log.Println("Received shutdown signal, exiting.")
 }
 
+// serverCfg builds the listener configuration for one generation.
+func serverCfg(cfg config.Config, path string, broadcast chan model.Message, command chan model.Command, onChange func(config.Config)) server.ServerConfig {
+	return server.ServerConfig{
+		Listen:         cfg.Server.Listen,
+		Port:           cfg.Server.Port,
+		Transports:     cfg.Server.Transports,
+		AllowedOrigins: cfg.Server.AllowedOrigins,
+		Token:          cfg.Server.Token,
+		Broadcast:      broadcast,
+		Command:        command,
+		Version:        version,
+		TLS:            cfg.TLS.Enabled,
+		ConfigPath:     path,
+		OnChange:       onChange,
+	}
+}
+
+func cardOptions(card config.Card) smc.Options {
+	return smc.Options{
+		ShowFaceImage: card.ReadFaceImage,
+		ShowNhsoData:  card.ReadNHSO,
+		ShowLaserData: card.ReadLaserID,
+	}
+}
+
 // loadConfig reads the config file, writing the defaults when there is none,
 // and stops the agent on a file it cannot use. The strict loader is the point:
 // a service that starts on a typoed config while the operator believes the
@@ -158,10 +214,12 @@ func loadConfig(path string) config.Config {
 	}
 }
 
-// optionsController applies the control commands a client sends.
+// optionsController answers the read-only control commands a client sends.
 //
 // It lives in the agent rather than in pkg/smc because the broadcast belongs
-// to this process, and pkg/smc stays free of the server's concerns.
+// to this process, and pkg/smc stays free of the server's concerns. The card
+// socket is read-only: options and the reader change through /settings or the
+// tray, never over the socket.
 type optionsController struct {
 	store     *smc.OptionsStore
 	broadcast chan model.Message
@@ -188,32 +246,16 @@ func (c *optionsController) run(ctx context.Context, command <-chan model.Comman
 
 // handle answers exactly one command. Every answer goes back over the same
 // broadcast as the card events, so a page needs only the one connection it
-// already has; an action it does not know is an error, never a panic.
+// already has; an action it does not know is an error, never a panic. The
+// removed set-options and set-reader land here too, answered as unknown.
 func (c *optionsController) handle(cmd model.Command) {
 	switch cmd.Action {
-	case "set-options":
-		if cmd.Options == nil {
-			c.fail("set-options needs an options object")
-			return
-		}
-		c.store.Set(smc.Options{
-			ShowFaceImage: cmd.Options.ShowFaceImage,
-			ShowNhsoData:  cmd.Options.ShowNhsoData,
-			ShowLaserData: cmd.Options.ShowLaserData,
-		})
-		log.Printf("options set: face image %v, nhso %v, laser %v",
-			cmd.Options.ShowFaceImage, cmd.Options.ShowNhsoData, cmd.Options.ShowLaserData)
-		c.broadcastOptions()
 	case "get-options":
 		c.broadcastOptions()
 	case "get-status":
 		// Answered by the read loop, which owns the reader list and its own
 		// state. It re-publishes without changing anything.
 		c.sendControl(smc.Control{Kind: smc.ControlReportStatus})
-	case "set-reader":
-		// An empty name is a request to watch every reader, which is the
-		// state the agent starts in.
-		c.sendControl(smc.Control{Kind: smc.ControlSelectReader, Reader: cmd.Reader})
 	case "refresh-readers":
 		c.sendControl(smc.Control{Kind: smc.ControlRefreshReaders})
 	case "read-now":

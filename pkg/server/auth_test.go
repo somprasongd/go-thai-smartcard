@@ -238,7 +238,7 @@ func TestNewMuxRegistersOnlyEnabledTransports(t *testing.T) {
 			mux := newMux(ServerConfig{
 				Listen:     "127.0.0.1",
 				Transports: tt.transports,
-			})
+			}, nil)
 
 			srv := httptest.NewServer(mux)
 			defer srv.Close()

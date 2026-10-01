@@ -34,61 +34,10 @@ func answers(broadcast chan model.Message) []model.Message {
 	}
 }
 
-func TestOptionsControllerSetOptions(t *testing.T) {
-	c, broadcast := newTestController(smc.Options{ShowLaserData: true})
-
-	c.handle(model.Command{
-		Action:  "set-options",
-		Options: &model.Options{ShowFaceImage: true, ShowLaserData: false},
-	})
-
-	want := smc.Options{ShowFaceImage: true}
-	if got := c.store.Get(); got != want {
-		t.Errorf("store = %+v, want %+v", got, want)
-	}
-
-	got := answers(broadcast)
-	if len(got) != 1 {
-		t.Fatalf("got %d broadcasts, want 1: %+v", len(got), got)
-	}
-	if got[0].Event != "smc-options" {
-		t.Errorf("event = %q, want smc-options", got[0].Event)
-	}
-	// The page is written against this payload, so pin it byte for byte.
-	payload, err := json.Marshal(got[0])
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	wantJSON := `{"event":"smc-options","payload":{"show_face_image":true,"show_nhso":false,"show_laser":false}}`
-	if string(payload) != wantJSON {
-		t.Errorf("payload =\n%s\nwant\n%s", payload, wantJSON)
-	}
-}
-
-// get-options answers with what is in force, so a page that connects late or
-// after a rejected set-options is not left guessing.
-func TestOptionsControllerGetOptions(t *testing.T) {
-	c, broadcast := newTestController(smc.Options{ShowFaceImage: true, ShowLaserData: true})
-
-	c.handle(model.Command{Action: "get-options"})
-
-	got := answers(broadcast)
-	if len(got) != 1 {
-		t.Fatalf("got %d broadcasts, want 1: %+v", len(got), got)
-	}
-	payload, err := json.Marshal(got[0])
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	wantJSON := `{"event":"smc-options","payload":{"show_face_image":true,"show_nhso":false,"show_laser":true}}`
-	if string(payload) != wantJSON {
-		t.Errorf("payload =\n%s\nwant\n%s", payload, wantJSON)
-	}
-}
-
-// A rejected command has to leave the options exactly as they were, and say
-// why. Anything else lets a page believe it changed what the agent reads.
-func TestOptionsControllerRejectsCommands(t *testing.T) {
+// The card socket is read-only: what the agent reads and which reader it
+// watches change through /settings or the tray. The removed write actions land
+// in the unknown-action path, with an error that says so.
+func TestOptionsControllerIsReadOnly(t *testing.T) {
 	seed := smc.Options{ShowFaceImage: true, ShowLaserData: true}
 
 	tests := []struct {
@@ -97,19 +46,24 @@ func TestOptionsControllerRejectsCommands(t *testing.T) {
 		wantMessage string
 	}{
 		{
+			name:        "set-options is gone",
+			cmd:         model.Command{Action: "set-options"},
+			wantMessage: `unknown action "set-options"`,
+		},
+		{
+			name:        "set-reader is gone",
+			cmd:         model.Command{Action: "set-reader"},
+			wantMessage: `unknown action "set-reader"`,
+		},
+		{
 			name:        "an unknown action is an error, not a panic",
 			cmd:         model.Command{Action: "delete-everything"},
 			wantMessage: `unknown action "delete-everything"`,
 		},
 		{
 			name:        "a missing action is an error",
-			cmd:         model.Command{Options: &model.Options{ShowFaceImage: true}},
+			cmd:         model.Command{},
 			wantMessage: `unknown action ""`,
-		},
-		{
-			name:        "set-options without an options object is an error",
-			cmd:         model.Command{Action: "set-options"},
-			wantMessage: "set-options needs an options object",
 		},
 	}
 
@@ -140,84 +94,88 @@ func TestOptionsControllerRejectsCommands(t *testing.T) {
 	}
 }
 
+// get-options answers with what is in force, so a page that connects late
+// learns the current state instead of guessing.
+func TestOptionsControllerGetOptions(t *testing.T) {
+	c, broadcast := newTestController(smc.Options{ShowFaceImage: true, ShowLaserData: true})
+
+	c.handle(model.Command{Action: "get-options"})
+
+	got := answers(broadcast)
+	if len(got) != 1 {
+		t.Fatalf("got %d broadcasts, want 1: %+v", len(got), got)
+	}
+	if got[0].Event != "smc-options" {
+		t.Errorf("event = %q, want smc-options", got[0].Event)
+	}
+	// The page is written against this payload, so pin it byte for byte. There
+	// is no remote_control any more: the socket is read-only, always.
+	payload, err := json.Marshal(got[0])
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	wantJSON := `{"event":"smc-options","payload":{"show_face_image":true,"show_nhso":false,"show_laser":true}}`
+	if string(payload) != wantJSON {
+		t.Errorf("payload =\n%s\nwant\n%s", payload, wantJSON)
+	}
+}
+
 func TestOptionsControllerRun(t *testing.T) {
-	tests := []struct {
-		name     string
-		stopWith func(cancel context.CancelFunc, command chan model.Command)
-	}{
-		{
-			name: "the loop ends when the command channel closes",
-			stopWith: func(_ context.CancelFunc, command chan model.Command) {
-				close(command)
-			},
-		},
-		{
-			name: "the loop ends when the process shuts down",
-			stopWith: func(cancel context.CancelFunc, _ chan model.Command) {
-				cancel()
-			},
-		},
+	c, broadcast := newTestController(smc.Options{})
+	command := make(chan model.Command, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		c.run(ctx, command)
+		close(done)
+	}()
+
+	command <- model.Command{Action: "get-options"}
+
+	deadline := time.After(2 * time.Second)
+	for len(answers(broadcast)) == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("the command was never answered")
+		case <-time.After(5 * time.Millisecond):
+		}
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c, broadcast := newTestController(smc.Options{})
-			command := make(chan model.Command, 1)
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+	close(command)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("run did not return when the command channel closed")
+	}
 
-			done := make(chan struct{})
-			go func() {
-				c.run(ctx, command)
-				close(done)
-			}()
-
-			command <- model.Command{
-				Action:  "set-options",
-				Options: &model.Options{ShowLaserData: true},
-			}
-
-			deadline := time.After(2 * time.Second)
-			for !c.store.Get().ShowLaserData {
-				select {
-				case <-deadline:
-					t.Fatal("the command was never applied")
-				case <-time.After(5 * time.Millisecond):
-				}
-			}
-			if len(broadcast) == 0 {
-				t.Error("the applied options were not broadcast")
-			}
-
-			tt.stopWith(cancel, command)
-			select {
-			case <-done:
-			case <-time.After(2 * time.Second):
-				t.Fatal("run did not return")
-			}
-		})
+	// And the context ends it too.
+	command = make(chan model.Command, 1)
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	done2 := make(chan struct{})
+	go func() {
+		c.run(ctx2, command)
+		close(done2)
+	}()
+	cancel2()
+	select {
+	case <-done2:
+	case <-time.After(2 * time.Second):
+		t.Fatal("run did not return when the process shut down")
 	}
 }
 
 // Reader and re-read requests go to the read loop, not to the options store:
 // only the loop knows which readers are attached and whether a card is in one.
+// Narrowing the watch is not offered over the socket any more — only the
+// harmless requests are forwarded.
 func TestOptionsControllerForwardsReaderControl(t *testing.T) {
 	tests := []struct {
-		name    string
-		cmd     model.Command
-		want    smc.Control
-		wantOut bool
+		name string
+		cmd  model.Command
+		want smc.Control
 	}{
-		{
-			name: "set-reader carries the reader name",
-			cmd:  model.Command{Action: "set-reader", Reader: "Identiv CLOUD 2700 R"},
-			want: smc.Control{Kind: smc.ControlSelectReader, Reader: "Identiv CLOUD 2700 R"},
-		},
-		{
-			name: "an empty reader name means watch them all",
-			cmd:  model.Command{Action: "set-reader"},
-			want: smc.Control{Kind: smc.ControlSelectReader, Reader: ""},
-		},
 		{
 			name: "refresh-readers asks the loop to re-list",
 			cmd:  model.Command{Action: "refresh-readers"},
@@ -232,14 +190,6 @@ func TestOptionsControllerForwardsReaderControl(t *testing.T) {
 			name: "get-status re-publishes without changing anything",
 			cmd:  model.Command{Action: "get-status"},
 			want: smc.Control{Kind: smc.ControlReportStatus},
-		},
-		{
-			// The loop answers this one, so the controller must not invent an
-			// answer of its own.
-			name:    "a reader request produces no direct broadcast",
-			cmd:     model.Command{Action: "get-status"},
-			want:    smc.Control{Kind: smc.ControlReportStatus},
-			wantOut: false,
 		},
 	}
 
@@ -263,7 +213,9 @@ func TestOptionsControllerForwardsReaderControl(t *testing.T) {
 				t.Fatal("nothing was forwarded to the read loop")
 			}
 
-			if !tt.wantOut && len(answers(controller.broadcast)) != 0 {
+			// The loop answers these, so the controller must not invent an
+			// answer of its own.
+			if len(answers(controller.broadcast)) != 0 {
 				t.Error("the controller answered a reader request itself")
 			}
 		})

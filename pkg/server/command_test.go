@@ -12,16 +12,17 @@ import (
 	"github.com/somprasongd/go-thai-smartcard/pkg/model"
 )
 
-// The two shapes the page may send, over either transport.
+// The shapes a client may send, over either transport. set-options and
+// set-reader are no longer part of the contract; a client that still sends
+// them decodes to the action name alone and is answered with an error, which
+// is what the last test pins down.
 const (
-	setOptionsJSON  = `{"action":"set-options","options":{"show_face_image":true,"show_nhso":false,"show_laser":true}}`
-	getOptionsJSON  = `{"action":"get-options"}`
-	quotedSetOption = `"{\"action\":\"set-options\",\"options\":{\"show_face_image\":true,\"show_nhso\":false,\"show_laser\":true}}"`
+	legacySetOptions = `{"action":"set-options","options":{"show_face_image":true,"show_nhso":false,"show_laser":true}}`
+	getOptionsJSON   = `{"action":"get-options"}`
+	quotedSetOption  = `"{\"action\":\"set-options\",\"options\":{\"show_face_image\":true,\"show_nhso\":false,\"show_laser\":true}}"`
 )
 
 func TestDecodeCommand(t *testing.T) {
-	wantOptions := model.Options{ShowFaceImage: true, ShowLaserData: true}
-
 	tests := []struct {
 		name    string
 		payload string
@@ -29,25 +30,21 @@ func TestDecodeCommand(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "the set-options shape from the contract",
-			payload: setOptionsJSON,
-			want: model.Command{
-				Action:  "set-options",
-				Options: &wantOptions,
-			},
+			name:    "the get-options shape from the contract",
+			payload: getOptionsJSON,
+			want:    model.Command{Action: "get-options"},
+		},
+		{
+			// A removed action still decodes: the agent, not the decoder,
+			// answers it with the unknown-action error.
+			name:    "a removed action decodes to its name alone",
+			payload: legacySetOptions,
+			want:    model.Command{Action: "set-options"},
 		},
 		{
 			name:    "the same object wrapped in a JSON string, as socket.io delivers it",
 			payload: quotedSetOption,
-			want: model.Command{
-				Action:  "set-options",
-				Options: &wantOptions,
-			},
-		},
-		{
-			name:    "get-options carries no options",
-			payload: getOptionsJSON,
-			want:    model.Command{Action: "get-options"},
+			want:    model.Command{Action: "set-options"},
 		},
 		{
 			name:    "surrounding whitespace is tolerated",
@@ -97,14 +94,6 @@ func TestDecodeCommand(t *testing.T) {
 			}
 			if got.Action != tt.want.Action {
 				t.Errorf("Action = %q, want %q", got.Action, tt.want.Action)
-			}
-			switch {
-			case tt.want.Options == nil && got.Options != nil:
-				t.Errorf("Options = %+v, want none", got.Options)
-			case tt.want.Options != nil && got.Options == nil:
-				t.Errorf("Options is nil, want %+v", tt.want.Options)
-			case tt.want.Options != nil && *got.Options != *tt.want.Options:
-				t.Errorf("Options = %+v, want %+v", *got.Options, *tt.want.Options)
 			}
 		})
 	}
@@ -161,31 +150,25 @@ func TestSocketIOInboundCommand(t *testing.T) {
 		want     model.Command
 	}{
 		{
-			name:     "a set-options event reaches the agent",
-			payload:  setOptionsJSON,
+			name:     "a get-options event reaches the agent",
+			payload:  getOptionsJSON,
 			command:  make(chan model.Command, 1),
 			wantRecv: true,
-			want: model.Command{
-				Action:  "set-options",
-				Options: &model.Options{ShowFaceImage: true, ShowLaserData: true},
-			},
+			want:     model.Command{Action: "get-options"},
+		},
+		{
+			name:     "a legacy set-options event decodes to the action name",
+			payload:  legacySetOptions,
+			command:  make(chan model.Command, 1),
+			wantRecv: true,
+			want:     model.Command{Action: "set-options"},
 		},
 		{
 			name:     "a JSON encoded event payload reaches the agent",
 			payload:  quotedSetOption,
 			command:  make(chan model.Command, 1),
 			wantRecv: true,
-			want: model.Command{
-				Action:  "set-options",
-				Options: &model.Options{ShowFaceImage: true, ShowLaserData: true},
-			},
-		},
-		{
-			name:     "a get-options event reaches the agent",
-			payload:  getOptionsJSON,
-			command:  make(chan model.Command, 1),
-			wantRecv: true,
-			want:     model.Command{Action: "get-options"},
+			want:     model.Command{Action: "set-options"},
 		},
 		{
 			name:     "a malformed event is dropped without reaching the agent",
@@ -221,9 +204,6 @@ func TestSocketIOInboundCommand(t *testing.T) {
 				if got.Action != tt.want.Action {
 					t.Errorf("Action = %q, want %q", got.Action, tt.want.Action)
 				}
-				if tt.want.Options != nil && (got.Options == nil || *got.Options != *tt.want.Options) {
-					t.Errorf("Options = %+v, want %+v", got.Options, tt.want.Options)
-				}
 			case <-time.After(2 * time.Second):
 				t.Fatal("the command never reached the agent")
 			}
@@ -245,26 +225,23 @@ func TestWebSocketInboundCommand(t *testing.T) {
 		{
 			name:     "a text frame reaches the agent",
 			mt:       websocket.TextMessage,
-			payload:  setOptionsJSON,
-			command:  make(chan model.Command, 1),
-			wantRecv: true,
-			want: model.Command{
-				Action:  "set-options",
-				Options: &model.Options{ShowFaceImage: true, ShowLaserData: true},
-			},
-		},
-		{
-			name:     "a get-options text frame reaches the agent",
-			mt:       websocket.TextMessage,
 			payload:  getOptionsJSON,
 			command:  make(chan model.Command, 1),
 			wantRecv: true,
 			want:     model.Command{Action: "get-options"},
 		},
 		{
+			name:     "a legacy set-options frame decodes to the action name",
+			mt:       websocket.TextMessage,
+			payload:  legacySetOptions,
+			command:  make(chan model.Command, 1),
+			wantRecv: true,
+			want:     model.Command{Action: "set-options"},
+		},
+		{
 			name:     "a binary frame is ignored",
 			mt:       websocket.BinaryMessage,
-			payload:  setOptionsJSON,
+			payload:  getOptionsJSON,
 			command:  make(chan model.Command, 1),
 			wantRecv: false,
 		},
@@ -305,9 +282,6 @@ func TestWebSocketInboundCommand(t *testing.T) {
 				case got := <-tt.command:
 					if got.Action != tt.want.Action {
 						t.Errorf("Action = %q, want %q", got.Action, tt.want.Action)
-					}
-					if tt.want.Options != nil && (got.Options == nil || *got.Options != *tt.want.Options) {
-						t.Errorf("Options = %+v, want %+v", got.Options, tt.want.Options)
 					}
 				case <-time.After(2 * time.Second):
 					t.Fatal("the command never reached the agent")
