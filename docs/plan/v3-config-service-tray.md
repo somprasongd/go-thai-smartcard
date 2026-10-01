@@ -42,6 +42,10 @@ management API, auto-update.
 | 14 | A save from `/settings` or the tray refuses to overwrite a config file that changed on disk since it was **served**. The check is the file's fingerprint — the hash of its bytes — carried through the API: `GET /api/settings` returns it, `PUT /api/settings` echoes it back, and a mismatch is a `409` | Otherwise a hand edit made after the agent started is lost silently by the next save. The fingerprint rather than the mtime: mtime granularity depends on the filesystem, and nanoseconds since the epoch do not survive JavaScript's float64 numbers. See [Loading rules](#loading-rules) |
 | 15 | No "Start at login" toggle in the tray. The installer registers the tray at login and users turn it off in the OS's login items | The agent runs without the tray, so the toggle only affects the icon; it would cost three platform mechanisms and drift from the OS setting. See [Start at login](#start-at-login) |
 | 16 | The agent generates the socket token, not the client. Any `PUT` that turns exposure on while `token` is empty makes a random 128-bit `crypto/rand` token, writes it in the same save, and returns it in that response only; `GET /api/settings` never returns the value, only `token_set`. The tray's "Expose to network" is a toggle only while a token exists and otherwise opens `/settings`; turning exposure off is always a direct toggle | One generation path for the page, the tray and any future caller, and no way to expose the agent to the LAN without the token ceremony having happened somewhere the token can be shown and copied. See [Socket token](#socket-token) |
+| 17 | The Linux service runs as a dedicated system user, and the packages ship a polkit rule granting that user `org.debian.pcsc-lite.access_pcsc` and `org.debian.pcsc-lite.access_card`. When pcscd refuses the connection the agent names `SCARD_W_SECURITY_VIOLATION` and points at the rule. Verified on Debian, Ubuntu LTS and Fedora before the phase 2 packages ship | pcsc-lite has enabled polkit **by default upstream** since late 2023, and the default denies any process without an active local session — exactly what a system service is. The rule is inert where pcscd has no polkit, so one package works everywhere. Running the service as root would also pass (privileged processes are exempt) but widens the agent for no gain |
+| 18 | Safari is documented, not worked around: the README carries a browser support matrix, and a Safari kiosk serves its UI from the agent's own page. `wss://` with a trusted certificate stays the only way for an external `https` page on Safari to reach the agent | WebKit blocks `ws://127.0.0.1` from `https` pages on purpose — bug 171934 closed its localhost duplicate as *"should be prevented even more strictly"* — so it is policy, not a bug to wait out. Firefox has allowed it since v55 and Chrome treats loopback as trustworthy. The agent-served page is same-origin `http`, which works in every browser including Safari, with no code |
+| 19 | The README documents two Chrome kiosk paths for Local Network Access: serve the UI from the agent (local to local, exempt), or have IT set the `LocalNetworkAccessAllowedForUrls` policy for an external `https` app — with the warning that dismissing Chrome's prompt three times blocks the site permanently. The plan records Chrome 142 (PNA replaced by LNA) and Chrome 147 (WebSocket and WebTransport included, April 2026) | Chrome 147 has enforced LNA on WebSockets since April 2026; the origin-trial escape expired in September 2026, and there is no machine-wide allow-all — only the per-site policy. The version numbers are confirmed against Chrome's own pages, replacing the secondary sources this plan first cited |
+| 20 | Every package is built by GitHub Actions on GitHub-hosted runners — one workflow, one job per OS, triggered by the release tags the manual workflow already pushes, its artifacts attached to the hand-cut GitHub release | The repository is public, so hosted minutes are free and nothing needs a self-hosted runner. Triggering on the tag keeps the `AGENTS.md` release workflow intact: CI adds packages to a release, it never cuts one. See [Packaging CI](#packaging-ci) |
 
 ## Findings in the current code
 
@@ -299,6 +303,13 @@ thai-smartcard-agent run          # foreground
 - On every platform the agent is a system service (Linux systemd, macOS
   LaunchDaemon, Windows Service), desktop or headless. There is no per-user
   agent mode.
+- On Linux the service runs as a dedicated system user, not root, and the
+  package installs a polkit rule granting that user pcsc-lite's two actions
+  (decision 17). pcsc-lite enables polkit by default upstream, and its default
+  denies any process without an active local session — exactly what a system
+  service is. When pcscd refuses the connection the agent names
+  `SCARD_W_SECURITY_VIOLATION` and points at the rule instead of failing
+  generically.
 
 #### Who starts the agent
 
@@ -369,8 +380,10 @@ checked.
 
 ### TLS
 
-Needed only when an `https://` page talks to an agent on a LAN IP (`wss://` is
-required there). Not needed for `http://` pages, which is the normal kiosk case.
+Needed when an `https://` page talks to the agent: on a LAN IP in any browser,
+and even on loopback in Safari, which blocks `ws://` from `https` pages by
+policy (decision 18). Not needed for `http://` pages — including the agent's
+own, which is the normal kiosk case.
 
 - `files` mode (phase 3): the operator supplies `cert_file` and `key_file`. The
   agent serves HTTPS on `tls.port`, reloads the files when their mtime changes,
@@ -391,14 +404,46 @@ required there). Not needed for `http://` pages, which is the normal kiosk case.
   `--ignore-certificate-errors-spki-list`. Untested here; the key must survive
   renewals.
 
+### Packaging CI
+
+Every installer in this plan is built by GitHub Actions on GitHub-hosted
+runners (decision 20). The repository is public, so hosted minutes are free;
+no target machine or self-hosted runner is involved. One workflow with one job
+per OS, triggered by pushing a release tag — the tags the manual `AGENTS.md`
+workflow already creates — and each job uploads its artifacts to the GitHub
+release that workflow cut by hand. CI never cuts a release, and it does not
+run tests: the gate for a PR stays local, which keeps this workflow about
+packaging only.
+
+- **Linux (phase 2):** an `ubuntu-latest` job runs `nfpm`, building the
+  `.deb` and the `.rpm` from one config. The package carries the systemd
+  unit, the polkit rule (decision 17) and the default config. No signing.
+- **Windows (phase 4):** a `windows-latest` job runs Inno Setup or NSIS
+  (choco-installed; WiX if an MSI is ever wanted); the installer copies the
+  files and runs `agent service install`. Code signing is optional and
+  skipped for now — unsigned costs a SmartScreen "unknown publisher" warning;
+  a certificate, if one is added later, lives in Actions Secrets, never in
+  the repo.
+- **macOS (phase 4):** a `macos-*` job uses `pkgbuild`/`productbuild`, which
+  ship with macOS; the tray's cgo compiles against the runner's Xcode, and a
+  universal binary comes from building both architectures and `lipo`-ing
+  them. The tray `.app` is signed and notarized, which needs an Apple
+  Developer Program account (about US$99 a year) and an App Store Connect
+  API key in Actions Secrets — the one recurring cost in the packaging story,
+  and an unsigned tray is not an outcome the plan accepts, because every user
+  would be fighting Gatekeeper on first launch.
+- `goreleaser` was considered and set aside: it covers the binaries, `nfpm`
+  and checksums, but the `.pkg` postinstall script and the Windows service
+  installer need custom steps anyway. Revisit if the matrix grows.
+
 ## Phases
 
 | Phase | Content | Release |
 | :---- | :------ | :------ |
 | 1 | `config.toml` loader (no env), `listen`, `transports`, `allowed_origins`, `token`; `/api/settings`, `/settings`, `/api/info`; split `web/`; remove `set-options`, `set-reader`, `remote_control`, `util` env helpers; fix the ws subscriber race; README, CHANGELOG, Makefile | **v3.0.0** |
-| 2 | `service` subcommand, systemd unit template, `.deb`/`.rpm` for the agent | v3.1.0 |
+| 2 | `service` subcommand, systemd unit template, `.deb`/`.rpm` for the agent with its dedicated service user and pcsc-lite polkit rule (decision 17), verified on Debian, Ubuntu LTS and Fedora; the packaging workflow's Linux job builds them (decision 20) | v3.1.0 |
 | 3 | TLS `files` mode | v3.2.0 |
-| 4 | Tray (macOS, Windows, Linux), tray packages, installers that install and start the agent service and register the tray at login | v3.3.0 |
+| 4 | Tray (macOS, Windows, Linux), tray packages, installers that install and start the agent service and register the tray at login; the workflow's Windows and macOS jobs build them, with signing and notarization (decision 20) | v3.3.0 |
 | 5 | TLS `auto` mode | later |
 
 Phase 1 is one release on purpose. Shipping the config file without
@@ -481,7 +526,7 @@ more than one file.
 
 | File | What changes |
 | :--- | :----------- |
-| `README.md` | **Quick start:** run with `--config`, command is `go run ./cmd/agent`. **The bundled page:** now read-only, links to `/settings`. **Connect a client:** WebSocket first (it is the default), then socket.io with the `transports` setting; document `?token=` and `Authorization: Bearer`. **Configuration** and **Runtime options:** rewritten around `config.toml` (locations, every key, the loading rules, that the UI rewrites the file and drops hand-written comments, that hand edits need a restart); `set-options`, `set-reader`, `remote_control` and `SMC_ALLOW_REMOTE_OPTIONS` removed. **Architecture:** the two binaries, the service and the settings API rules, including the reverse-proxy warning. **Run as a service:** `service install` replaces the hand-written systemd unit with `Environment=` lines; keep a short manual-unit and PM2 section only if still supported, pointing at the config file. **Upgrading from v2:** the `SMC_*` to config key table. Table of contents updated to match |
+| `README.md` | **Quick start:** run with `--config`, command is `go run ./cmd/agent`. **The bundled page:** now read-only, links to `/settings`. **Connect a client:** WebSocket first (it is the default), then socket.io with the `transports` setting; document `?token=` and `Authorization: Bearer`. **Configuration** and **Runtime options:** rewritten around `config.toml` (locations, every key, the loading rules, that the UI rewrites the file and drops hand-written comments, that hand edits need a restart); `set-options`, `set-reader`, `remote_control` and `SMC_ALLOW_REMOTE_OPTIONS` removed. **Architecture:** the two binaries, the service and the settings API rules, including the reverse-proxy warning. **Run as a service:** `service install` replaces the hand-written systemd unit with `Environment=` lines; keep a short manual-unit and PM2 section only if still supported, pointing at the config file. **Upgrading from v2:** the `SMC_*` to config key table. **Browsers:** the support matrix — the agent-served page works in every browser; an external `https` page reaches `ws://127.0.0.1` from Chrome, Edge and Firefox, but Safari needs `wss://` with a trusted certificate (decision 18) — plus the Chrome Local Network Access guidance: serve the kiosk UI from the agent, or have IT set the `LocalNetworkAccessAllowedForUrls` policy for an external `https` app, with the warning that dismissing Chrome's prompt three times blocks the site permanently (decision 19). Table of contents updated to match |
 | `AGENTS.md` | See below |
 | `CHANGELOG.md` | The v3.0.0 entry: Added, Changed and Removed, the `SMC_*` to config key table, and a first paragraph that names each breaking change (env no longer read, default listen is loopback, default transport is `ws`, `set-options`/`set-reader`/`remote_control` gone, `pkg/util` env helpers gone) |
 | `docs/plan/` | This file is marked done phase by phase and kept as the record |
@@ -500,6 +545,9 @@ more than one file.
   token, so it is mode `0600` and a real `config.toml` is never committed.
 - **Testing instructions:** config tests are table-driven and need no reader;
   `pkg/server` tests run under `-race`.
+- **CI:** "There is no CI yet, so every step is run by hand" stops being true
+  when the packaging workflow lands in phase 2 — describe the tag-triggered,
+  one-job-per-OS packaging workflow, and keep the local gate as the PR gate.
 - **PR & commit conventions:** describe the integration-branch convention used
   for `v3` (PRs target it, it merges to `main` once), and fix the contradiction
   between "never push to `main` directly" and the release workflow, which pushes
@@ -519,19 +567,28 @@ more than one file.
    offers switches the agent rejects; the changelog must call it out.
 3. **Decided:** `allowed_origins` defaults to `["*"]`. Revisit once the settings
    page can list the origins that have actually connected.
-4. **Linux service user and PC/SC.** Some distributions restrict pcsc-lite to
-   active sessions through a polkit rule, which can lock out a service user.
-   Test on Debian/Ubuntu before fixing the unit and package contents.
+4. **Decided:** the service runs as a dedicated system user and the packages
+   ship a polkit rule granting it `org.debian.pcsc-lite.access_pcsc` and
+   `org.debian.pcsc-lite.access_card`; `SCARD_W_SECURITY_VIOLATION` is named
+   in the agent's error, and the packages are verified on Debian, Ubuntu LTS
+   and Fedora before phase 2 ships (decision 17). polkit is the pcsc-lite
+   upstream default since late 2023, not a per-distribution quirk, and root
+   was rejected because it widens the agent for no gain.
 5. **Dropped:** the `kardianos/service` per-user mode no longer matters, since
    there is no per-user agent (decision 12). The service mode is still worth a
    test on each OS before phase 2.
-6. **Browsers and `ws://localhost` from an `https://` page.** Chrome and Firefox
-   exempt loopback; Safari blocks it. Firefox handled WebSocket separately from
-   other mixed content. Test every browser the deployments use.
-7. **Chrome Local Network Access.** Public pages reaching loopback or a private
-   IP need a per-site permission, and WebSocket is covered in recent releases.
-   Kiosks need the policy set in advance. The version numbers came from
-   secondary sources and should be checked against Chrome's documentation.
+6. **Decided:** Safari's block is permanent, so it is documented, not worked
+   around: a browser support matrix in the README, and Safari kiosks serve
+   their UI from the agent's own page, which is same-origin `http` and works
+   everywhere. `wss://` with a trusted certificate stays the only
+   external-`https` path on Safari; the TLS phase is not pulled forward
+   (decision 18).
+7. **Decided:** closed with the facts confirmed against Chrome's own pages —
+   Chrome 142 replaced PNA with LNA, and Chrome 147 (rollout from April 2026)
+   extended it to WebSocket and WebTransport, with the origin-trial escape
+   expired since September 2026. The README documents the two kiosk paths and
+   the `LocalNetworkAccessAllowedForUrls` policy, and warns that dismissing
+   the prompt three times blocks the site permanently (decision 19).
 8. **Decided:** the ws race fix shipped from `main` as **v2.0.1**
    (2026-10-01) ahead of the v3 work: it is a crash bug in the released
    v2.0.0 and independent of the rest, so affected users do not wait for the
@@ -546,9 +603,19 @@ more than one file.
   for cloud: <https://docs.ollama.com/faq>
 - `fyne-io/systray`: <https://github.com/fyne-io/systray>
 - `kardianos/service`: <https://github.com/kardianos/service>
+- `goreleaser/nfpm`, one config for `.deb` and `.rpm`:
+  <https://github.com/goreleaser/nfpm>
 - Local Network Access: <https://developer.chrome.com/blog/local-network-access>
+- Local network access restrictions, Chrome Platform Status (the 142/147
+  confirmation): <https://chromestatus.com/feature/5152728072060928>
+- QZ Tray on Local Network Access (prompt behaviour, policy name):
+  <https://github.com/qzind/tray/wiki/LNA>
 - Mixed content and localhost in Firefox:
   <https://bugzilla.mozilla.org/show_bug.cgi?id=903966>
+- WebKit bug 171934, mixed content and localhost (Safari):
+  <https://bugs.webkit.org/show_bug.cgi?id=171934>
+- pcsc-lite and polkit (upstream default, the two actions):
+  <https://blog.apdu.fr/posts/2023/11/pcsc-lite-and-polkit/>
 - Let's Encrypt IP certificates (short-lived profile):
   <https://letsencrypt.org/2026/03/11/shorter-certs-certbot>
 - `--ignore-certificate-errors-spki-list`:
