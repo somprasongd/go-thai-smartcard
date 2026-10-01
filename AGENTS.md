@@ -30,7 +30,7 @@ commands; `build-wasm` targets `cmd/agent`.
 - `pkg/transport/pcsc` — the PC/SC backend (`//go:build !js`)
 - `pkg/apdu` — command APDU constants
 - `pkg/model` — response types and raw-field parsers
-- `pkg/server` — socket.io, WebSocket and the bundled example page
+- `pkg/server` — socket.io, WebSocket and the bundled pages (`pkg/server/web`, embedded)
 - `pkg/util` — `GetResponseCommand` and the small byte helpers (hex decode, base64)
 - `docs/plan/` — written plans for larger changes, kept as the record of what was decided
 - `testdata/` — trace files, **gitignored**
@@ -72,6 +72,8 @@ file, or the whole module stops building there.
 - Run concurrency tests under the race detector: `go test -race ./pkg/server/`.
   `TestWebSocketBroadcastWhileClientsChurn` is written for it, and a plain
   `go test` is not a reliable check on its own
+- Config tests (`pkg/config`) are table-driven and need no reader; the settings
+  and auth tests in `pkg/server` use `httptest`, no reader either
 - **No reader is required.** `pkg/transport.FakeCard` replays a recorded trace,
   and `NewFakeTransport` injects it via `smc.NewSmartCardWith`
 - `TestReadFromRecordedTrace` skips itself until `testdata/trace-real.json`
@@ -88,11 +90,12 @@ file, or the whole module stops building there.
 
 - Branch from `main`; never push feature or fix work to it directly. The one
   exception is a release: the versioned-changelog commit and its tag are pushed
-  to `main`, as the release workflow below says. A change too large for one PR
-  can use an integration branch (the v3 work uses `v3`, see `docs/plan/`): each
-  PR targets it, and it merges into `main` once, so `main` never holds half of a
-  breaking change
-- There is no CI yet, so this is the gate to run locally before a PR:
+  to `main`, as the release workflow below says — that push wins for a release
+  commit only. A change too large for one PR uses an integration branch (the
+  v3 work uses `v3`, see `docs/plan/`): each PR targets it, and it merges into
+  `main` once, so `main` never holds half of a breaking change
+- There is no CI yet, so this is the gate to run locally before a PR — or
+  `make check`, which wraps it including the wasm build:
   `go build ./... && go test ./... && go vet ./... && test -z "$(gofmt -l .)"`,
   plus `go test -race ./pkg/server/` when you touch the server
 - Commit messages in this repo are short, lowercase and imperative, without
@@ -114,9 +117,10 @@ Semantic Versioning, on the API surface rather than the commit count:
 
 - **MAJOR** — an exported symbol is removed or changed incompatibly, or
   something a deployment relies on changes: a default, a configuration source, a
-  protocol action. v2.0.0 was one of these (it deleted the `pkg/util` PC/SC
-  helpers and `cmd/wasm`); the planned v3 is another (`docs/plan/`)
-- **MINOR** — new capability, e.g. a new `SMC_*` option or a new broadcast event
+  protocol action. v2.0.0 deleted the `pkg/util` PC/SC helpers and `cmd/wasm`;
+  v3.0.0 stopped reading `SMC_*`, changed the default listen address and the
+  default transport, and removed the socket write actions
+- **MINOR** — new capability, e.g. a new config key or a new broadcast event
 - **PATCH** — bug fixes only
 
 ### 2. Version the changelog, then commit it

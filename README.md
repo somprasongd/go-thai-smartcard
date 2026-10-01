@@ -1,23 +1,25 @@
 # go-thai-smartcard
 
 Reads a Thai national ID card and publishes what it finds to connected clients
-over [socket.io](https://socket.io/) and
-[WebSockets](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API).
+over WebSockets and, opt-in, [socket.io](https://socket.io/).
 
 The agent runs in the background, waits for a card, reads it and broadcasts the
-result. A page is served from the same port, so you can look at a card without
-writing any client code. Use it as a library if you would rather build your own.
+result. A test page and a settings page are served from the same port, so you
+can look at a card and configure the agent without writing any client code. Use
+it as a library if you would rather build your own.
 
 - [Quick start](#quick-start)
 - [The bundled page](#the-bundled-page)
+- [Settings](#settings)
 - [Connect a client](#connect-a-client)
 - [Configuration](#configuration)
-- [Runtime options](#runtime-options)
 - [Use as a library](#use-as-a-library)
 - [Architecture](#architecture)
 - [Reader requirements](#reader-requirements)
 - [Testing without a reader](#testing-without-a-reader)
 - [Run as a service](#run-as-a-service)
+- [Browsers](#browsers)
+- [Upgrading from v2](#upgrading-from-v2)
 - [Other versions](#other-versions)
 
 ## Quick start
@@ -33,12 +35,16 @@ Then run the agent and open the page:
 
 ```sh
 go mod download
-go run ./cmd/agent/main.go
+go run ./cmd/agent
 ```
 
 <http://localhost:9898>
 
-Insert a card. The page fills in. To ship it as a binary:
+Insert a card. The page fills in. `go run ./cmd/agent` reads
+`config.toml` from the service config directory (see
+[Configuration](#configuration)); `--config <path>` points at another file, and
+`make dev` runs with a git-ignored `config.dev.toml` written with the defaults
+on first run. To ship it as a binary:
 
 ```sh
 go build -o bin/thai-smartcard-agent ./cmd/agent
@@ -55,7 +61,7 @@ adds what it can work out from them — age, days until expiry, the gender label
 and whether the ID number passes its checksum — marked apart from what the card
 itself says.
 
-Three presets set the switches together:
+Three presets set the display switches together:
 
 | Preset | ID number | Portrait | Screen after removal | Type |
 | :----- | :-------- | :------- | :------------------- | :--- |
@@ -68,15 +74,67 @@ are separate decisions: a screen that must not print the ID usually still has to
 show the face, and one that blurs the face usually still has to read the number
 back. Masking the ID does not hide the photo.
 
-There is also a reader picker, a refresh button for readers plugged in later, and
-a read-again button that is live while a card is sitting in the reader.
+The page is **read-only**: what the agent reads and which reader it watches are
+configuration, shown as displays that link to [settings](#settings) rather than
+changed here. Refreshing the reader list and reading a card that is already
+inserted stay, because neither changes what the agent reads.
 
-Two things to know about it. socket.io's client library is fetched from a CDN,
-so on a host that cannot reach it the page reports socket.io as unavailable and
-keeps working over the dependency-free WebSocket. And it is served with
-permissive CORS, which is what lets a page on another origin connect — see
-[the note in Runtime options](#runtime-options) before putting it on a shared
-network.
+Two things to know about it. socket.io's client library is fetched from a CDN
+**only when socket.io is enabled** — the page asks `/api/info` first, and shows
+a switched-off transport as disabled instead of loading the script. And a
+switched-off transport is not an error: the WebSocket carries the data either
+way.
+
+## Settings
+
+<http://localhost:9898/settings> is a self-contained page (plain HTML, no CDN,
+so it works on a hospital network that cannot reach the internet) for everything
+the agent reads and who may connect to it. The tray app, where one is
+installed, calls the same API.
+
+What a save does:
+
+- `[card]` — applies on the next card insert, no restart.
+- `[server]` and `[tls]` — the listener restarts on the new values;
+  connected pages reconnect.
+- The file is rewritten from a template. **Comments added by hand are lost on
+  the next save.** A hand edit takes effect after a restart.
+
+A save refuses to overwrite a file that changed on disk since it was served:
+`GET /api/settings` returns a fingerprint of the file's bytes, `PUT
+/api/settings` echoes it back, and a mismatch is a `409` with "the file changed
+on disk, reload before saving". Two pages saving at once get the same refusal —
+the second is told to reload rather than silently undoing the first.
+
+The token section generates the socket token (see
+[Connect a client](#connect-a-client)) and shows it **once**, with a copy
+button; the agent holds it in `config.toml` and never sends it again.
+"Regenerate token" replaces it, which makes every client using the old one
+reconnect with the new.
+
+### The settings API and its rules
+
+`GET /api/info` returns `{version, transports, tls}` and `GET/PUT /api/settings`
+read and write the config file. These routes are loopback only, and they are
+deliberately **not** reachable through the card sockets' permissive origin
+rules:
+
+1. No CORS headers, ever.
+2. The `Host` header must be `localhost`, `127.0.0.1` or `[::1]` — which is
+   what blocks DNS rebinding.
+3. An `Origin` header, when present, must be the agent's own.
+4. Writes require the fixed custom header `X-SMC-Settings: 1`, which a
+   cross-origin page cannot send without a preflight — and there are no CORS
+   headers to answer one.
+5. The TCP peer must be on loopback, and a request carrying
+   `X-Forwarded-For` or `Forwarded` is refused, so a reverse proxy on the same
+   host cannot turn the whole internet into "loopback".
+
+> **Do not put a reverse proxy in front of `/settings` or `/api/*`.** The
+> proxy-header refusal is the guard, not a misconfiguration to fix: there is
+> deliberately no network-reachable way to change settings. A headless kiosk is
+> configured by editing `config.toml` over SSH, or through an SSH tunnel to the
+> settings page.
 
 ## Connect a client
 
@@ -88,49 +146,22 @@ happened around it.
 | `smc-data` | the card, see [what a card contains](#what-a-card-contains) |
 | `smc-inserted` | `{message}` — a card arrived |
 | `smc-removed` | `{message}` — the card was taken out |
-| `smc-error` | `{message}` — a read failed, or a command was refused |
-| `smc-options` | what the agent is reading, plus `remote_control` |
+| `smc-error` | `{message}` — a read failed, or an action was refused |
+| `smc-options` | what the agent is reading |
 | `smc-status` | readers, the selected one, and what the agent is doing |
 
-### Via socket.io
+The control channel is **read-only**: `get-options`, `get-status`,
+`refresh-readers` and `read-now` are the actions there are. The removed
+`set-options` and `set-reader` are answered with an `smc-error` naming the
+unknown action, and `remote_control` is gone from `smc-options` and
+`smc-status` — a client that read a missing field as "allowed" should now
+assume the answer is always "no".
 
-socket.io delivers the payload bare, on a named event.
-
-```html
-<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js"></script>
-<script>
-  const socket = io.connect('http://localhost:9898');
-
-  socket.on('connect', function () {
-    // ask what the agent is reading and which readers it can see
-    socket.emit('smc-command', { action: 'get-options' });
-    socket.emit('smc-command', { action: 'get-status' });
-  });
-
-  socket.on('smc-data', function (data) {
-    console.log(data.personal.name.full_name, 'from', data.reader);
-  });
-  socket.on('smc-options', function (options) {
-    console.log('reading', options);
-  });
-  socket.on('smc-status', function (status) {
-    console.log(status.readers, status.state);
-  });
-  socket.on('smc-inserted', function (msg) {
-    console.log(msg.message);
-  });
-  socket.on('smc-removed', function (msg) {
-    console.log(msg.message);
-  });
-  socket.on('smc-error', function (msg) {
-    console.error(msg.message);
-  });
-</script>
-```
-
-### Via WebSocket
+### Via WebSocket (the default)
 
 The raw WebSocket sends one JSON object per frame, shaped `{event, payload}`.
+It is the default transport; socket.io is opt-in (see
+[Configuration](#configuration)).
 
 ```html
 <script>
@@ -156,9 +187,41 @@ The raw WebSocket sends one JSON object per frame, shaped `{event, payload}`.
 </script>
 ```
 
-Either transport can also send commands, and both answer on the same broadcast,
-so a client only needs the one connection it already has. See
-[Runtime options](#runtime-options).
+### Via socket.io
+
+Enable it first with `transports = ["ws", "socketio"]`, then use the socket.io
+**2.x** client (the Go server speaks the v2 protocol):
+
+```html
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js"></script>
+<script>
+  const socket = io.connect('http://localhost:9898', {
+    query: { token: 'THE-TOKEN' }   // when the agent requires one
+  });
+
+  socket.on('smc-data', function (data) {
+    console.log(data.personal.name.full_name, 'from', data.reader);
+  });
+</script>
+```
+
+### The socket token
+
+Required when the agent listens beyond loopback, optional otherwise. One check
+in front of both transports, before the upgrade or handshake: a bad token gets
+`401` and never sees an event.
+
+- Browsers pass `?token=<token>` on the socket URL — it is the only form a
+  browser can send. socket.io 2.x takes it as the `query` option.
+- Other clients may send `Authorization: Bearer <token>` instead, which keeps
+  the token out of URLs. If both are present the header wins.
+- The comparison is constant-time and the agent never logs request URLs.
+
+The agent generates the token: the first save that turns exposure on makes a
+random one and shows it once. Without TLS the token and the card data cross the
+LAN in clear text however the token is sent, and a token embedded in a web
+app's JavaScript keeps other hosts and other sites out but not the person using
+that page.
 
 ### What a card contains
 
@@ -187,7 +250,7 @@ so a client only needs the one connection it already has. See
             "sub_hospital": "…", "paid_type": "…", "issue_date": "…",
             "expire_date": "…", "update_date": "…",
             "change_hospital_amount": "…" },
-  "reader": "Identive CLOUD 2700 R"  // added, see Runtime options
+  "reader": "Identive CLOUD 2700 R"  // which reader it was read from
 }
 ```
 
@@ -197,89 +260,56 @@ client reading `data.personal` works without it.
 
 ## Configuration
 
-Everything is configured with environment variables.
+Everything is configured with one file, `config.toml`. Environment variables
+are not read.
 
-| ENV | Default | Description |
-| :-- | :-----: | :---------- |
-| **SMC_AGENT_PORT** | "9898" | Port to serve on. |
-| **SMC_SHOW_IMAGE** | "true" | Read the face image. |
-| **SMC_SHOW_LASER** | "true" | Read the laser ID. |
-| **SMC_SHOW_NHSO** | "false" | Read the social security record. |
-| **SMC_ALLOW_REMOTE_OPTIONS** | "true" | Let a client change the above and pick a reader while the agent runs. See [Runtime options](#runtime-options). |
+| Platform | Path |
+| :------- | :--- |
+| Linux, service | `/etc/thai-smartcard/config.toml` |
+| macOS, service | `/Library/Application Support/ThaiSmartcard/config.toml` |
+| Windows, service | `%ProgramData%\ThaiSmartcard\config.toml` |
+| `agent run` as a user (development) | `~/.config/thai-smartcard/config.toml` (Linux), `~/Library/Application Support/ThaiSmartcard/config.toml` (macOS), `%AppData%\ThaiSmartcard\config.toml` (Windows) |
 
-## Runtime options
+`--config <path>` overrides all of that. A missing file is written with the
+defaults and comments when the directory allows it.
 
-The applets are chosen at startup, but a connected client can also change them
-while the agent runs; the next card insert uses the new set, with no restart.
+```toml
+[server]
+listen = "127.0.0.1"      # "0.0.0.0" exposes the agent to the network
+port = 9898
+transports = ["ws"]       # "ws", "socketio", or both
+allowed_origins = ["*"]   # origins allowed to open a card socket; "*" is any
+token = ""                # required when listen is not loopback
 
-A client sends any of these:
+[card]
+read_face_image = true
+read_laser_id = true
+read_nhso = false         # treatment entitlement
+reader = ""               # empty watches every reader
 
-```json
-{ "action": "get-options" }
-{ "action": "set-options", "options": { "show_face_image": true, "show_nhso": false, "show_laser": true } }
-{ "action": "get-status" }
-{ "action": "set-reader", "reader": "Identive CLOUD 2700 R" }
-{ "action": "refresh-readers" }
-{ "action": "read-now" }
+[tls]
+enabled = false
+port = 9899
+mode = "files"
+cert_file = ""            # both required when enabled
+key_file = ""
+hostnames = []
 ```
 
-The agent answers on the same broadcast as the card events:
+The loading rules worth knowing:
 
-```json
-{ "event": "smc-options", "payload": { "show_face_image": true, "show_nhso": false, "show_laser": true, "remote_control": true } }
-{ "event": "smc-status", "payload": { "readers": ["Identive CLOUD 2700 R"], "selected": "", "state": "waiting", "remote_control": true } }
-```
-
-`state` is `waiting` (watching for a card), `reading`, or `card-present` (read,
-waiting to be taken out — the state in which `read-now` means something).
-
-`remote_control` reports whether `set-options` and `set-reader` are permitted.
-When it is `false` the options are pinned to the `SMC_SHOW_*` variables and a
-refused command comes back as `smc-error`. Reading again and refreshing the
-reader list stay available, since neither changes what the agent reads.
-
-Over socket.io a command is an event named `smc-command`:
-
-```javascript
-socket.emit('smc-command', { action: 'get-status' });
-```
-
-Over the raw WebSocket it is the same object as a text frame:
-
-```javascript
-conn.send(JSON.stringify({ action: 'get-status' }));
-```
-
-> **Turn it off for a shared deployment.** The agent binds every interface and
-> serves its page with permissive CORS, so with remote options enabled anything
-> on the same network that can reach the port can change what is read — and can
-> read back the name, address, ID number and portrait the page shows. Set
-> `SMC_ALLOW_REMOTE_OPTIONS=false` to pin the options per process. The agent
-> prints a warning on startup while it is enabled. This is already true of the
-> broadcasts themselves; the gate only stops a client from reconfiguring.
-
-### Several readers
-
-`set-reader` narrows the agent to one reader; an empty name watches all of them,
-which is how it starts. A name that is not attached falls back to watching
-everything rather than waiting for a reader that will never answer.
-
-The agent re-lists its readers between idle poll windows, so one plugged in
-after startup shows up without a restart. `refresh-readers` asks for the same
-thing on demand, which is what the button in the page does.
-
-`read-now` reads a card that is already inserted. That is the case an operator
-hits when a card is seated badly or a kiosk slot grips it: without it the agent
-waits for the card to be taken out and put back. It answers with `smc-data`, or
-with `smc-error` saying no card is inserted if there is nothing to read.
-
-Both take effect within a couple of seconds, bounded by the PC/SC poll window.
-Card detection itself is not slowed by that window — the OS wakes the status
-call the moment a card changes — only the reaction to a command is.
-
-`data.reader` names the reader each `smc-data` came from. With several readers
-attached, `smc-inserted` only says a card arrived, so a client cannot otherwise
-tell two cards apart when they arrive close together.
+- **Strict.** An unknown key or a bad value stops the agent and names the file
+  and line. A service that silently falls back to defaults after a typo is
+  worse than one that does not start.
+- A file that exposes the agent (`listen` beyond loopback) without a token is
+  refused; the settings page generates one.
+- Defaults first, then the file — a file that names only some keys is a
+  complete configuration.
+- Hand edits need a restart (`service restart`); there is no file watcher.
+- Saving from the UI rewrites the file from a template, so hand-added comments
+  are lost on the next save.
+- A stale `SMC_*` environment variable is not read; the agent logs a warning
+  with the TOML that replaces it, for pasting into the file.
 
 ## Use as a library
 
@@ -296,6 +326,11 @@ data, err := reader.Read(&name, &smc.Options{ShowFaceImage: true})
 instead, use `StartDaemonCtx`, which takes a channel of `model.Message`.
 
 ## Architecture
+
+```
+thai-smartcard-agent   headless; PC/SC, ws/socket.io, /, /settings, /api/*
+thai-smartcard-tray    cgo; thin client of the agent's /api (installed separately)
+```
 
 Reading a card is split into two layers:
 
@@ -320,15 +355,8 @@ type Transport interface {
 }
 ```
 
-Both waits return `transport.ErrCardTimeout` when their poll window expires with
-no card change, rather than looping internally forever. The caller is what can
-answer a client asking for a different reader or another read, and a wait that
-never returns is a wait that never hears the answer. The same windows are where
-a reader plugged in later gets noticed.
-
-`WaitCardRemove` should be given only the readers that were read from. A reader
-that was already empty answers "empty" immediately, so including one reports a
-removal that never happened.
+Only `cmd/*` reads the config file: `pkg/config` is the loader, and everything
+below it receives plain values.
 
 Because `pkg/transport/pcsc` is behind a `!js` build constraint and the default
 constructor is split across build constraints too, the card logic builds for
@@ -424,33 +452,19 @@ position, so an intentional APDU change means re-recording the trace.
 
 ## Run as a service
 
-### systemd (Linux)
-
-```bash
-cd ~
-git clone https://github.com/somprasongd/go-thai-smartcard
-cd go-thai-smartcard
-go build -o ./bin/thai-smartcard-agent ./cmd/agent
-```
-
-```bash
-nano /lib/systemd/system/thai-smartcard-agent.service
-```
+The config file is the whole configuration, so a unit file has nothing to say
+beyond which binary and which config file to run:
 
 ```ini
 [Unit]
 Description=thai-smartcard-agent
+After=pcscd.service
 
 [Service]
-Environment="SMC_AGENT_PORT=9898"
-Environment="SMC_SHOW_IMAGE=true"
-Environment="SMC_SHOW_NHSO=false"
-Environment="SMC_SHOW_LASER=true"
-Environment="SMC_ALLOW_REMOTE_OPTIONS=false"
 Type=simple
 Restart=always
 RestartSec=5s
-ExecStart=~/go-thai-smartcard/bin/thai-smartcard-agent
+ExecStart=/usr/local/bin/thai-smartcard-agent --config /etc/thai-smartcard/config.toml
 
 [Install]
 WantedBy=multi-user.target
@@ -460,15 +474,16 @@ WantedBy=multi-user.target
 systemctl enable --now thai-smartcard-agent
 ```
 
-Set `SMC_ALLOW_REMOTE_OPTIONS=false` there unless you want clients on the
-network reconfiguring the agent.
+On Linux the service needs to reach pcscd; on distributions where pcsc-lite
+restricts access with polkit, a system service is denied by default — see the
+troubleshooting note in the changelog when the packaged service arrives.
 
 ### PM2
 
 ```bash
 # Linux and macOS
 npm install -g pm2
-pm2 start ./bin/thai-smartcard-agent --name smc
+pm2 start --name smc -- ./bin/thai-smartcard-agent --config /etc/thai-smartcard/config.toml
 pm2 startup
 pm2 save
 ```
@@ -477,9 +492,64 @@ pm2 save
 # Windows
 npm install -g pm2 pm2-windows-startup
 pm2-startup install
-pm2 start .\bin\thai-smartcard-agent.exe --name smc
+pm2 start --name smc -- .\bin\thai-smartcard-agent.exe --config %ProgramData%\ThaiSmartcard\config.toml
 pm2 save
 ```
+
+## Browsers
+
+Where a page can reach the agent's socket:
+
+| Browser | Page served by the agent (`http://…`) | External `https://` page → `ws://127.0.0.1` |
+| :------ | :------------------------------------ | :------------------------------------------ |
+| Chrome, Edge | works | works — loopback is treated as trustworthy |
+| Firefox | works | works since Firefox 55 |
+| Safari | works | **blocked, by policy** — `wss://` with a trusted certificate is the only path |
+
+The agent-served page is same-origin `http`, which works in every browser; a
+Safari kiosk should serve its UI from the agent. This is why the TLS settings
+exist even though the normal kiosk case is plain `http`.
+
+Chrome's **Local Network Access** adds one more gate for a *public* `https`
+page that reaches the agent on loopback or a private IP: the user sees a
+per-site permission prompt, and WebSocket connections are covered (Chrome 147,
+rollout from April 2026). Two ways through:
+
+1. Serve the kiosk UI from the agent — local-to-local is exempt.
+2. Have IT set the `LocalNetworkAccessAllowedForUrls` policy for the external
+   app's origin.
+
+Dismissing Chrome's prompt three times blocks the site **permanently** for that
+profile, so a kiosk needs the policy set in advance rather than relying on the
+prompt.
+
+## Upgrading from v2
+
+This release is breaking in five ways, in one sentence each:
+
+1. **Environment variables are not read any more.** Copy the values into
+   `config.toml` with the table below; a stale variable only earns a warning.
+2. **The agent binds loopback by default.** The old behaviour silently served
+   the card to the whole network; to expose it again set
+   `listen = "0.0.0.0"` — and a token is then required.
+3. **The default transport is `ws`.** socket.io clients stop working until
+   `transports = ["ws", "socketio"]` is set.
+4. **The card socket is read-only.** `set-options`, `set-reader` and
+   `remote_control` are gone; settings change through `/settings` or the tray.
+5. **The `pkg/util` env helpers are removed** (`GetEnv`, `GetEnvInt`,
+   `GetEnvBool`). Code that imported them moves to its own configuration
+   source.
+
+The variable names below are the ones the agent actually read. (`SMC_PORT` was
+exported by an old Makefile but never read by the agent.)
+
+| v2 variable | v3 config key | Note |
+| :---------- | :------------ | :--- |
+| `SMC_AGENT_PORT` | `[server] port` | |
+| `SMC_SHOW_IMAGE` | `[card] read_face_image` | |
+| `SMC_SHOW_LASER` | `[card] read_laser_id` | |
+| `SMC_SHOW_NHSO` | `[card] read_nhso` | |
+| `SMC_ALLOW_REMOTE_OPTIONS` | — no replacement | What it gated no longer exists: the card socket is read-only, and settings change only through `/settings`. Delete the line from the unit file; there is nothing to set instead. Both `true` and `false` users lose nothing — a `false` install's pinned values now live in `config.toml`, and a `true` install's remote reconfiguration is gone by design |
 
 ## Other versions
 
