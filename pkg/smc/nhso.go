@@ -1,33 +1,32 @@
 package smc
 
 import (
+	"fmt"
 	"log"
 
-	"github.com/ebfe/scard"
 	"github.com/somprasongd/go-thai-smartcard/pkg/apdu"
 	"github.com/somprasongd/go-thai-smartcard/pkg/model"
-	"github.com/somprasongd/go-thai-smartcard/pkg/util"
+	"github.com/somprasongd/go-thai-smartcard/pkg/transport"
 )
 
-type nhsoReader struct {
-	card    *scard.Card
-	respCmd []byte
+// NhsoReader reads the national health security applet.
+type NhsoReader struct {
+	*reader
 }
 
-func NewNhsoReader(card *scard.Card, respCmd []byte) *nhsoReader {
-	return &nhsoReader{
-		card,
-		respCmd,
-	}
+// NewNhsoReader returns a reader for the NHSO applet.
+func NewNhsoReader(card transport.Card, respCmd []byte) *NhsoReader {
+	return &NhsoReader{newReader(card, respCmd)}
 }
 
-func (r *nhsoReader) Select() error {
-	// Send command APDU
+// Select selects the NHSO applet.
+func (r *NhsoReader) Select() error {
 	_, err := r.card.Transmit(apdu.NhsoCMD.Select)
 	return err
 }
 
-func (r *nhsoReader) Read() *model.Nhso {
+// Read reads the NHSO record.
+func (r *NhsoReader) Read() *model.Nhso {
 	m := model.Nhso{}
 	m.MainInscl = r.ReadMainInscl()
 	m.SubInscl = r.ReadSubInscl()
@@ -41,82 +40,59 @@ func (r *nhsoReader) Read() *model.Nhso {
 	return &m
 }
 
-func (r *nhsoReader) ReadMainInscl() string {
-	s, err := util.ReadDataThai(r.card, apdu.NhsoCMD.MainInscl, r.respCmd)
-	if err != nil {
-		log.Println("Error Read MainInscl:", err)
-		return ""
-	}
-	return s
+func (r *NhsoReader) ReadMainInscl() string {
+	return r.readField("MainInscl", apdu.NhsoCMD.MainInscl, true)
 }
 
-func (r *nhsoReader) ReadSubInscl() string {
-	s, err := util.ReadDataThai(r.card, apdu.NhsoCMD.SubInscl, r.respCmd)
-	if err != nil {
-		log.Println("Error Read SubInscl:", err)
-		return ""
-	}
-	return s
+func (r *NhsoReader) ReadSubInscl() string {
+	return r.readField("SubInscl", apdu.NhsoCMD.SubInscl, true)
 }
 
-func (r *nhsoReader) ReadMainHospitalName() string {
-	s, err := util.ReadDataThai(r.card, apdu.NhsoCMD.MainHospitalName, r.respCmd)
-	if err != nil {
-		log.Println("Error Read MainHospitalName:", err)
-		return ""
-	}
-	return s
+func (r *NhsoReader) ReadMainHospitalName() string {
+	return r.readField("MainHospitalName", apdu.NhsoCMD.MainHospitalName, true)
 }
 
-func (r *nhsoReader) ReadSubHospitalName() string {
-	s, err := util.ReadDataThai(r.card, apdu.NhsoCMD.SubHospitalName, r.respCmd)
-	if err != nil {
-		log.Println("Error Read SubHospitalName:", err)
-		return ""
-	}
-	return s
+func (r *NhsoReader) ReadSubHospitalName() string {
+	return r.readField("SubHospitalName", apdu.NhsoCMD.SubHospitalName, true)
 }
 
-func (r *nhsoReader) ReadPaidType() string {
-	s, err := util.ReadDataThai(r.card, apdu.NhsoCMD.PaidType, r.respCmd)
-	if err != nil {
-		log.Println("Error Read PaidType:", err)
-		return ""
-	}
-	return s
+func (r *NhsoReader) ReadPaidType() string {
+	return r.readField("PaidType", apdu.NhsoCMD.PaidType, true)
 }
 
-func (r *nhsoReader) ReadIssueDate() string {
-	s, err := util.ReadData(r.card, apdu.NhsoCMD.IssueDate, r.respCmd)
-	if err != nil {
-		log.Println("Error Read IssueDate:", err)
-		return ""
-	}
+func (r *NhsoReader) ReadIssueDate() string {
+	s := r.readField("IssueDate", apdu.NhsoCMD.IssueDate, false)
 	return string(model.NewFormatedDate(s))
 }
 
-func (r *nhsoReader) ReadExpireDate() string {
-	s, err := util.ReadData(r.card, apdu.NhsoCMD.ExpireDate, r.respCmd)
-	if err != nil {
-		log.Println("Error Read ExpireDate:", err)
-		return ""
-	}
+func (r *NhsoReader) ReadExpireDate() string {
+	s := r.readField("ExpireDate", apdu.NhsoCMD.ExpireDate, false)
 	return string(model.NewFormatedDate(s))
 }
 
-func (r *nhsoReader) ReadUpdateDate() string {
-	s, err := util.ReadData(r.card, apdu.NhsoCMD.UpdateDate, r.respCmd)
-	if err != nil {
-		log.Println("Error Read UpdateDate:", err)
-		return ""
-	}
+func (r *NhsoReader) ReadUpdateDate() string {
+	s := r.readField("UpdateDate", apdu.NhsoCMD.UpdateDate, false)
 	return string(model.NewFormatedDate(s))
 }
 
-func (r *nhsoReader) ReadChangeHospitalAmount() string {
-	s, err := util.ReadData(r.card, apdu.NhsoCMD.ChangeHospitalAmount, r.respCmd)
+func (r *NhsoReader) ReadChangeHospitalAmount() string {
+	return r.readField("ChangeHospitalAmount", apdu.NhsoCMD.ChangeHospitalAmount, false)
+}
+
+// readField reads one field and logs, rather than propagating, the error: a
+// single unreadable field should not abort the whole record.
+func (r *NhsoReader) readField(name string, cmd []byte, isThai bool) string {
+	var (
+		s   string
+		err error
+	)
+	if isThai {
+		s, err = r.readDataThai(cmd)
+	} else {
+		s, err = r.readData(cmd)
+	}
 	if err != nil {
-		log.Println("Error Read ChangeHospitalAmount:", err)
+		log.Println(fmt.Sprintf("Error Read %s: %v", name, err))
 		return ""
 	}
 	return s

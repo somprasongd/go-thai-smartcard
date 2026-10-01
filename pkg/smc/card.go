@@ -3,31 +3,29 @@ package smc
 import (
 	"log"
 
-	"github.com/ebfe/scard"
 	"github.com/somprasongd/go-thai-smartcard/pkg/apdu"
-	"github.com/somprasongd/go-thai-smartcard/pkg/util"
+	"github.com/somprasongd/go-thai-smartcard/pkg/transport"
 )
 
-type cardReader struct {
-	card    *scard.Card
-	respCmd []byte
+// CardReader reads the laser code from the card applet.
+type CardReader struct {
+	*reader
 }
 
-func NewCardReader(card *scard.Card, respCmd []byte) *cardReader {
-	return &cardReader{
-		card,
-		respCmd,
-	}
+// NewCardReader returns a reader for the card applet.
+func NewCardReader(card transport.Card, respCmd []byte) *CardReader {
+	return &CardReader{newReader(card, respCmd)}
 }
 
-func (r *cardReader) Select() error {
-	// Send command APDU
+// Select selects the card applet.
+func (r *CardReader) Select() error {
 	_, err := r.card.Transmit(apdu.CardCMD.Select)
 	return err
 }
 
-func (r *cardReader) ReadLaserId() string {
-	s, err := util.ReadLaserData(r.card, apdu.CardCMD.LaserId, r.respCmd)
+// ReadLaserId reads the laser code printed on the card.
+func (r *CardReader) ReadLaserId() string {
+	s, err := r.readLaserData(apdu.CardCMD.LaserId)
 	if err != nil {
 		log.Println("Error Read LaserId:", err)
 		return ""

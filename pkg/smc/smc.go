@@ -1,109 +1,223 @@
 package smc
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"log"
+	"sync"
 	"time"
 
-	"github.com/ebfe/scard"
 	"github.com/somprasongd/go-thai-smartcard/pkg/model"
+	"github.com/somprasongd/go-thai-smartcard/pkg/transport"
 	"github.com/somprasongd/go-thai-smartcard/pkg/util"
 )
 
+// ErrNoReaders is returned when no reader is attached.
+var ErrNoReaders = errors.New("not available readers")
+
+// readerRetryInterval is how long to wait before retrying after a transient
+// reader problem, such as the reader being unplugged.
+const readerRetryInterval = 2 * time.Second
+
+// Options selects which parts of the card to read.
 type Options struct {
 	ShowFaceImage bool
 	ShowNhsoData  bool
 	ShowLaserData bool
 }
 
-type smartCard struct {
+func defaultOptions() *Options {
+	return &Options{
+		ShowFaceImage: true,
+		ShowNhsoData:  false,
+		ShowLaserData: false,
+	}
 }
 
-func NewSmartCard() *smartCard {
-	return &smartCard{}
+// OptionsStore holds the options a running daemon reads for every card insert.
+//
+// The daemon re-reads the options on each insert rather than capturing them
+// once, so a long running agent picks up a change from a client without a
+// restart. Get returns a copy for the same reason: readCard takes an Options
+// value, and handing it the live struct would let it read a struct that
+// another goroutine is writing.
+type OptionsStore struct {
+	mu   sync.RWMutex
+	opts Options
 }
 
-func (s *smartCard) ListReaders() ([]string, error) {
-	// Establish a context
-	ctx, err := util.EstablishContext()
+// NewOptionsStore returns a store seeded with opts.
+func NewOptionsStore(opts Options) *OptionsStore {
+	return &OptionsStore{opts: opts}
+}
+
+// Get returns a copy of the current options.
+func (s *OptionsStore) Get() Options {
+	if s == nil {
+		return *defaultOptions()
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.opts
+}
+
+// Set replaces the current options.
+func (s *OptionsStore) Set(opts Options) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.opts = opts
+}
+
+// SmartCard reads Thai ID cards through a transport.
+type SmartCard struct {
+	transport transport.Transport
+}
+
+// NewSmartCard returns a reader backed by PC/SC.
+//
+// It preserves the original constructor for existing callers. Code that needs
+// a different backend, or that wants to inject a fake, should use
+// NewSmartCardWith.
+func NewSmartCard() *SmartCard {
+	t, err := defaultTransport()
+	if err != nil {
+		log.Printf("Error establishing smart card transport: %v", err)
+	}
+	return &SmartCard{transport: t}
+}
+
+// NewSmartCardWith returns a reader backed by the given transport.
+func NewSmartCardWith(t transport.Transport) *SmartCard {
+	return &SmartCard{transport: t}
+}
+
+// ListReaders returns the attached readers.
+func (s *SmartCard) ListReaders() ([]string, error) {
+	if s.transport == nil {
+		return nil, errors.New("no transport configured")
+	}
+	return s.transport.ListReaders()
+}
+
+// Close releases the underlying transport.
+func (s *SmartCard) Close() error {
+	if s.transport == nil {
+		return nil
+	}
+	return s.transport.Close()
+}
+
+// Read waits for a card, reads it once, and returns.
+func (s *SmartCard) Read(readerName *string, opts *Options) (*model.Data, error) {
+	if s.transport == nil {
+		return nil, errors.New("no transport configured")
+	}
+	if opts == nil {
+		opts = defaultOptions()
+	}
+
+	readers, err := s.readers(readerName)
 	if err != nil {
 		return nil, err
 	}
-	defer util.ReleaseContext(ctx)
 
-	// List available readers
-	return util.ListReaders(ctx)
-}
-
-func (s *smartCard) Read(readerName *string, opts *Options) (*model.Data, error) {
-	if opts == nil {
-		opts = &Options{
-			ShowFaceImage: true,
-			ShowNhsoData:  false,
-			ShowLaserData: false,
+	// The transport wait is bounded so a host can steer the daemon. A single
+	// read has nothing to steer, so it simply asks again on each idle window.
+	var index int
+	for {
+		log.Println("Waiting for a Card Inserted")
+		var err error
+		index, err = s.transport.WaitCardPresent(context.Background(), readers)
+		if errors.Is(err, transport.ErrCardTimeout) {
+			continue
 		}
-	}
-
-	readers := []string{}
-
-	if readerName == nil {
-		r, err := s.ListReaders()
 		if err != nil {
 			return nil, err
 		}
-		readers = r
-	} else {
-		readers = append(readers, *readerName)
+		break
 	}
 
-	if len(readers) == 0 {
-		return nil, errors.New("not available readers")
+	card, data, err := s.readCard(readers[index], *opts)
+	if card != nil {
+		defer func() {
+			if derr := card.Disconnect(); derr != nil {
+				log.Printf("Error disconnecting card: %v", derr)
+			}
+		}()
 	}
-
-	// Establish a context
-	ctx, err := util.EstablishContext()
 	if err != nil {
 		return nil, err
 	}
-	defer util.ReleaseContext(ctx)
-
-	rs := util.InitReaderStates(readers)
-
-	log.Println("Waiting for a Card Inserted")
-	index, err := util.WaitUntilCardPresent(ctx, rs)
-	if err != nil {
-		return nil, err
-	}
-
-	reader := readers[index]
-	card, data, err := s.readCard(ctx, reader, opts)
-	defer util.DisconnectCard(card)
-
-	if err != nil {
-		return nil, err
-	}
-
 	return data, nil
 }
 
-func (s *smartCard) readCard(ctx *scard.Context, reader string, opts *Options) (*scard.Card, *model.Data, error) {
+// StartDaemon reads cards as they are inserted and removed, until ctx is done
+// or an unrecoverable error occurs.
+func (s *SmartCard) StartDaemon(broadcast chan model.Message, opts *Options) error {
+	return s.StartDaemonCtx(context.Background(), broadcast, opts)
+}
+
+// StartDaemonCtx is StartDaemon with cancellation, so a host can shut the
+// loop down without killing the process.
+func (s *SmartCard) StartDaemonCtx(ctx context.Context, broadcast chan model.Message, opts *Options) error {
+	if opts == nil {
+		opts = defaultOptions()
+	}
+	return s.StartDaemonCtxWith(ctx, broadcast, NewOptionsStore(*opts))
+}
+
+// StartDaemonCtxWith is StartDaemonCtx with the options in a store, so a host
+// can change what the next card insert reads while the loop keeps running.
+//
+// The loop cannot be steered from here: use StartDaemonWith when a client needs
+// to pick a reader or ask for another read.
+func (s *SmartCard) StartDaemonCtxWith(ctx context.Context, broadcast chan model.Message, store *OptionsStore) error {
+	return s.StartDaemonWith(ctx, DaemonConfig{Broadcast: broadcast, Options: store})
+}
+
+// readers resolves the reader list to use for a single read.
+func (s *SmartCard) readers(readerName *string) ([]string, error) {
+	if readerName != nil {
+		return []string{*readerName}, nil
+	}
+	readers, err := s.transport.ListReaders()
+	if err != nil {
+		return nil, err
+	}
+	if len(readers) == 0 {
+		return nil, ErrNoReaders
+	}
+	return readers, nil
+}
+
+// readCard connects to the card in reader and reads the selected applets.
+//
+// opts is a value rather than a pointer because the daemon snapshots it per
+// insert, and a shared pointer could be swapped underneath the read.
+//
+// The named return values matter: a panic while reading is recovered and
+// turned into an error. Without them the function used to return
+// (nil, nil, nil), so a caller could not tell a crash from an empty read.
+func (s *SmartCard) readCard(reader string, opts Options) (card transport.Card, data *model.Data, err error) {
 	log.Printf("Connecting to card with %s", reader)
-	card, err := util.ConnectCard(ctx, reader)
+
+	card, err = s.transport.Connect(reader)
 	if err != nil {
 		log.Printf("connecting card error %s", err.Error())
 		return card, nil, err
 	}
 
-	defer func(card *scard.Card) {
+	defer func() {
 		if rcv := recover(); rcv != nil {
-			_, e := card.Status()
-			if e != nil {
-				log.Println("Recover readCard:", e.Error())
-				return
-			}
+			err = fmt.Errorf("panic while reading card: %v", rcv)
+			data = nil
 			log.Println("Recover readCard:", rcv)
 		}
-	}(card)
+	}()
 
 	status, err := card.Status()
 	if err != nil {
@@ -113,147 +227,29 @@ func (s *smartCard) readCard(ctx *scard.Context, reader string, opts *Options) (
 
 	cmd := util.GetResponseCommand(status.Atr)
 
-	data := model.Data{}
+	result := model.Data{}
 
 	personalReader := NewPersonalReader(card, cmd)
-	personalReader.Select()
-	data.Personal = personalReader.Read(opts.ShowFaceImage)
+	if err := personalReader.Select(); err != nil {
+		return card, nil, fmt.Errorf("select personal applet: %w", err)
+	}
+	result.Personal = personalReader.Read(opts.ShowFaceImage)
 
 	if opts.ShowLaserData {
 		cardReader := NewCardReader(card, cmd)
-		cardReader.Select()
-		data.Card = &model.Card{LaserId: cardReader.ReadLaserId()}
+		if err := cardReader.Select(); err != nil {
+			return card, nil, fmt.Errorf("select card applet: %w", err)
+		}
+		result.Card = &model.Card{LaserId: cardReader.ReadLaserId()}
 	}
 
 	if opts.ShowNhsoData {
 		nhsoReader := NewNhsoReader(card, cmd)
-		nhsoReader.Select()
-		data.Nhso = nhsoReader.Read()
+		if err := nhsoReader.Select(); err != nil {
+			return card, nil, fmt.Errorf("select nhso applet: %w", err)
+		}
+		result.Nhso = nhsoReader.Read()
 	}
-	return card, &data, nil
-}
 
-func (s *smartCard) StartDaemon(broadcast chan model.Message, opts *Options) error {
-	if opts == nil {
-		opts = &Options{
-			ShowFaceImage: true,
-			ShowNhsoData:  false,
-			ShowLaserData: false,
-		}
-	}
-	// Establish a context
-	ctx, err := util.EstablishContext()
-	if err != nil {
-		log.Printf("establish context error %s\n", err.Error())
-		return err
-	}
-	defer util.ReleaseContext(ctx)
-
-	chWaitReaders := make(chan []string)
-	go func(chWaitReaders chan []string) {
-		for {
-			// List available readers
-			readers, err := util.ListReaders(ctx)
-			if err != nil {
-				if broadcast != nil {
-					message := model.Message{
-						Event: "smc-error",
-						Payload: map[string]string{
-							"message": err.Error(),
-						},
-					}
-					broadcast <- message
-				}
-				log.Println("Cannot find a smart card reader, Wait 2 seconds")
-				time.Sleep(2 * time.Second)
-				continue
-			}
-
-			log.Printf("Available %d readers:\n", len(readers))
-			for i, reader := range readers {
-				log.Printf("[%d] %s\n", i, reader)
-			}
-
-			if len(readers) == 0 {
-				if broadcast != nil {
-					message := model.Message{
-						Event: "smc-error",
-						Payload: map[string]string{
-							"message": "not available readers",
-						},
-					}
-					broadcast <- message
-				}
-				log.Println("Cannot find a smart card reader, Wait 2 seconds")
-				time.Sleep(2 * time.Second)
-				continue
-			}
-
-			chWaitReaders <- readers
-			break
-		}
-	}(chWaitReaders)
-	readers := <-chWaitReaders
-
-	rs := util.InitReaderStates(readers)
-	for {
-		log.Println("Waiting for a Card Inserted")
-		index, err := util.WaitUntilCardPresent(ctx, rs)
-		if err != nil {
-			log.Printf("waiting card error %s\n", err.Error())
-			return err
-		}
-
-		// Connect to card
-		reader := readers[index]
-
-		if broadcast != nil {
-			message := model.Message{
-				Event: "smc-inserted",
-				Payload: map[string]string{
-					"message": "Connected to " + reader,
-				},
-			}
-			broadcast <- message
-		}
-
-		card, data, err := s.readCard(ctx, reader, opts)
-
-		if err != nil {
-			util.DisconnectCard(card)
-			if broadcast != nil {
-				message := model.Message{
-					Event: "smc-error",
-					Payload: map[string]string{
-						"message": err.Error(),
-					},
-				}
-				broadcast <- message
-			}
-			continue
-		}
-
-		if data != nil && broadcast != nil {
-			message := model.Message{
-				Event:   "smc-data",
-				Payload: data,
-			}
-			broadcast <- message
-		}
-
-		log.Println("Waiting for a Card Removed")
-		util.WaitUntilCardRemove(ctx, rs)
-
-		if broadcast != nil {
-			message := model.Message{
-				Event: "smc-removed",
-				Payload: map[string]string{
-					"message": "Disonnected from " + reader,
-				},
-			}
-			broadcast <- message
-		}
-
-		util.DisconnectCard(card)
-	}
+	return card, &result, nil
 }

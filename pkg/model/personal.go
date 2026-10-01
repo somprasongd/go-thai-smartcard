@@ -26,9 +26,21 @@ type Name struct {
 	FullName   string `json:"full_name"`
 }
 
+// nameFieldCount is how many '#' separated fields a raw name carries:
+// prefix, first name, middle name, last name.
+const nameFieldCount = 4
+
+// NewNameFromRaw parses a raw name field.
+//
+// The raw value comes off the card, so it can be truncated or empty when a
+// read fails. Indexing it blindly used to panic and take the whole read down
+// with it, so short input now yields an empty Name.
 func NewNameFromRaw(raw string) Name {
 	temps := strings.Split(raw, "#")
 	n := Name{}
+	if len(temps) < nameFieldCount {
+		return n
+	}
 	n.Prefix = temps[0]
 	n.FirstName = temps[1]
 	n.MiddleName = temps[2]
@@ -52,9 +64,22 @@ type Address struct {
 	Address     string `json:"address"`
 }
 
+// minAddressFieldCount is the smallest number of '#' separated fields an
+// address can have: house number, then the three trailing
+// subdistrict/district/province fields. Anything shorter used to index out of
+// range when a read failed.
+const minAddressFieldCount = 5
+
+// NewAddressFromRaw parses a raw address field.
+//
+// The raw value comes off the card, so it can be truncated or empty when a
+// read fails. Short input now yields an empty Address instead of panicking.
 func NewAddressFromRaw(raw string) Address {
 	temps := strings.Split(raw, "#")
 	a := Address{}
+	if len(temps) < minAddressFieldCount {
+		return a
+	}
 	a.HouseNo = temps[0]
 
 	if strings.HasPrefix(temps[1], "หมู่ที่") {

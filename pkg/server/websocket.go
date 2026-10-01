@@ -74,11 +74,14 @@ func (s *subscriber) unregister(c *connection) {
 
 type ws struct {
 	subscriber
+	command chan model.Command
 }
 
-func NewWS() *ws {
-	s := subscriber{}
-	return &ws{s}
+// NewWS returns the raw WebSocket transport. command may be nil, which leaves
+// the control channel off.
+func NewWS(command chan model.Command) *ws {
+	s := ws{command: command}
+	return &s
 }
 
 func (s *ws) Handler(w http.ResponseWriter, r *http.Request) {
@@ -98,21 +101,25 @@ func (s *ws) Handler(w http.ResponseWriter, r *http.Request) {
 	// ws.SetPongHandler(func(string) error { ws.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 	// Continuosly read and write message
 	for {
-		_, _, err := ws.ReadMessage()
+		mt, message, err := ws.ReadMessage()
 		if err != nil {
 			log.Println("read failed:", err)
 			s.subscriber.unregister(c)
 			break
 		}
-		// input := string(message)
-		// cmd := getCmd(input)
-		// // msg := getMessage(input)
-		// if cmd == "close" {
-		// 	s.subscriber.unregister(c)
-		// 	c.write(websocket.CloseMessage, []byte{})
-		// 	log.Println("Close websocket")
-		// 	break
-		// }
+		// Only a JSON text frame is part of the control contract. Anything
+		// else is ignored rather than closed on, so a page that still sends
+		// a stray binary frame keeps its broadcast connection.
+		if mt != websocket.TextMessage {
+			log.Printf("ignoring binary websocket frame of %d bytes", len(message))
+			continue
+		}
+		cmd, err := decodeCommand(message)
+		if err != nil {
+			log.Println("websocket command:", err)
+			continue
+		}
+		forwardCommand(s.command, cmd)
 	}
 }
 

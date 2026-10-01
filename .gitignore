@@ -1,3 +1,8 @@
 /bin
+/dist
+/testdata
 
 *.log
+
+# macOS recreates this in any folder opened in Finder.
+.DS_Store

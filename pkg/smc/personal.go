@@ -5,31 +5,30 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/ebfe/scard"
 	"github.com/somprasongd/go-thai-smartcard/pkg/apdu"
 	"github.com/somprasongd/go-thai-smartcard/pkg/model"
+	"github.com/somprasongd/go-thai-smartcard/pkg/transport"
 	"github.com/somprasongd/go-thai-smartcard/pkg/util"
 )
 
-type personalReader struct {
-	card    *scard.Card
-	respCmd []byte
+// PersonalReader reads the personal data applet.
+type PersonalReader struct {
+	*reader
 }
 
-func NewPersonalReader(card *scard.Card, respCmd []byte) *personalReader {
-	return &personalReader{
-		card,
-		respCmd,
-	}
+// NewPersonalReader returns a reader for the personal data applet.
+func NewPersonalReader(card transport.Card, respCmd []byte) *PersonalReader {
+	return &PersonalReader{newReader(card, respCmd)}
 }
 
-func (r *personalReader) Select() error {
-	// Send command APDU
+// Select selects the personal data applet.
+func (r *PersonalReader) Select() error {
 	_, err := r.card.Transmit(apdu.PersonalCMD.Select)
 	return err
 }
 
-func (r *personalReader) Read(isReadFaceImage bool) *model.Personal {
+// Read reads the personal record, including the face image when asked for.
+func (r *PersonalReader) Read(isReadFaceImage bool) *model.Personal {
 	m := model.Personal{}
 	m.Cid = r.ReadCID()
 	m.Name = model.NewNameFromRaw(r.ReadRawName())
@@ -46,121 +45,67 @@ func (r *personalReader) Read(isReadFaceImage bool) *model.Personal {
 	return &m
 }
 
-func (r *personalReader) ReadCID() string {
-	s, err := util.ReadData(r.card, apdu.PersonalCMD.Cid, r.respCmd)
-	if err != nil {
-		log.Println("Error Read CID:", err)
-		return ""
-	}
-	return s
+func (r *PersonalReader) ReadCID() string {
+	return r.readField("CID", apdu.PersonalCMD.Cid, false)
 }
 
-func (r *personalReader) ReadRawName() string {
-	s, err := util.ReadDataThai(r.card, apdu.PersonalCMD.NameThai, r.respCmd)
-	if err != nil {
-		log.Println("Error Read Thai name:", err)
-		return ""
-	}
-	return s
+func (r *PersonalReader) ReadRawName() string {
+	return r.readField("Thai name", apdu.PersonalCMD.NameThai, true)
 }
 
-func (r *personalReader) ReadName() string {
-	raw := r.ReadRawName()
-	defer func() {
-		if r := recover(); r != nil {
-			log.Println("Recovered in ReadName", r)
-		}
-	}()
-	name := model.NewNameFromRaw(raw)
-
-	return name.FullName
+func (r *PersonalReader) ReadName() string {
+	return model.NewNameFromRaw(r.ReadRawName()).FullName
 }
 
-func (r *personalReader) ReadRawNameEng() string {
-	s, err := util.ReadDataThai(r.card, apdu.PersonalCMD.NameEng, r.respCmd)
-	if err != nil {
-		log.Println("Error Read English name:", err)
-		return ""
-	}
-	return s
+func (r *PersonalReader) ReadRawNameEng() string {
+	return r.readField("English name", apdu.PersonalCMD.NameEng, true)
 }
 
-func (r *personalReader) ReadNameEng() string {
-	raw := r.ReadRawNameEng()
-	name := model.NewNameFromRaw(raw)
-
-	return name.FullName
+func (r *PersonalReader) ReadNameEng() string {
+	return model.NewNameFromRaw(r.ReadRawNameEng()).FullName
 }
 
-func (r *personalReader) ReadDob() string {
-	s, err := util.ReadData(r.card, apdu.PersonalCMD.Dob, r.respCmd)
-	if err != nil {
-		log.Println("Error Read Dob:", err)
-		return ""
-	}
+func (r *PersonalReader) ReadDob() string {
+	s := r.readField("Dob", apdu.PersonalCMD.Dob, false)
 	return string(model.NewFormatedDate(s))
 }
 
-func (r *personalReader) ReadGender() string {
-	s, err := util.ReadData(r.card, apdu.PersonalCMD.Gender, r.respCmd)
-	if err != nil {
-		log.Println("Error Read Gender:", err)
-		return ""
-	}
-	return s
+func (r *PersonalReader) ReadGender() string {
+	return r.readField("Gender", apdu.PersonalCMD.Gender, false)
 }
 
-func (r *personalReader) ReadCardIssuer() string {
-	s, err := util.ReadDataThai(r.card, apdu.PersonalCMD.CardIssuer, r.respCmd)
-	if err != nil {
-		log.Println("Error Read CardIssuer:", err)
-		return ""
-	}
-	return s
+func (r *PersonalReader) ReadCardIssuer() string {
+	return r.readField("CardIssuer", apdu.PersonalCMD.CardIssuer, true)
 }
 
-func (r *personalReader) ReadIssueDate() string {
-	s, err := util.ReadData(r.card, apdu.PersonalCMD.IssueDate, r.respCmd)
-	if err != nil {
-		log.Println("Error Read IssueDate:", err)
-		return ""
-	}
+func (r *PersonalReader) ReadIssueDate() string {
+	s := r.readField("IssueDate", apdu.PersonalCMD.IssueDate, false)
 	return string(model.NewFormatedDate(s))
 }
 
-func (r *personalReader) ReadExpireDate() string {
-	s, err := util.ReadData(r.card, apdu.PersonalCMD.ExpireDate, r.respCmd)
-	if err != nil {
-		log.Println("Error Read ExpireDate:", err)
-		return ""
-	}
+func (r *PersonalReader) ReadExpireDate() string {
+	s := r.readField("ExpireDate", apdu.PersonalCMD.ExpireDate, false)
 	return string(model.NewFormatedDate(s))
 }
 
-func (r *personalReader) ReadRawAddress() string {
-	s, err := util.ReadDataThai(r.card, apdu.PersonalCMD.Address, r.respCmd)
-	if err != nil {
-		log.Println("Error Read Address:", err)
-		return ""
-	}
-	return s
+func (r *PersonalReader) ReadRawAddress() string {
+	return r.readField("Address", apdu.PersonalCMD.Address, true)
 }
 
-func (r *personalReader) ReadAddress() string {
+func (r *PersonalReader) ReadAddress() string {
 	raw := r.ReadRawAddress()
 	if raw == "" {
-		log.Panicln("Cannot read address")
-		return raw
+		log.Println("Cannot read address")
+		return ""
 	}
-	addr := model.NewAddressFromRaw(raw)
-
-	return addr.Address
+	return model.NewAddressFromRaw(raw).Address
 }
 
-func (r *personalReader) ReadFaceImage() string {
+// ReadFaceImage reads the portrait in chunks and returns it as base64.
+func (r *PersonalReader) ReadFaceImage() string {
 	image := ""
 	for _, v := range apdu.PersonalCMD.FaceImage {
-		raw, err := util.ReadData(r.card, v, r.respCmd)
+		raw, err := r.readData(v)
 		if err != nil {
 			log.Println("Error Read Face Image:", err)
 			return ""
@@ -168,17 +113,32 @@ func (r *personalReader) ReadFaceImage() string {
 		if len(raw) == 0 {
 			break
 		}
-		hx := hex.EncodeToString([]byte(raw))
-		image = image + hx
+		image += hex.EncodeToString([]byte(raw))
 	}
 
-	b := []byte(image)
-	db, err := util.DecodeHex(b)
+	db, err := util.DecodeHex([]byte(image))
 	if err != nil {
-		fmt.Printf("failed to decode hex: %s", err)
+		log.Printf("failed to decode hex: %s", err)
 		return ""
 	}
+	return string(util.Base64Encode(db))
+}
 
-	base64 := util.Base64Encode([]byte(db))
-	return string(base64)
+// readField reads one field and logs, rather than propagating, the error: a
+// single unreadable field should not abort the whole record.
+func (r *PersonalReader) readField(name string, cmd []byte, isThai bool) string {
+	var (
+		s   string
+		err error
+	)
+	if isThai {
+		s, err = r.readDataThai(cmd)
+	} else {
+		s, err = r.readData(cmd)
+	}
+	if err != nil {
+		log.Println(fmt.Sprintf("Error Read %s: %v", name, err))
+		return ""
+	}
+	return s
 }
