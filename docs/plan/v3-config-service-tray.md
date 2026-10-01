@@ -658,3 +658,37 @@ loader refusing an exposure without a token at startup. `packaging/VERIFY.md`
 is the Debian/Ubuntu/Fedora checklist for the remaining on-host verification,
 and `packaging/macos/SIGNING.md` documents the four Apple secrets. The full
 uncached gate (`go test -count=1 ./...`, vet, gofmt, wasm) is green.
+
+## Release runbook (blocked on the format choice)
+
+`v3` is pushed and **PR #11** (v3→main) is open. Three options were offered
+and are still pending the user's pick: (1) one v3.0.0 release containing
+phases 1–4, (2) four releases following the phase table, (3) keep PR #11
+unmerged until review. Merge/tag/release do not happen until one is chosen.
+
+Option 1 — one v3.0.0 release:
+
+```sh
+gh pr merge 11 --merge          # or squash-free merge on GitHub
+git checkout main && git pull
+# fold the [Unreleased] entries (service+packages, TLS, tray) into the
+# [3.0.0] section — one release ships all phases together
+$EDITOR CHANGELOG.md
+go build ./... && go test ./... && go vet ./... && test -z "$(gofmt -l .)"
+git add CHANGELOG.md && git commit -m "update changelog for v3.0.0" && git push origin main
+git tag -a v3.0.0 -m "config file, settings page, read-only socket, service, tls and tray"
+git push origin v3.0.0
+awk '/^## \[3.0.0\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md > /tmp/notes.md
+gh release create v3.0.0 --title "v3.0.0" --notes-file /tmp/notes.md
+# the packaging workflow builds and attaches the .deb/.rpm to the release;
+# then packaging/VERIFY.md on Debian, Ubuntu LTS and Fedora, and the secrets
+# from packaging/macos/SIGNING.md before a signed tag is expected
+```
+
+Option 2 — four releases following the phase table: same merge, then for each
+of v3.1.0, v3.2.0, v3.3.0 move the matching `[Unreleased]` section into a
+`## [V] - <date>` heading, commit (`update changelog for v3.X.0`), tag, push,
+and cut the release from that section. The tags differ only by their
+changelog commits, because the code lands on `main` together.
+
+Option 3 needs no commands: PR #11 stays open for review.
