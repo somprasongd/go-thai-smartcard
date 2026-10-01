@@ -1,102 +1,2852 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="th" data-lang="th" data-privacy="kiosk" data-view="card">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
-    <title>Example-SMC</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js"></script>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>SMC — Thai ID Card Agent</title>
+    <!--
+      socket.io's Go server (googollee/go-socket.io) speaks the protocol but does
+      not ship the JavaScript client, so it has to come from a CDN. When this
+      script cannot load the page still works: the WebSocket transport below is
+      dependency free, and the status bar says so instead of failing silently.
+    -->
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js"
+      onerror="window.__smcSocketIOCDNFailed = true"
+    ></script>
+    <style>
+      /* ---------------------------------------------------------------------
+         Design tokens. The card look borrows from the physical card: a warm
+         off-white stock, a deep red accent and a single hairline gold rule, so
+         the data area reads as "a card" rather than as a generic table.
+         --------------------------------------------------------------------- */
+      :root {
+        --bg: #0e1116;
+        --bg-elev: #161b23;
+        --bg-elev-2: #1d232d;
+        --line: #2a323e;
+        --line-soft: #222933;
+        --fg: #e6e9ef;
+        --fg-dim: #98a2b3;
+        --fg-faint: #667085;
+        --accent: #c8102e;
+        --accent-soft: rgba(200, 16, 46, 0.16);
+        --gold: #b08d4f;
+        --ok: #22c55e;
+        --warn: #f59e0b;
+        --danger: #ef4444;
+        --info: #3b82f6;
+
+        /* Card stock */
+        --card-bg: #f6f2e8;
+        --card-fg: #23201a;
+        --card-dim: #6b6455;
+        --card-line: #d8cfba;
+        --card-accent: #a3122a;
+
+        --radius: 12px;
+        --radius-sm: 8px;
+        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans Thai",
+          "Leelawadee UI", "Sarabun", Roboto, sans-serif;
+        --scale: 1;
+      }
+
+      /* Counter mode: same layout, read from further away. */
+      html[data-privacy="counter"] {
+        --scale: 1.28;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      /* The layout sets display on .blocks, .pill and .lightbox, and an author
+         display rule outranks the UA stylesheet's [hidden] { display: none }.
+         Without this, toggling the hidden attribute silently does nothing. */
+      [hidden] {
+        display: none !important;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--sans);
+        font-size: calc(15px * var(--scale));
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      /* ----------------------------- top bar ----------------------------- */
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        padding: 10px 18px;
+        background: rgba(14, 17, 22, 0.92);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        font-weight: 650;
+        letter-spacing: 0.01em;
+        margin-right: auto;
+      }
+
+      .brand-mark {
+        width: 26px;
+        height: 26px;
+        border-radius: 6px;
+        background: linear-gradient(150deg, var(--accent), #8d0c22);
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+        font-weight: 700;
+        color: #fff;
+        flex: none;
+      }
+
+      .pills {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--bg-elev);
+        font-size: 12px;
+        color: var(--fg-dim);
+        white-space: nowrap;
+      }
+
+      .pill b {
+        color: var(--fg);
+        font-weight: 600;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--fg-faint);
+        flex: none;
+      }
+
+      .dot.on {
+        background: var(--ok);
+        box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.16);
+      }
+
+      .dot.off {
+        background: var(--danger);
+        box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.16);
+      }
+
+      .dot.wait {
+        background: var(--warn);
+        animation: pulse 1.4s ease-in-out infinite;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.35;
+        }
+      }
+
+      /* ------------------------------ layout ----------------------------- */
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 340px;
+        gap: 18px;
+        padding: 18px;
+        align-items: start;
+        max-width: 1500px;
+        margin: 0 auto;
+      }
+
+      @media (max-width: 1080px) {
+        .layout {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      .panel {
+        background: var(--bg-elev);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+      }
+
+      .panel > h2 {
+        margin: 0;
+        padding: 11px 14px;
+        font-size: 12px;
+        font-weight: 650;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--fg-dim);
+        border-bottom: 1px solid var(--line-soft);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .panel > h2 .count {
+        margin-left: auto;
+        text-transform: none;
+        letter-spacing: 0;
+        font-weight: 500;
+        color: var(--fg-faint);
+      }
+
+      .panel-body {
+        padding: 14px;
+      }
+
+      /* --------------------------- empty state --------------------------- */
+      .stage {
+        min-height: 60vh;
+        display: grid;
+        place-items: center;
+      }
+
+      .empty {
+        text-align: center;
+        padding: 40px 24px;
+        max-width: 520px;
+      }
+
+      .empty-icon {
+        width: 76px;
+        height: 76px;
+        margin: 0 auto 18px;
+        border-radius: 16px;
+        border: 2px dashed var(--line);
+        display: grid;
+        place-items: center;
+        font-size: 30px;
+        color: var(--fg-faint);
+      }
+
+      .empty h3 {
+        margin: 0 0 8px;
+        font-size: 19px;
+        font-weight: 650;
+      }
+
+      .empty p {
+        margin: 0 0 6px;
+        color: var(--fg-dim);
+        font-size: 14px;
+      }
+
+      .empty .hint {
+        color: var(--fg-faint);
+        font-size: 13px;
+        margin-top: 12px;
+      }
+
+      .empty code {
+        font-family: var(--mono);
+        font-size: 12.5px;
+        background: var(--bg-elev-2);
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        padding: 1.5px 6px;
+      }
+
+      .empty.is-error .empty-icon {
+        border-color: var(--danger);
+        color: var(--danger);
+      }
+
+      /* ------------------------------ the card --------------------------- */
+      .idcard {
+        width: 100%;
+        max-width: 880px;
+        background: var(--card-bg);
+        color: var(--card-fg);
+        border-radius: 14px;
+        border: 1px solid var(--card-line);
+        box-shadow: 0 20px 50px -18px rgba(0, 0, 0, 0.75),
+          inset 0 1px 0 rgba(255, 255, 255, 0.55);
+        position: relative;
+        overflow: hidden;
+      }
+
+      /* Faint guilloche wash, kept under the content. */
+      .idcard::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image: repeating-linear-gradient(
+          115deg,
+          rgba(0, 0, 0, 0.022) 0 2px,
+          transparent 2px 7px
+        );
+        pointer-events: none;
+      }
+
+      .idcard-top {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 20px;
+        border-bottom: 1px solid var(--card-line);
+        background: rgba(163, 18, 42, 0.05);
+        position: relative;
+      }
+
+      .idcard-top .emblem {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: var(--card-accent);
+        color: #fff;
+        display: grid;
+        place-items: center;
+        font-size: 14px;
+        flex: none;
+      }
+
+      .idcard-title {
+        font-size: 12.5px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        color: var(--card-accent);
+        text-transform: uppercase;
+      }
+
+      .idcard-sub {
+        font-size: 11px;
+        color: var(--card-dim);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .idcard-body {
+        display: grid;
+        grid-template-columns: 168px minmax(0, 1fr);
+        gap: 20px;
+        padding: 20px;
+        position: relative;
+      }
+
+      @media (max-width: 620px) {
+        .idcard-body {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      html[data-privacy="counter"] .idcard-body {
+        grid-template-columns: 220px minmax(0, 1fr);
+        gap: 26px;
+        padding: 28px;
+      }
+
+      .photo-wrap {
+        position: relative;
+      }
+
+      .photo {
+        width: 100%;
+        aspect-ratio: 3 / 4;
+        object-fit: cover;
+        border-radius: 6px;
+        border: 1px solid var(--card-line);
+        background: #e6e0d2;
+        display: block;
+        cursor: zoom-in;
+      }
+
+      .photo-empty {
+        width: 100%;
+        aspect-ratio: 3 / 4;
+        border-radius: 6px;
+        border: 1px dashed var(--card-line);
+        background: #ece6d8;
+        display: grid;
+        place-items: center;
+        color: var(--card-dim);
+        font-size: 12px;
+        text-align: center;
+        padding: 10px;
+      }
+
+      .photo.is-masked {
+        filter: blur(18px) grayscale(0.4);
+      }
+
+      .fields {
+        display: grid;
+        gap: 11px;
+        align-content: start;
+        min-width: 0;
+      }
+
+      .f {
+        display: grid;
+        grid-template-columns: 118px minmax(0, 1fr);
+        gap: 10px;
+        align-items: baseline;
+        min-width: 0;
+      }
+
+      .f-label {
+        font-size: 10.5px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--card-dim);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      html[data-privacy="counter"] .f-label {
+        font-size: 12.5px;
+      }
+
+      /* Bigger type needs a wider label column or long Thai labels truncate. */
+      html[data-privacy="counter"] .f {
+        grid-template-columns: 152px minmax(0, 1fr);
+      }
+
+      .f-value {
+        font-size: 14px;
+        font-weight: 550;
+        word-break: break-word;
+        min-width: 0;
+      }
+
+      html[data-privacy="counter"] .f-value {
+        font-size: 18px;
+      }
+
+      .f-value.mono {
+        font-family: var(--mono);
+        letter-spacing: 0.06em;
+        font-weight: 600;
+      }
+
+      .f-value.big {
+        font-size: calc(19px * var(--scale));
+        font-weight: 700;
+        line-height: 1.3;
+      }
+
+      .f-value.is-empty {
+        color: var(--card-dim);
+        font-weight: 400;
+        font-style: italic;
+      }
+
+      .f-value .derived {
+        display: inline-block;
+        margin-left: 8px;
+        padding: 1px 7px;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.06);
+        border: 1px solid var(--card-line);
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--card-dim);
+        font-style: normal;
+      }
+
+      .f-value .derived.ok {
+        color: #1d6f42;
+        border-color: #1d6f4233;
+        background: #1d6f4212;
+      }
+
+      .f-value .derived.warn {
+        color: #8a5a06;
+        border-color: #8a5a0633;
+        background: #8a5a0612;
+      }
+
+      .f-value .derived.bad {
+        color: #9f1239;
+        border-color: #9f123933;
+        background: #9f123912;
+      }
+
+      .f-value .copy-btn {
+        margin-left: 8px;
+        padding: 2px 7px;
+        font-size: 11px;
+        font-family: var(--sans);
+        opacity: 0;
+        transition: opacity 0.12s;
+        vertical-align: baseline;
+      }
+
+      .f:hover .copy-btn,
+      .f-value .copy-btn:focus-visible {
+        opacity: 1;
+      }
+
+      /* Nothing to hover on a touch screen, so keep the affordance visible. */
+      @media (hover: none) {
+        .f-value .copy-btn {
+          opacity: 0.7;
+        }
+      }
+
+      .idcard-foot {
+        padding: 12px 20px;
+        border-top: 1px solid var(--card-line);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 20px;
+        align-items: center;
+        justify-content: space-between;
+        background: rgba(163, 18, 42, 0.05);
+        position: relative;
+      }
+
+      .idcard-foot .meta {
+        font-size: 11.5px;
+        color: var(--card-dim);
+      }
+
+      /* --------------------------- extra blocks -------------------------- */
+      .blocks {
+        display: grid;
+        gap: 18px;
+        margin-top: 18px;
+      }
+
+      .kv {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 10px 18px;
+      }
+
+      .kv .f {
+        grid-template-columns: 132px minmax(0, 1fr);
+        padding-bottom: 7px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+
+      .kv .f-label {
+        text-transform: none;
+        letter-spacing: 0;
+        font-size: 12.5px;
+      }
+
+      .kv .f-value {
+        font-size: 13.5px;
+      }
+
+      .absent {
+        padding: 12px 14px;
+        border: 1px dashed var(--line);
+        border-radius: var(--radius-sm);
+        background: var(--bg-elev-2);
+        color: var(--fg-dim);
+        font-size: 13px;
+      }
+
+      .absent code {
+        font-family: var(--mono);
+        font-size: 12px;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 1px 5px;
+        color: var(--warn);
+      }
+
+      /* ------------------------------ table ------------------------------ */
+      table.fields-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      .fields-table th,
+      .fields-table td {
+        text-align: left;
+        padding: 7px 10px;
+        border-bottom: 1px solid var(--line-soft);
+        vertical-align: top;
+      }
+
+      .fields-table th {
+        color: var(--fg-dim);
+        font-weight: 600;
+        font-size: 11.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        background: var(--bg-elev-2);
+      }
+
+      .fields-table td.key {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--fg-faint);
+        white-space: nowrap;
+      }
+
+      .fields-table td.lbl {
+        color: var(--fg-dim);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .fields-table td.val {
+        font-family: var(--mono);
+        font-size: 12px;
+        word-break: break-word;
+      }
+
+      .fields-table td.val.is-empty {
+        color: var(--fg-faint);
+        font-style: italic;
+      }
+
+      .fields-table tr.group-head td {
+        background: var(--bg-elev-2);
+        color: var(--accent);
+        font-weight: 700;
+        font-size: 11.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .table-scroll {
+        /* No inner scrollbar: the page already scrolls, and two nested
+           scrollbars on one table is a trap to scroll the wrong one. */
+        overflow: visible;
+      }
+
+      /* ----------------------------- controls ---------------------------- */
+      .group {
+        padding: 13px 14px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+
+      .group:last-child {
+        border-bottom: none;
+      }
+
+      .group-title {
+        font-size: 11px;
+        font-weight: 650;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--fg-faint);
+        margin: 0 0 9px;
+      }
+
+      .seg {
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: 1fr;
+        gap: 3px;
+        padding: 3px;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 9px;
+      }
+
+      .seg button {
+        border: none;
+        background: transparent;
+        color: var(--fg-dim);
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 6px 4px;
+        border-radius: 6px;
+        cursor: pointer;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .seg button:hover {
+        color: var(--fg);
+        background: var(--bg-elev-2);
+      }
+
+      .seg button[aria-pressed="true"] {
+        background: var(--accent);
+        color: #fff;
+      }
+
+      .seg button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .check {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 5px 0;
+        font-size: 13px;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .check input {
+        width: 15px;
+        height: 15px;
+        accent-color: var(--accent);
+        cursor: pointer;
+        flex: none;
+        margin: 0;
+      }
+
+      .check.disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      .check .sub {
+        display: block;
+        font-size: 11px;
+        color: var(--fg-faint);
+      }
+
+      .field-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+
+      .field-row label {
+        font-size: 12.5px;
+        color: var(--fg-dim);
+        flex: none;
+        min-width: 86px;
+      }
+
+      select,
+      .btn {
+        font-family: inherit;
+        font-size: 12.5px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--line);
+        background: var(--bg);
+        color: var(--fg);
+        padding: 6px 9px;
+        cursor: pointer;
+      }
+
+      select {
+        flex: 1;
+        min-width: 0;
+      }
+
+      select:disabled,
+      .btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      .btn:hover {
+        border-color: var(--fg-faint);
+      }
+
+      .btn.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+        font-weight: 600;
+      }
+
+      .btn.primary:hover {
+        filter: brightness(1.12);
+      }
+
+      .btn.wide {
+        width: 100%;
+        text-align: center;
+      }
+
+      .note {
+        font-size: 11.5px;
+        color: var(--fg-faint);
+        margin: 7px 0 0;
+        line-height: 1.45;
+      }
+
+      .note.warn {
+        color: var(--warn);
+      }
+
+      /* ------------------------------ log/json --------------------------- */
+      .log {
+        max-height: 260px;
+        overflow: auto;
+        font-family: var(--mono);
+        font-size: 11.5px;
+      }
+
+      .log-row {
+        display: grid;
+        grid-template-columns: 62px 108px minmax(0, 1fr);
+        gap: 8px;
+        padding: 4px 6px;
+        border-bottom: 1px solid var(--line-soft);
+        align-items: baseline;
+      }
+
+      .log-row:last-child {
+        border-bottom: none;
+      }
+
+      .log-row .t {
+        color: var(--fg-faint);
+      }
+
+      .log-row .ev {
+        font-weight: 600;
+      }
+
+      .log-row .ev.smc-inserted {
+        color: var(--info);
+      }
+
+      .log-row .ev.smc-data {
+        color: var(--ok);
+      }
+
+      .log-row .ev.sm-c-removed {
+        color: var(--fg-dim);
+      }
+
+      .log-row .ev.sm-c-error {
+        color: var(--danger);
+      }
+
+      .log-row .ev.sm-c-options {
+        color: var(--accent);
+      }
+
+      .log-row .m {
+        color: var(--fg-dim);
+        word-break: break-word;
+        font-family: var(--sans);
+        font-size: 12px;
+      }
+
+      pre.json {
+        margin: 0;
+        max-height: 320px;
+        overflow: auto;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        line-height: 1.55;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        padding: 11px;
+        color: #cbd5e1;
+        white-space: pre;
+      }
+
+      /* ------------------------------ lightbox --------------------------- */
+      .lightbox {
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+        background: rgba(6, 8, 11, 0.9);
+        display: grid;
+        place-items: center;
+        padding: 28px;
+        cursor: zoom-out;
+      }
+
+      .lightbox[hidden] {
+        display: none;
+      }
+
+      .lightbox img {
+        max-width: 100%;
+        max-height: 100%;
+        border-radius: 8px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.7);
+      }
+
+      /* ------------------------------- toast ----------------------------- */
+      .toast {
+        position: fixed;
+        left: 50%;
+        bottom: 22px;
+        transform: translateX(-50%) translateY(14px);
+        z-index: 70;
+        background: var(--bg-elev-2);
+        border: 1px solid var(--line);
+        color: var(--fg);
+        padding: 9px 16px;
+        border-radius: 999px;
+        font-size: 13px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.18s, transform 0.18s;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+      }
+
+      .toast.show {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+
+      .toast.err {
+        border-color: var(--danger);
+        color: #fecaca;
+      }
+
+      .flash {
+        animation: flash 0.85s ease-out;
+      }
+
+      @keyframes flash {
+        from {
+          box-shadow: 0 0 0 0 var(--accent-soft);
+        }
+        to {
+          box-shadow: 0 0 0 14px transparent;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
   </head>
 
   <body>
-    <h1>SMC</h1>
-    <div>
-      <p id="name"></p>
-      <p id="address"></p>
-      <img src="" alt="image" />
-    </div>
-    <h2>Socket.io</h2>
-    <p id="data"></p>
-    <h2>Websocket</h2>
-    <p id="data-ws"></p>
-    <script>
-      var socket = io.connect(window.location.origin);
-      const dataEl = document.getElementById('data');
-      const nameEl = document.getElementById('name');
-      const addrEl = document.getElementById('address');
-      const imgEl = document.querySelector('img');
-      socket.on('connect', function () {
-        dataEl.innerHTML = '<b>Connected to socket.io server</b>';
-        nameEl.innerHTML = '';
-        addrEl.innerHTML = '';
-        imgEl.setAttribute('src', `data:image/png;base64, `);
-      });
-      socket.on('disconnect', function () {
-        dataEl.innerHTML = '<b>Disconnected to socket.io server</b>';
-        nameEl.innerHTML = '';
-        addrEl.innerHTML = '';
-        imgEl.setAttribute('src', `data:image/png;base64, `);
-      });
-      socket.on('smc-data', function (data) {
-        console.log(data);
-        dataEl.innerHTML = JSON.stringify(data, null, '\t');
-        nameEl.innerHTML = data.personal.name.full_name;
-        addrEl.innerHTML = data.personal.address.address;
-        imgEl.setAttribute(
-          'src',
-          `data:image/png;base64, ${data.personal.base64_img}`
-        );
-      });
-      socket.on('smc-error', function (data) {
-        console.log(data);
-        dataEl.innerHTML = JSON.stringify(data, null, '\t');
-        nameEl.innerHTML = '';
-        addrEl.innerHTML = '';
-        imgEl.setAttribute('src', `data:image/png;base64, `);
-      });
-      socket.on('smc-removed', function (data) {
-        console.log(data);
-        dataEl.innerHTML = JSON.stringify(data, null, '\t');
-        nameEl.innerHTML = '';
-        addrEl.innerHTML = '';
-        imgEl.setAttribute('src', `data:image/png;base64, `);
-      });
-      socket.on('smc-inserted', function (data) {
-        console.log(data);
-        dataEl.innerHTML = JSON.stringify(data, null, '\t');
-        nameEl.innerHTML = '';
-        addrEl.innerHTML = '';
-        imgEl.setAttribute('src', `data:image/png;base64, `);
-      });
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">SMC</span>
+        <span data-i18n="app.title">Thai ID Card Agent</span>
+      </div>
 
-      // Connection to Websocker Server...
-      if (window['WebSocket']) {
-        conn = new WebSocket('ws://' + document.location.host + '/ws');
-        console.log(document.location.host);
-        conn.onopen = function (evt) {
-          var item = document.getElementById('data-ws');
-          item.innerHTML = '<b>Connected to WebSocket server</b>';
-        };
-        conn.onclose = function (evt) {
-          var item = document.getElementById('data-ws');
-          item.innerHTML = '<b>Disconnected to WebSocket server</b>';
-        };
-        conn.onmessage = function (evt) {
-          var messages = evt.data.split('\n');
-          console.log(messages);
-          for (var i = 0; i < messages.length; i++) {
-            var item = document.getElementById('data-ws');
-            item.innerText = messages[i];
+      <div class="pills">
+        <span class="pill" id="pill-sio">
+          <span class="dot" id="dot-sio"></span>
+          <b>Socket.IO</b>
+          <span id="txt-sio">…</span>
+        </span>
+        <span class="pill" id="pill-ws">
+          <span class="dot" id="dot-ws"></span>
+          <b>WebSocket</b>
+          <span id="txt-ws">…</span>
+        </span>
+        <span class="pill" id="pill-state" hidden>
+          <span class="dot" id="dot-state"></span>
+          <b data-i18n="status.state">State</b>
+          <span id="txt-state"></span>
+        </span>
+        <span class="pill" id="pill-reader" hidden>
+          <b data-i18n="status.reader">Reader</b>
+          <span id="txt-reader"></span>
+        </span>
+        <span class="pill" id="pill-remote" hidden>
+          <b data-i18n="status.remote">Remote</b>
+          <span id="txt-remote"></span>
+        </span>
+        <span class="pill" id="pill-time" hidden>
+          <b data-i18n="status.updated">Updated</b>
+          <span id="txt-time" class="mono"></span>
+        </span>
+      </div>
+    </header>
+
+    <div class="layout">
+      <main>
+        <!-- stage: empty state or card/table -->
+        <section class="panel stage" id="stage">
+          <div class="empty" id="empty">
+            <div class="empty-icon" id="empty-icon">💳</div>
+            <h3 id="empty-title">…</h3>
+            <p id="empty-text"></p>
+            <p class="hint" id="empty-hint"></p>
+          </div>
+
+          <div id="data" hidden></div>
+        </section>
+
+        <!-- address / laser / nhso blocks live under the card -->
+        <div class="blocks" id="blocks" hidden></div>
+      </main>
+
+      <aside>
+        <section class="panel">
+          <h2><span data-i18n="opt.display">Display</span></h2>
+
+          <div class="group">
+            <p class="group-title" data-i18n="opt.privacy">Mode</p>
+            <div class="seg" id="seg-privacy" role="group">
+              <button type="button" data-v="kiosk" data-i18n="mode.kiosk">Kiosk</button>
+              <button type="button" data-v="dev" data-i18n="mode.dev">Dev</button>
+              <button type="button" data-v="counter" data-i18n="mode.counter">Counter</button>
+            </div>
+            <p class="note" id="privacy-note"></p>
+          </div>
+
+          <div class="group">
+            <p class="group-title" data-i18n="opt.view">View</p>
+            <div class="seg" id="seg-view" role="group">
+              <button type="button" data-v="card" data-i18n="view.card">Card</button>
+              <button type="button" data-v="table" data-i18n="view.table">Table</button>
+            </div>
+          </div>
+
+          <div class="group">
+            <p class="group-title" data-i18n="opt.lang">Language</p>
+            <div class="seg" id="seg-lang" role="group">
+              <button type="button" data-v="th">ไทย</button>
+              <button type="button" data-v="en">EN</button>
+              <button type="button" data-v="both" data-i18n="lang.both">Both</button>
+            </div>
+          </div>
+
+          <div class="group">
+            <p class="group-title" data-i18n="opt.toggles">Show</p>
+            <label class="check">
+              <input type="checkbox" id="opt-photo" checked />
+              <span data-i18n="opt.photo">Face photo</span>
+            </label>
+            <label class="check">
+              <input type="checkbox" id="opt-parts" checked />
+              <span data-i18n="opt.parts">
+                Address parts
+                <span class="sub" data-i18n="opt.partsSub">Individual fields instead of one line</span>
+              </span>
+            </label>
+            <label class="check">
+              <input type="checkbox" id="opt-nameparts" checked />
+              <span data-i18n="opt.nameparts">Break name into parts</span>
+            </label>
+            <label class="check">
+              <input type="checkbox" id="opt-json" />
+              <span data-i18n="opt.json">Raw JSON</span>
+            </label>
+            <label class="check">
+              <input type="checkbox" id="opt-log" checked />
+              <span data-i18n="opt.log">Event log</span>
+            </label>
+          </div>
+
+          <div class="group">
+            <p class="group-title" data-i18n="opt.privacy2">Privacy</p>
+            <label class="check">
+              <input type="checkbox" id="opt-mask" />
+              <span data-i18n="opt.mask">Mask ID number</span>
+            </label>
+            <label class="check">
+              <input type="checkbox" id="opt-maskphoto" />
+              <span data-i18n="opt.maskphoto">Blur face photo</span>
+            </label>
+            <div class="field-row">
+              <label for="opt-autoclear" data-i18n="opt.autoclear">Auto-clear</label>
+              <select id="opt-autoclear">
+                <option value="0" data-i18n="clear.off">Off</option>
+                <option value="5">5s</option>
+                <option value="10">10s</option>
+                <option value="30">30s</option>
+                <option value="60">60s</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="group">
+            <p class="group-title" data-i18n="opt.reader">Reader</p>
+            <div class="field-row">
+              <!-- The group title already names the field on screen; the label
+                   stays for the accessible name, which is what the tab order
+                   and a screen reader announce. -->
+              <label class="sr-only" for="sel-reader" data-i18n="opt.readerPick">Device</label>
+              <select id="sel-reader">
+                <option value="" data-all="1" data-i18n="reader.all">All</option>
+              </select>
+              <button class="btn" id="btn-readers-refresh" type="button" data-i18n="act.refreshReaders">
+                Refresh
+              </button>
+            </div>
+            <!-- No data-i18n: this label is rewritten by syncReaderUI so the
+                 busy state reads as text, not just as a greyed-out button. -->
+            <button class="btn primary wide" id="btn-read-now" type="button" aria-busy="false">
+              Read again
+            </button>
+            <p class="note" id="reader-note"></p>
+          </div>
+
+          <div class="group">
+            <p class="group-title" data-i18n="opt.applets">Card data to read</p>
+            <label class="check">
+              <input type="checkbox" id="opt-face" />
+              <span data-i18n="applet.face">Face image</span>
+            </label>
+            <label class="check">
+              <input type="checkbox" id="opt-laser" />
+              <span data-i18n="applet.laser">Laser ID</span>
+            </label>
+            <label class="check">
+              <input type="checkbox" id="opt-nhso" />
+              <span data-i18n="applet.nhso">NHSO (social security)</span>
+            </label>
+            <p class="note" id="applet-note"></p>
+          </div>
+
+          <div class="group">
+            <button class="btn primary wide" id="btn-copy" type="button" data-i18n="act.copyAll">
+              Copy as JSON
+            </button>
+            <button class="btn wide" id="btn-reset" type="button" data-i18n="act.resetOptions" style="margin-top: 8px">
+              Reset options
+            </button>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-json" style="margin-top: 18px" hidden>
+          <h2>
+            <span data-i18n="panel.json">Payload</span>
+            <span class="count" id="json-count"></span>
+          </h2>
+          <div class="panel-body">
+            <pre class="json" id="json-out"></pre>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-log" style="margin-top: 18px">
+          <h2>
+            <span data-i18n="panel.log">Events</span>
+            <span class="count" id="log-count">0</span>
+          </h2>
+          <div class="log" id="log"></div>
+        </section>
+      </aside>
+    </div>
+
+    <div class="lightbox" id="lightbox" hidden>
+      <img id="lightbox-img" alt="" />
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script>
+      (function () {
+        "use strict";
+
+        /* ==================================================================
+         * Wire contract with cmd/agent. These names are fixed by the Go side:
+         *   in : {"action":"set-options","options":{"show_face_image":…,
+         *             "show_nhso":…,"show_laser":…}}  or {"action":"get-options"}
+         *        {"action":"get-status"} | {"action":"set-reader","reader":"…"}
+         *        (reader "" watches every reader) | {"action":"refresh-readers"}
+         *        | {"action":"read-now"}
+         *   out: "smc-options" {show_face_image, show_nhso, show_laser,
+         *             remote_control}
+         *        "smc-status" {readers, selected, state, remote_control},
+         *             where state is waiting | reading | card-present
+         *        "smc-data" (also carries the reader it read from) /
+         *        "smc-inserted" / "smc-removed" / "smc-error"
+         *
+         * socket.io delivers the bare payload on a named event. The WebSocket
+         * delivers one JSON object per frame, shaped {event, payload}.
+         * ================================================================== */
+
+        /* ------------------------------- i18n ------------------------------ */
+        var I18N = {
+          th: {
+            "app.title": "ตัวอ่านบัตรประชาชน",
+            "status.reader": "เครื่องอ่าน",
+            "status.remote": "ควบคุมระยะไกล",
+            "status.updated": "อัปเดต",
+            "status.state": "สถานะ",
+            "conn.connecting": "กำลังเชื่อมต่อ",
+            "conn.connected": "เชื่อมต่อแล้ว",
+            "conn.disconnected": "หลุด",
+            "conn.failed": "ใช้ไม่ได้",
+            "conn.offline": "CDN โหลดไม่ขึ้น",
+            "remote.on": "เปิด",
+            "remote.off": "ปิด",
+            "pill.waiting": "รอใส่บัตร",
+            "pill.reading": "กำลังอ่าน",
+            "pill.cardPresent": "บัตรในเครื่อง",
+            "state.waiting.title": "รอใส่บัตรประชาชน",
+            "state.waiting.text": "เมื่อมีการอ่านข้อมูลสำเร็จ ข้อมูลจะปรากฏที่นี่",
+            "state.noconn.title": "รับข้อมูลสดไม่ได้",
+            "state.noconn.text": "หน้านี้มาจาก agent ที่กำลังทำงานอยู่ แต่ช่องทางรับข้อมูลสดยังต่อไม่ขึ้น",
+            "state.noconn.hint": "ลองโหลดหน้าใหม่ ถ้ายังไม่ขึ้นให้เปิด console ดูว่า <code>/ws</code> ต่อได้ไหม — ถ้าเข้าผ่าน reverse proxy ต้องตั้งให้มันยิง WebSocket ถึงด้วย",
+            "state.disconnected.title": "หลุดการเชื่อมต่อ",
+            "state.disconnected.text": "เคยต่อกับ agent แล้ว แต่ตอนนี้การเชื่อมต่อหลุดไป",
+            "state.disconnected.hint": "หน้านี้จะกลับมาเองถ้า agent ยังทำงานอยู่ ถ้าไม่กลับให้โหลดหน้าใหม่",
+            "state.error.title": "อ่านบัตรไม่สำเร็จ",
+            "state.nophoto.title": "ไม่มีข้อมูลบัตร",
+            "state.nophoto.text": "ยังไม่ได้อ่านบัตร ใส่บัตรเพื่อเริ่มอ่าน",
+            "opt.display": "การแสดงผล",
+            "opt.privacy": "โหมด",
+            "opt.view": "มุมมอง",
+            "opt.lang": "ภาษา",
+            "opt.toggles": "แสดง",
+            "opt.privacy2": "ความเป็นส่วนตัว",
+            "opt.photo": "รูปหน้า",
+            "opt.parts": "แยกส่วนที่อยู่",
+            "opt.partsSub": "แสดงทีละช่อง แทนที่จะรวมเป็นบรรทัดเดียว",
+            "opt.nameparts": "แยกส่วนชื่อ",
+            "opt.json": "JSON ดิบ",
+            "opt.log": "บันทึก event",
+            "opt.mask": "ปิดบังเลขประจำตัวประชาชน",
+            "opt.maskphoto": "ปิดบังรูปหน้า",
+            "opt.autoclear": "ล้างอัตโนมัติ",
+            "clear.off": "ปิด",
+            "reader.all": "ทั้งหมด",
+            "opt.reader": "เครื่องอ่าน",
+            "opt.readerPick": "อุปกรณ์",
+            "opt.applets": "ข้อมูลที่อ่านจากบัตร",
+            "mode.kiosk": "เครื่องคิว",
+            "mode.dev": "นักพัฒนา",
+            "mode.counter": "หน้าร้าน",
+            "view.card": "รูปบัตร",
+            "view.table": "ตาราง",
+            "lang.both": "ทั้งคู่",
+            "act.copyAll": "คัดลอกเป็น JSON",
+            "act.resetOptions": "คืนค่าตัวเลือก",
+            "act.refreshReaders": "รีเฟรช",
+            "act.readAgain": "อ่านซ้ำ",
+            "act.readAgainBusy": "กำลังอ่าน…",
+            "act.copy": "คัดลอก",
+            "act.copied": "คัดลอกแล้ว",
+            "panel.json": "ข้อมูลดิบ",
+            "panel.log": "Event",
+            "applet.face": "รูปภาพหน้า",
+            "applet.laser": "เลเซอร์ไอดี",
+            "applet.nhso": "สิทธิการรักษาพยาบาล",
+            "applet.note.on": "ตัวเลือกเหล่านี้สั่ง agent ให้อ่านจากบัตรแบบทันที ไม่ต้อง restart",
+            "applet.note.off": "agent ปิดการควบคุมระยะไกลอยู่ (SMC_ALLOW_REMOTE_OPTIONS) ตัวเลือกนี้จึงใช้ไม่ได้",
+            "reader.note.off": "agent ปิดการควบคุมระยะไกลอยู่ (SMC_ALLOW_REMOTE_OPTIONS) ปุ่มเลือกเครื่องอ่านจึงใช้ไม่ได้",
+            "reader.note.none": "ไม่พบเครื่องอ่าน — เสียบเครื่องแล้วกดรีเฟรช",
+            "reader.note.reading": "กำลังอ่านบัตรอยู่ รอสักครู่",
+            "reader.note.ready": "อ่านบัตรแล้ว กด “อ่านซ้ำ” เพื่ออ่านอีกครั้ง",
+            "privacy.kiosk": "ปิดบังเลขประชาชนและรูปหน้า และล้างข้อมูลเมื่อถอดบัตร เหมาะกับจอที่คนยืนดูข้างๆ",
+            "privacy.dev": "แสดงข้อมูลทุกอย่าง ไม่ล้างอัตโนมัติ เปิด JSON ดิบไว้",
+            "privacy.counter": "ตัวอักษรและรูปใหญ่ขึ้น ลดรายละเอียดรอง เหมาะกับหน้าร้าน",
+            "hint.laser": "ยังไม่ได้เปิดอ่านเลเซอร์ไอดี — ตั้ง <code>SMC_SHOW_LASER=true</code> แล้ว restart agent หรือเปิดสวิตช์ด้านข้าง",
+            "hint.nhso": "ยังไม่ได้เปิดอ่านข้อมูลสิทธิการรักษาพยาบาล — ตั้ง <code>SMC_SHOW_NHSO=true</code> แล้ว restart agent หรือเปิดสวิตช์ด้านข้าง",
+            "hint.photo": "ไม่ได้อ่านรูปหน้า — เปิดสวิตช์ “รูปหน้า” ด้านข้างแล้วใส่บัตรใหม่",
+            "card.title": "บัตรประชาชน",
+            "card.sub": "พ.ศ. 2535 – 2568",
+            "card.cid": "เลขประจำตัวประชาชน",
+            "card.nameTh": "ชื่อ-สกุล (ไทย)",
+            "card.nameEn": "ชื่อ-สกุล (อังกฤษ)",
+            "card.dob": "วันเดือนปีเกิด",
+            "card.age": "อายุ",
+            "card.gender": "เพศ",
+            "gender.male": "ชาย",
+            "gender.female": "หญิง",
+            "cid.ok": "✓ ผ่าน checksum",
+            "cid.bad": "✗ ไม่ผ่าน checksum",
+            "card.issuer": "ส่วนราชการที่ออกให้",
+            "card.issue": "วันที่ออกบัตร",
+            "card.expire": "วันที่บัตรหมดอายุ",
+            "card.remaining": "เหลืออีก",
+            "card.expired": "หมดอายุแล้ว",
+            "card.address": "ที่อยู่",
+            "card.photo": "รูปถ่าย",
+            "card.laser": "เลเซอร์ไอดี",
+            "card.reader": "อ่านจาก",
+            "gr.reader": "เครื่องอ่าน",
+            "gr.address": "ที่อยู่ (แยกส่วน)",
+            "gr.card": "ข้อมูลบัตร",
+            "gr.nhso": "สิทธิการรักษาพยาบาล",
+            "gr.personal": "ข้อมูลส่วนตัว",
+            "nhso.mainInscl": "สิทธิประกันสังคมหลัก",
+            "nhso.subInscl": "ประเภทผู้ประกัน",
+            "nhso.mainHospital": "สถานพยาบาลหลัก",
+            "nhso.subHospital": "สถานพยาบาลที่ไปรักษา",
+            "nhso.paidType": "ประเภทการจ่าย",
+            "nhso.issue": "วันที่ออกสิทธิ์",
+            "nhso.expire": "วันที่สิทธิ์หมดอายุ",
+            "nhso.update": "วันที่แก้ไขล่าสุด",
+            "nhso.changeAmount": "จำนวนครั้งที่เปลี่ยนสถานพยาบาล",
+            "f.prefix": "คำนำหน้า",
+            "f.firstName": "ชื่อ",
+            "f.middleName": "ชื่อกลาง",
+            "f.lastName": "นามสกุล",
+            "f.fullName": "ชื่อ-สกุลเต็ม",
+            "f.houseNo": "บ้านเลขที่",
+            "f.moo": "หมู่",
+            "f.soi": "ซอย",
+            "f.street": "ถนน",
+            "f.subdistrict": "ตำบล/แขวง",
+            "f.district": "อำเภอ/เขต",
+            "f.province": "จังหวัด",
+            "f.address": "ที่อยู่รวม",
+            "f.laserId": "เลเซอร์ไอดี",
+            "empty.value": "ไม่มีข้อมูล",
+            "copy.failed": "คัดลอกไม่สำเร็จ",
+            "no.data": "ยังไม่มีข้อมูล"
+          },
+          en: {
+            "app.title": "Thai ID Card Agent",
+            "status.reader": "Reader",
+            "status.remote": "Remote",
+            "status.updated": "Updated",
+            "status.state": "State",
+            "conn.connecting": "connecting",
+            "conn.connected": "connected",
+            "conn.disconnected": "disconnected",
+            "conn.failed": "unavailable",
+            "conn.offline": "CDN blocked",
+            "remote.on": "on",
+            "remote.off": "off",
+            "pill.waiting": "waiting",
+            "pill.reading": "reading",
+            "pill.cardPresent": "card in",
+            "state.waiting.title": "Waiting for a card",
+            "state.waiting.text": "Data appears here as soon as a card is read.",
+            "state.noconn.title": "No live data",
+            "state.noconn.text": "This page came from an agent that is running, but the live channel has not connected.",
+            "state.noconn.hint": "Reload the page. If it stays empty, check whether <code>/ws</code> connects in the console — behind a reverse proxy it has to be allowed to upgrade to a WebSocket.",
+            "state.disconnected.title": "Disconnected",
+            "state.disconnected.text": "The page was connected to the agent and the connection dropped.",
+            "state.disconnected.hint": "It comes back on its own while the agent is running. Reload if it does not.",
+            "state.error.title": "Card read failed",
+            "state.nophoto.title": "No card data",
+            "state.nophoto.text": "Nothing has been read yet. Insert a card to begin.",
+            "opt.display": "Display",
+            "opt.privacy": "Mode",
+            "opt.view": "View",
+            "opt.lang": "Language",
+            "opt.toggles": "Show",
+            "opt.privacy2": "Privacy",
+            "opt.photo": "Face photo",
+            "opt.parts": "Address parts",
+            "opt.partsSub": "Individual fields instead of one line",
+            "opt.nameparts": "Break name into parts",
+            "opt.json": "Raw JSON",
+            "opt.log": "Event log",
+            "opt.mask": "Mask ID number",
+            "opt.maskphoto": "Blur face photo",
+            "opt.autoclear": "Auto-clear",
+            "clear.off": "Off",
+            "reader.all": "All",
+            "opt.reader": "Reader",
+            "opt.readerPick": "Device",
+            "opt.applets": "Card data to read",
+            "mode.kiosk": "Kiosk",
+            "mode.dev": "Dev",
+            "mode.counter": "Counter",
+            "view.card": "Card",
+            "view.table": "Table",
+            "lang.both": "Both",
+            "act.copyAll": "Copy as JSON",
+            "act.resetOptions": "Reset options",
+            "act.refreshReaders": "Refresh",
+            "act.readAgain": "Read again",
+            "act.readAgainBusy": "Reading…",
+            "act.copy": "Copy",
+            "act.copied": "Copied",
+            "panel.json": "Payload",
+            "panel.log": "Events",
+            "applet.face": "Face image",
+            "applet.laser": "Laser ID",
+            "applet.nhso": "Hospital treatment (NHSO)",
+            "applet.note.on": "These are applied to the agent immediately — no restart needed.",
+            "applet.note.off": "The agent has remote control disabled (SMC_ALLOW_REMOTE_OPTIONS).",
+            "reader.note.off": "The agent has remote control disabled (SMC_ALLOW_REMOTE_OPTIONS), so the reader picker does nothing.",
+            "reader.note.none": "No reader found — plug one in and press refresh.",
+            "reader.note.reading": "Reading the card, hold on a moment.",
+            "reader.note.ready": "Card read — press “Read again” for another pass.",
+            "privacy.kiosk": "Masks the ID number and the portrait, and clears data on removal. Suited to a screen people stand and look at.",
+            "privacy.dev": "Shows everything, never auto-clears, keeps the raw JSON open.",
+            "privacy.counter": "Larger type and photo, less secondary detail. Suited to a counter.",
+            "hint.laser": "Laser ID reading is off — set <code>SMC_SHOW_LASER=true</code> and restart the agent, or flip the switch beside this.",
+            "hint.nhso": "Hospital treatment reading is off — set <code>SMC_SHOW_NHSO=true</code> and restart the agent, or flip the switch beside this.",
+            "hint.photo": "No face image was read — enable the “Face image” switch beside this and re-insert the card.",
+            "card.title": "National Identity Card",
+            "card.sub": "B.E. 2535 – 2568",
+            "card.cid": "ID number",
+            "card.nameTh": "Name (Thai)",
+            "card.nameEn": "Name (English)",
+            "card.dob": "Date of birth",
+            "card.age": "Age",
+            "card.gender": "Gender",
+            "gender.male": "Male",
+            "gender.female": "Female",
+            "cid.ok": "✓ checksum valid",
+            "cid.bad": "✗ checksum invalid",
+            "card.issuer": "Issuing authority",
+            "card.issue": "Issued",
+            "card.expire": "Expires",
+            "card.remaining": "remaining",
+            "card.expired": "expired",
+            "card.address": "Address",
+            "card.photo": "Photograph",
+            "card.laser": "Laser ID",
+            "card.reader": "Read from",
+            "gr.reader": "Reader",
+            "gr.address": "Address (parts)",
+            "gr.card": "Card data",
+            "gr.nhso": "Hospital treatment",
+            "gr.personal": "Personal",
+            "nhso.mainInscl": "Contribution",
+            "nhso.subInscl": "Insured type",
+            "nhso.mainHospital": "Main hospital",
+            "nhso.subHospital": "Current hospital",
+            "nhso.paidType": "Payment type",
+            "nhso.issue": "Issued",
+            "nhso.expire": "Expires",
+            "nhso.update": "Last updated",
+            "nhso.changeAmount": "Hospital changes",
+            "f.prefix": "Prefix",
+            "f.firstName": "First name",
+            "f.middleName": "Middle name",
+            "f.lastName": "Last name",
+            "f.fullName": "Full name",
+            "f.houseNo": "House no.",
+            "f.moo": "Moo",
+            "f.soi": "Soi",
+            "f.street": "Street",
+            "f.subdistrict": "Subdistrict",
+            "f.district": "District",
+            "f.province": "Province",
+            "f.address": "Full address",
+            "f.laserId": "Laser ID",
+            "empty.value": "no value",
+            "copy.failed": "Copy failed",
+            "no.data": "No data yet"
           }
         };
-        conn.onerror = function (err) {
-          console.log('Socket Error: ', err);
+
+        var APPLETS = [
+          { id: "face", key: "show_face_image", i18n: "applet.face" },
+          { id: "laser", key: "show_laser", i18n: "applet.laser" },
+          { id: "nhso", key: "show_nhso", i18n: "applet.nhso" }
+        ];
+
+        /* Field inventory. Every leaf the card can return, so the table view is
+         * complete by construction rather than by remembering to add a row. */
+        var GROUPS = [
+          {
+            // Where the payload came from, not card content: meta keeps it out
+            // of the "N fields received" count in the event log.
+            id: "reader",
+            i18n: "gr.reader",
+            meta: true,
+            fields: [{ path: "reader", i18n: "card.reader" }]
+          },
+          {
+            id: "personal",
+            i18n: "gr.personal",
+            fields: [
+              { path: "personal.cid", i18n: "card.cid", fmt: "cid" },
+              { path: "personal.name.prefix", i18n: "f.prefix" },
+              { path: "personal.name.first_name", i18n: "f.firstName" },
+              { path: "personal.name.middle_name", i18n: "f.middleName" },
+              { path: "personal.name.last_name", i18n: "f.lastName" },
+              { path: "personal.name.full_name", i18n: "f.fullName" },
+              { path: "personal.name_eng.prefix", i18n: "f.prefix" },
+              { path: "personal.name_eng.first_name", i18n: "f.firstName" },
+              { path: "personal.name_eng.middle_name", i18n: "f.middleName" },
+              { path: "personal.name_eng.last_name", i18n: "f.lastName" },
+              { path: "personal.name_eng.full_name", i18n: "f.fullName" },
+              { path: "personal.dob", i18n: "card.dob", fmt: "dob" },
+              { path: "personal.gender", i18n: "card.gender", fmt: "gender" },
+              { path: "personal.card_issuer", i18n: "card.issuer" },
+              { path: "personal.issue_date", i18n: "card.issue", fmt: "date" },
+              { path: "personal.expire_date", i18n: "card.expire", fmt: "date" },
+              { path: "personal.address.address", i18n: "f.address" }
+            ]
+          },
+          {
+            id: "address",
+            i18n: "gr.address",
+            fields: [
+              { path: "personal.address.house_no", i18n: "f.houseNo" },
+              { path: "personal.address.moo", i18n: "f.moo" },
+              { path: "personal.address.soi", i18n: "f.soi" },
+              { path: "personal.address.street", i18n: "f.street" },
+              { path: "personal.address.subdistrict", i18n: "f.subdistrict" },
+              { path: "personal.address.district", i18n: "f.district" },
+              { path: "personal.address.province", i18n: "f.province" }
+            ]
+          },
+          {
+            id: "card",
+            i18n: "gr.card",
+            fields: [{ path: "card.laser_id", i18n: "f.laserId", fmt: "laser" }]
+          },
+          {
+            id: "nhso",
+            i18n: "gr.nhso",
+            fields: [
+              { path: "nhso.main_inscl", i18n: "nhso.mainInscl" },
+              { path: "nhso.sub_inscl", i18n: "nhso.subInscl" },
+              { path: "nhso.main_hospital", i18n: "nhso.mainHospital" },
+              { path: "nhso.sub_hospital", i18n: "nhso.subHospital" },
+              { path: "nhso.paid_type", i18n: "nhso.paidType" },
+              { path: "nhso.issue_date", i18n: "nhso.issue", fmt: "date" },
+              { path: "nhso.expire_date", i18n: "nhso.expire", fmt: "date" },
+              { path: "nhso.update_date", i18n: "nhso.update", fmt: "date" },
+              {
+                path: "nhso.change_hospital_amount",
+                i18n: "nhso.changeAmount"
+              }
+            ]
+          }
+        ];
+
+        /* ------------------------------ state ------------------------------ */
+        var DEFAULTS = {
+          privacy: "kiosk",
+          view: "card",
+          lang: "th",
+          photo: true,
+          parts: true,
+          nameparts: true,
+          json: false,
+          log: true,
+          mask: false,
+          maskphoto: false,
+          autoclear: 0
         };
-      } else {
-        var item = document.getElementById('data-ws');
-        item.innerHTML = '<b>Your browser does not support WebSockets.</b>';
-        appendLog(item);
-      }
+
+        // mask hides digits of the ID number, maskphoto blurs the portrait.
+        // They are separate because they are separate decisions: a screen that
+        // must not print the ID usually still has to show the face, and one
+        // that blurs the face usually still has to read the number back.
+        // Kiosk blurs the portrait as well as masking the number: on a screen
+        // anyone can walk up to, a readable face is the bigger exposure. Both
+        // stay separate switches, so an operator who needs the face for a check
+        // can turn just that one off.
+        var PRIVACY = {
+          kiosk: { mask: true, maskphoto: true, photo: true, json: false, autoclear: 5, nameparts: false, parts: false },
+          dev: { mask: false, maskphoto: false, photo: true, json: true, autoclear: 0, nameparts: true, parts: true },
+          counter: { mask: false, maskphoto: false, photo: true, json: false, autoclear: 0, nameparts: false, parts: false }
+        };
+
+        var store = {
+          ui: loadPrefs(),
+          data: null,
+          reader: "",
+          // What the agent reports in smc-status. "selected" is the reader the
+          // agent watches; "choiceMade" records that the operator picked one
+          // here, which outranks the agent's own idea until that reader is
+          // unplugged.
+          readers: [],
+          selected: "",
+          choiceMade: false,
+          state: "",
+          remoteControl: null,
+          lastError: "",
+          conn: { sio: false, ws: false, ever: false }
+        };
+
+        // True when the previous visit left explicit choices behind. Those are
+        // respected on reload; a first visit has to derive its toggles from the
+        // active privacy preset instead.
+        var hadStoredPrefs = false;
+
+        function loadPrefs() {
+          var base = {};
+          for (var k in DEFAULTS) base[k] = DEFAULTS[k];
+          try {
+            var raw = localStorage.getItem("smc.prefs");
+            if (raw) {
+              var saved = JSON.parse(raw);
+              for (var j in saved) {
+                if (Object.prototype.hasOwnProperty.call(base, j)) base[j] = saved[j];
+              }
+              hadStoredPrefs = true;
+            }
+          } catch (e) {
+            /* private mode, or a corrupt entry — defaults are fine */
+          }
+          return base;
+        }
+
+        function savePrefs() {
+          try {
+            localStorage.setItem("smc.prefs", JSON.stringify(store.ui));
+          } catch (e) {
+            /* nothing to do */
+          }
+        }
+
+        /* ------------------------------ helpers ---------------------------- */
+        function $(id) {
+          return document.getElementById(id);
+        }
+
+        function t(key) {
+          var lang = store.ui.lang === "en" ? "en" : "th";
+          if (I18N[lang] && I18N[lang][key]) return I18N[lang][key];
+          return I18N.th[key] || I18N.en[key] || key;
+        }
+
+        // Card data is untrusted text off a reader: always via textContent.
+        function make(tag, cls, text) {
+          var n = document.createElement(tag);
+          if (cls) n.className = cls;
+          if (text !== undefined && text !== null) n.textContent = String(text);
+          return n;
+        }
+
+        function clear(node) {
+          while (node.firstChild) node.removeChild(node.firstChild);
+          return node;
+        }
+
+        function get(obj, path) {
+          var cur = obj;
+          var parts = path.split(".");
+          for (var i = 0; i < parts.length; i++) {
+            if (cur === null || cur === undefined) return undefined;
+            cur = cur[parts[i]];
+          }
+          return cur;
+        }
+
+        function toast(msg, isErr) {
+          var el = $("toast");
+          el.textContent = msg;
+          el.className = "toast show" + (isErr ? " err" : "");
+          clearTimeout(toast._t);
+          toast._t = setTimeout(function () {
+            el.className = "toast";
+          }, 1900);
+        }
+
+        function copyText(text) {
+          if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(text);
+          }
+          // http:// on a LAN host is not a secure context, so fall back.
+          return new Promise(function (resolve, reject) {
+            var ta = document.createElement("textarea");
+            ta.value = text;
+            ta.setAttribute("readonly", "");
+            ta.style.position = "fixed";
+            ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            ta.select();
+            try {
+              document.execCommand("copy") ? resolve() : reject();
+            } catch (e) {
+              reject(e);
+            }
+            document.body.removeChild(ta);
+          });
+        }
+
+        /* --------------------------- derivations --------------------------- */
+        // Dates arrive already converted to Gregorian by the Go side
+        // (NewFormatedDate subtracts 543), so these are plain YYYY-MM-DD.
+
+        function parseDate(s) {
+          if (!s || typeof s !== "string") return null;
+          var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+          if (!m) return null;
+          var d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+          return isNaN(d.getTime()) ? null : d;
+        }
+
+        function ageFrom(dob) {
+          var d = parseDate(dob);
+          if (!d) return null;
+          var now = new Date();
+          var age = now.getFullYear() - d.getFullYear();
+          var m = now.getMonth() - d.getMonth();
+          if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+          return age >= 0 && age < 130 ? age : null;
+        }
+
+        function daysUntil(dateStr) {
+          var d = parseDate(dateStr);
+          if (!d) return null;
+          var now = new Date();
+          now.setHours(0, 0, 0, 0);
+          return Math.round((d.getTime() - now.getTime()) / 86400000);
+        }
+
+        // The card sends "1"/"2"; the Go side does no mapping of its own.
+        function genderLabel(g) {
+          if (g === "1") return t("gender.male");
+          if (g === "2") return t("gender.female");
+          return "";
+        }
+
+        function maskCid(cid) {
+          if (!cid || cid.length < 5) return cid || "";
+          return cid.slice(0, 2) + new Array(cid.length - 3).join("•") + cid.slice(-1);
+        }
+
+        function formatCid(cid) {
+          if (!cid || cid.length !== 13) return cid || "";
+          return cid.slice(0, 1) + "-" + cid.slice(1, 5) + "-" + cid.slice(5, 10) + "-" +
+            cid.slice(10, 12) + "-" + cid.slice(12);
+        }
+
+        // Standard Thai national ID checksum over the first 12 digits.
+        function cidValid(cid) {
+          if (!cid || cid.length !== 13 || !/^\d{13}$/.test(cid)) return null;
+          var sum = 0;
+          for (var i = 0; i < 12; i++) sum += Number(cid.charAt(i)) * (13 - i);
+          var check = 11 - (sum % 11);
+          if (check >= 10) check -= 10;
+          if (check === 1) check = 0;
+          return check === Number(cid.charAt(12));
+        }
+
+        function groupLaser(s) {
+          if (!s) return "";
+          return (s.match(/.{1,4}/g) || []).join(" ");
+        }
+
+        /* ----------------------------- rendering --------------------------- */
+        function fieldNode(label, value, opts) {
+          opts = opts || {};
+          var text =
+            value === undefined || value === null || value === "" ? "" : String(value);
+
+          // In a list of parts, a row the card simply did not fill in is noise:
+          // "no soi" does not need its own line.
+          if (!text && opts.hideEmpty) return null;
+
+          var row = make("div", "f");
+          row.appendChild(make("span", "f-label", label));
+
+          var v = make("span", "f-value");
+          if (opts.mono) v.className += " mono";
+          if (opts.big) v.className += " big";
+
+          if (!text) {
+            v.className += " is-empty";
+            v.textContent = t("empty.value");
+          } else {
+            v.textContent = text;
+          }
+
+          (opts.badges || []).forEach(function (b) {
+            v.appendChild(make("span", "derived" + (b.tone ? " " + b.tone : ""), b.text));
+          });
+
+          if (text && opts.copyable) {
+            var b = make("button", "btn copy-btn", t("act.copy"));
+            b.type = "button";
+            b.addEventListener("click", function () {
+              copyText(text).then(
+                function () {
+                  toast(t("act.copied"));
+                },
+                function () {
+                  toast(t("copy.failed"), true);
+                }
+              );
+            });
+            v.appendChild(b);
+          }
+
+          row.appendChild(v);
+          return row;
+        }
+
+        function appendField(parent, label, value, opts) {
+          var row = fieldNode(label, value, opts);
+          if (row) parent.appendChild(row);
+        }
+
+        function nameFields(node, nameObj, isEng) {
+          var labelSet = {
+            prefix: "f.prefix",
+            firstName: "f.firstName",
+            middleName: "f.middleName",
+            lastName: "f.lastName"
+          };
+          var order = ["prefix", "first_name", "middle_name", "last_name"];
+          var keys = ["prefix", "firstName", "middleName", "lastName"];
+
+          order.forEach(function (pathKey, i) {
+            var raw = nameObj ? nameObj[pathKey] : "";
+            if (!raw) return; // a part the card left blank is not worth a row
+            var val = raw;
+            if (pathKey === "prefix" && isEng) {
+              // Go concatenates prefix+first with no separator, which reads
+              // "Mr.Somprasong"; restore the space for the English name.
+              val = raw.replace(/\s+/g, "");
+              var first = nameObj.first_name || "";
+              val = val + " " + first;
+            }
+            appendField(
+              node,
+              t(labelSet[keys[i]]),
+              val,
+              { mono: isEng, copyable: true }
+            );
+          });
+        }
+
+        function renderCard() {
+          var d = store.data;
+          var p = (d && d.personal) || {};
+          var lang = store.ui.lang;
+
+          var wrap = make("div", "idcard");
+
+          var top = make("div", "idcard-top");
+          var em = make("div", "emblem", "◈");
+          top.appendChild(em);
+          var tt = make("div");
+          tt.appendChild(make("div", "idcard-title", t("card.title")));
+          tt.appendChild(make("div", "idcard-sub", t("card.sub")));
+          top.appendChild(tt);
+          wrap.appendChild(top);
+
+          var body = make("div", "idcard-body");
+
+          // photo
+          var pw = make("div", "photo-wrap");
+          if (p.base64_img && store.ui.photo) {
+            var img = make("img", "photo");
+            // The card stores a JPEG (trace: FF D8 FF E0 … 4A 46 49 46), not PNG.
+            img.src = "data:image/jpeg;base64," + p.base64_img;
+            img.alt = t("card.photo");
+            if (store.ui.maskphoto) img.className += " is-masked";
+            // A blurred portrait must not be one click from the real one, or
+            // the blur only hides it from someone who has not read this page.
+            if (!store.ui.maskphoto) {
+              img.addEventListener("click", function () {
+                $("lightbox-img").src = img.src;
+                $("lightbox").hidden = false;
+              });
+            } else {
+              img.style.cursor = "default";
+            }
+            pw.appendChild(img);
+          } else {
+            pw.appendChild(make("div", "photo-empty", p.base64_img ? "" : t("hint.photo")));
+          }
+          body.appendChild(pw);
+
+          // fields
+          var fs = make("div", "fields");
+
+          var cid = p.cid || "";
+          var showCid = store.ui.mask ? maskCid(cid) : formatCid(cid);
+          var cidBadges = [];
+          var valid = cidValid(cid);
+          if (valid !== null) {
+            cidBadges.push({
+              text: valid ? t("cid.ok") : t("cid.bad"),
+              tone: valid ? "ok" : "bad"
+            });
+          }
+          // CID always leads. It goes large only when the name is collapsed to
+          // one line, so it does not fight the name for attention.
+          appendField(fs, t("card.cid"), showCid, {
+            mono: true,
+            big: !store.ui.nameparts,
+            badges: cidBadges,
+            copyable: true
+          });
+
+          // Either the parts or the composed name, never both: the full name is
+          // just the parts concatenated, so showing both is duplicated ink.
+          if (lang !== "en") {
+            if (store.ui.nameparts) {
+              nameFields(fs, p.name, false);
+            } else {
+              appendField(fs, t("card.nameTh"), p.name ? p.name.full_name : "", {
+                big: true,
+                copyable: true
+              });
+            }
+          }
+          if (lang !== "th") {
+            if (store.ui.nameparts) {
+              nameFields(fs, p.name_eng, true);
+            } else {
+              appendField(fs, t("card.nameEn"), p.name_eng ? p.name_eng.full_name : "", {
+                copyable: true
+              });
+            }
+          }
+
+          var dobBadges = [];
+          var age = ageFrom(p.dob);
+          if (age !== null) dobBadges.push({ text: t("card.age") + " " + age });
+          fs.appendChild(
+            fieldNode(t("card.dob"), p.dob, { mono: true, badges: dobBadges, copyable: true })
+          );
+
+          var gLabel = genderLabel(p.gender);
+          fs.appendChild(
+            fieldNode(t("card.gender"), gLabel || p.gender, {
+              badges: gLabel ? [{ text: p.gender }] : []
+            })
+          );
+
+          fs.appendChild(fieldNode(t("card.issuer"), p.card_issuer, { copyable: true }));
+          fs.appendChild(fieldNode(t("card.issue"), p.issue_date, { mono: true }));
+
+          var expBadges = [];
+          var days = daysUntil(p.expire_date);
+          if (days !== null) {
+            if (days < 0) {
+              expBadges.push({ text: t("card.expired"), tone: "bad" });
+            } else if (days <= 90) {
+              expBadges.push({ text: t("card.remaining") + " " + days + "d", tone: "warn" });
+            } else {
+              expBadges.push({ text: t("card.remaining") + " " + days + "d", tone: "ok" });
+            }
+          }
+          fs.appendChild(fieldNode(t("card.expire"), p.expire_date, { mono: true, badges: expBadges }));
+
+          if (store.ui.view === "card") {
+            fs.appendChild(fieldNode(t("card.address"), p.address ? p.address.address : "", {}));
+          }
+
+          body.appendChild(fs);
+          wrap.appendChild(body);
+
+          var foot = make("div", "idcard-foot");
+          var meta = make("span", "meta");
+          var rd = currentReader();
+          if (rd) meta.textContent = t("card.reader") + ": " + rd;
+          foot.appendChild(meta);
+          if (store.ui.view === "card") {
+            var copyBtn = make("button", "btn", t("act.copyAll"));
+            copyBtn.type = "button";
+            copyBtn.style.fontFamily = "var(--sans)";
+            copyBtn.addEventListener("click", copyAll);
+            foot.appendChild(copyBtn);
+          }
+          wrap.appendChild(foot);
+
+          return wrap;
+        }
+
+        function renderTable() {
+          var wrap = make("div", "panel");
+          var scroll = make("div", "table-scroll");
+          var table = make("table", "fields-table");
+
+          var thead = make("thead");
+          var tr = make("tr");
+          tr.appendChild(make("th", null, "JSON key"));
+          tr.appendChild(make("th", null, t("opt.display")));
+          tr.appendChild(make("th", null, "value"));
+          thead.appendChild(tr);
+          table.appendChild(thead);
+
+          var tbody = make("tbody");
+          GROUPS.forEach(function (g) {
+            var gr = make("tr", "group-head");
+            var td = make("td", null, t(g.i18n));
+            td.colSpan = 3;
+            gr.appendChild(td);
+            tbody.appendChild(gr);
+
+            g.fields.forEach(function (f) {
+              var raw = get(store.data, f.path);
+              var row = make("tr");
+              row.appendChild(make("td", "key", f.path));
+              row.appendChild(make("td", "lbl", t(f.i18n)));
+              var val = "";
+              if (f.fmt === "cid") {
+                val = store.ui.mask ? maskCid(String(raw || "")) : formatCid(String(raw || ""));
+              } else if (f.fmt === "gender") {
+                val = genderLabel(String(raw || "")) || String(raw || "");
+              } else if (f.fmt === "laser") {
+                val = groupLaser(String(raw || ""));
+              } else {
+                val = raw === undefined || raw === null ? "" : String(raw);
+              }
+              var cell = make("td", "val" + (val ? "" : " is-empty"), val || "—");
+              row.appendChild(cell);
+              tbody.appendChild(row);
+            });
+          });
+
+          table.appendChild(tbody);
+          scroll.appendChild(table);
+          wrap.appendChild(scroll);
+          return wrap;
+        }
+
+        function groupById(id) {
+          for (var i = 0; i < GROUPS.length; i++) {
+            if (GROUPS[i].id === id) return GROUPS[i];
+          }
+          return null;
+        }
+
+        function renderBlocks() {
+          var host = $("blocks");
+          clear(host);
+          var d = store.data || {};
+          var p = d.personal || {};
+
+          var made = 0;
+
+          // Address parts
+          if (store.ui.parts && p.address) {
+            var a = make("section", "panel");
+            var ah = make("h2");
+            ah.appendChild(make("span", null, t("gr.address")));
+            a.appendChild(ah);
+            var ab = make("div", "panel-body");
+            var akv = make("div", "kv");
+            groupById("address").fields.forEach(function (f) {
+              appendField(akv, t(f.i18n), get(d, f.path), {
+                copyable: true,
+                hideEmpty: true
+              });
+            });
+            ab.appendChild(akv);
+            a.appendChild(ab);
+            host.appendChild(a);
+            made++;
+          }
+
+          // Laser
+          var lpanel = make("section", "panel");
+          var lh = make("h2");
+          lh.appendChild(make("span", null, t("gr.card")));
+          lpanel.appendChild(lh);
+          var lb = make("div", "panel-body");
+          if (d.card && d.card.laser_id) {
+            var lkv = make("div", "kv");
+            appendField(lkv, t("card.laser"), groupLaser(d.card.laser_id), {
+              mono: true,
+              copyable: true
+            });
+            lb.appendChild(lkv);
+          } else {
+            lb.appendChild(hintBox("hint.laser"));
+          }
+          lpanel.appendChild(lb);
+          host.appendChild(lpanel);
+          made++;
+
+          // NHSO
+          var npanel = make("section", "panel");
+          var nh = make("h2");
+          nh.appendChild(make("span", null, t("gr.nhso")));
+          npanel.appendChild(nh);
+          var nb = make("div", "panel-body");
+          if (d.nhso) {
+            var nkv = make("div", "kv");
+            groupById("nhso").fields.forEach(function (f) {
+              appendField(nkv, t(f.i18n), get(d, f.path), {
+                copyable: true,
+                hideEmpty: true
+              });
+            });
+            nb.appendChild(nkv);
+          } else {
+            nb.appendChild(hintBox("hint.nhso"));
+          }
+          npanel.appendChild(nb);
+          host.appendChild(npanel);
+          made++;
+
+          host.hidden = made === 0;
+        }
+
+        // An absent applet is a configuration fact, not a mystery: say which
+        // env var turns it on.
+        function hintBox(i18nKey) {
+          var box = make("div", "absent");
+          var parts = t(i18nKey).split(/<code>|<\/code>/);
+          box.appendChild(document.createTextNode(parts[0] || ""));
+          if (parts[1]) box.appendChild(make("code", null, parts[1]));
+          if (parts[2]) box.appendChild(document.createTextNode(parts[2]));
+          return box;
+        }
+
+        function showEmpty(kind) {
+          $("empty").hidden = false;
+          $("data").hidden = true;
+          $("blocks").hidden = true;
+          var e = $("empty");
+          e.classList.toggle("is-error", kind === "error");
+
+          var icon = $("empty-icon");
+          var title = $("empty-title");
+          var text = $("empty-text");
+          var hint = $("empty-hint");
+
+          if (kind === "noconn") {
+            icon.textContent = "🔌";
+            title.textContent = t("state.noconn.title");
+            text.textContent = t("state.noconn.text");
+            hint.innerHTML = t("state.noconn.hint");
+          } else if (kind === "disconnected") {
+            icon.textContent = "🔌";
+            title.textContent = t("state.disconnected.title");
+            text.textContent = t("state.disconnected.text");
+            hint.innerHTML = t("state.disconnected.hint");
+          } else if (kind === "error") {
+            icon.textContent = "⚠️";
+            title.textContent = t("state.error.title");
+            text.textContent = store.lastError;
+            hint.textContent = "";
+          } else {
+            icon.textContent = "💳";
+            title.textContent = t("state.waiting.title");
+            text.textContent = t("state.waiting.text");
+            hint.textContent = "";
+          }
+        }
+
+        function render() {
+          // Only #data is rebuilt. #empty and #data are both children of the
+          // stage, so clearing the stage itself would detach #empty and break
+          // every later call to showEmpty().
+          var dataHost = $("data");
+
+          if (!store.data) {
+            // store.conn.ever is sticky: it records that a transport connected
+            // at some point, so a later disconnect must not put the page back
+            // to "not connected to the agent" when the agent is in fact running
+            // and simply idle.
+            var kind = store.lastError
+              ? "error"
+              : store.conn.sio || store.conn.ws
+              ? "waiting"
+              : store.conn.ever
+              ? "disconnected"
+              : "noconn";
+            showEmpty(kind);
+            clear(dataHost);
+            dataHost.hidden = true;
+            // With no card read, an applet is not "switched off" — it simply
+            // has nothing to report. Saying SMC_SHOW_LASER here would send
+            // someone to reconfigure an agent that is working fine.
+            $("blocks").hidden = true;
+            applySidebars();
+            return;
+          }
+
+          $("empty").hidden = true;
+          clear(dataHost);
+
+          var isTable = store.ui.view === "table";
+          var node = isTable ? renderTable() : renderCard();
+          if (!isTable) {
+            node.classList.add("flash");
+            node.addEventListener("animationend", function () {
+              node.classList.remove("flash");
+            });
+          }
+          dataHost.hidden = false;
+          dataHost.appendChild(node);
+
+          // The table already lists every leaf, including the applets the
+          // blocks below would show. Rendering both is duplicated ink.
+          $("blocks").hidden = isTable;
+          if (!isTable) renderBlocks();
+          applySidebars();
+        }
+
+        // Leaf fields the card actually filled in. Takes the payload explicitly
+        // because the event log renders before store.data is assigned.
+        function countFilled(data) {
+          var src = data || store.data;
+          if (!src) return 0;
+          var n = 0;
+          GROUPS.forEach(function (g) {
+            if (g.meta) return;
+            g.fields.forEach(function (f) {
+              var v = get(src, f.path);
+              if (v !== undefined && v !== null && String(v).length) n++;
+            });
+          });
+          if (get(src, "personal.base64_img")) n++;
+          return n;
+        }
+
+        function applySidebars() {
+          $("panel-json").hidden = !store.ui.json;
+          if (store.ui.json) {
+            $("json-out").textContent = store.data
+              ? JSON.stringify(store.data, null, 2)
+              : t("no.data");
+            $("json-count").textContent = store.data ? countFilled() + " fields" : "";
+          }
+          $("panel-log").hidden = !store.ui.log;
+        }
+
+        /* ------------------------------ log -------------------------------- */
+        var logRows = [];
+
+        function addLog(ev, msg) {
+          var d = new Date();
+          var pad = function (n) {
+            return String(n).padStart(2, "0");
+          };
+          logRows.unshift({
+            t: pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()),
+            ev: ev,
+            m: msg || ""
+          });
+          if (logRows.length > 120) logRows.pop();
+
+          var host = $("log");
+          clear(host);
+          logRows.forEach(function (r) {
+            var row = make("div", "log-row");
+            row.appendChild(make("span", "t", r.t));
+            row.appendChild(make("span", "ev " + r.ev.replace(/[^a-z-]/g, ""), r.ev));
+            row.appendChild(make("span", "m", r.m));
+            host.appendChild(row);
+          });
+          $("log-count").textContent = String(logRows.length);
+        }
+
+        /* ---------------------------- event handling ----------------------- */
+        function handleEvent(ev, payload, source) {
+          addLog(ev, describe(ev, payload));
+
+          if (ev === "smc-status") {
+            applyStatus(payload);
+            return true;
+          }
+
+          if (ev === "smc-data") {
+            store.data = payload;
+            store.lastError = "";
+            // payload.reader is the reader the agent actually read from.
+            // smc-inserted only carries a name parsed out of a message, so it
+            // is the fallback rather than the source.
+            if (payload && typeof payload.reader === "string" && payload.reader) {
+              store.reader = payload.reader;
+              $("pill-reader").hidden = false;
+              $("txt-reader").textContent = store.reader;
+            }
+            $("pill-time").hidden = false;
+            var d = new Date();
+            $("txt-time").textContent = d.toLocaleTimeString();
+            // A pending clear belongs to a previous removal. A card is in the
+            // reader again, so the countdown must not wipe what is on screen
+            // while someone is still reading it.
+            if (clearTimer) {
+              clearTimeout(clearTimer);
+              clearTimer = null;
+            }
+            render();
+            return true;
+          }
+
+          if (ev === "smc-inserted") {
+            // The agent prefixes this with "Connected to "; strip it once here
+            // so the pill and the card footer show the same clean reader name.
+            store.reader = ((payload && payload.message) || "").replace(
+              /^Connected to\s*/i,
+              ""
+            );
+            $("pill-reader").hidden = false;
+            $("txt-reader").textContent = store.reader;
+            render();
+            return true;
+          }
+
+          if (ev === "smc-removed") {
+            store.reader = "";
+            $("pill-reader").hidden = true;
+            // Auto-clear is tied to removal, not to the read: a card left in
+            // the reader must keep its data on screen.
+            if (store.ui.autoclear > 0) {
+              scheduleClear(store.ui.autoclear);
+            } else {
+              clearData();
+            }
+            return true;
+          }
+
+          if (ev === "smc-error") {
+            store.lastError = (payload && payload.message) || "unknown error";
+            if (!store.data) render();
+            return true;
+          }
+
+          if (ev === "smc-options") {
+            applyServerOptions(payload);
+            return true;
+          }
+
+          void source;
+          return false;
+        }
+
+        function describe(ev, p) {
+          if (ev === "smc-data") {
+            if (!p) return "";
+            var n = countFilled(p) + " fields received";
+            return p.reader ? n + " · " + p.reader : n;
+          }
+          if (ev === "smc-status") {
+            if (!p) return "";
+            var count = Array.isArray(p.readers) ? p.readers.length : 0;
+            return "state=" + (p.state || "-") + " readers=" + count + " selected=" + (p.selected || "-");
+          }
+          if (ev === "smc-options") {
+            return p
+              ? "face=" +
+                  !!p.show_face_image +
+                  " laser=" +
+                  !!p.show_laser +
+                  " nhso=" +
+                  !!p.show_nhso
+              : "";
+          }
+          return (p && p.message) || "";
+        }
+
+        var clearTimer = null;
+
+        function scheduleClear(seconds) {
+          if (clearTimer) clearTimeout(clearTimer);
+          clearTimer = setTimeout(function () {
+            clearData();
+            clearTimer = null;
+          }, seconds * 1000);
+        }
+
+        function clearData() {
+          store.data = null;
+          $("pill-time").hidden = true;
+          render();
+        }
+
+        function applyServerOptions(p) {
+          if (!p) return;
+          if (typeof p.remote_control === "boolean") {
+            store.remoteControl = p.remote_control;
+            $("pill-remote").hidden = false;
+            $("txt-remote").textContent = p.remote_control ? t("remote.on") : t("remote.off");
+            syncAppletUI();
+          }
+          // Reflect server truth back into the switches.
+          APPLETS.forEach(function (a) {
+            if (typeof p[a.key] === "boolean") {
+              $("opt-" + a.id).checked = p[a.key];
+            }
+          });
+        }
+
+        // The reader that produced what is on screen. smc-data carries it as
+        // data; smc-inserted only carries a name inside prose, so it stands in
+        // when the payload has none (an agent that has not been updated yet,
+        // or a read that arrived before the insert notification).
+        function currentReader() {
+          var r = store.data && store.data.reader;
+          if (r) return String(r);
+          return store.reader || "";
+        }
+
+        var STATES = {
+          waiting: { dot: "", text: "pill.waiting" },
+          reading: { dot: "wait", text: "pill.reading" },
+          "card-present": { dot: "on", text: "pill.cardPresent" }
+        };
+
+        function applyStatus(p) {
+          if (!p) return;
+
+          // Reader names come off the host, so only strings are kept and they
+          // reach the DOM through textContent (see make()).
+          var list = [];
+          if (Array.isArray(p.readers)) {
+            p.readers.forEach(function (r) {
+              if (typeof r === "string" && r && list.indexOf(r) === -1) list.push(r);
+            });
+          }
+          store.readers = list;
+
+          if (typeof p.remote_control === "boolean") {
+            store.remoteControl = p.remote_control;
+            $("pill-remote").hidden = false;
+            $("txt-remote").textContent = p.remote_control ? t("remote.on") : t("remote.off");
+            syncAppletUI();
+          }
+
+          // An explicit choice here wins over the agent's idea, and survives a
+          // refresh for as long as that reader is still plugged in. A reader
+          // that disappeared falls back to watching all of them.
+          var pick = store.choiceMade ? store.selected : p.selected;
+          if (typeof pick !== "string" || list.indexOf(pick) === -1) pick = "";
+          store.selected = pick;
+
+          store.state = Object.prototype.hasOwnProperty.call(STATES, p.state) ? p.state : "";
+
+          renderStatePill();
+          fillReaders(list, pick);
+          syncReaderUI();
+        }
+
+        function renderStatePill() {
+          var pill = $("pill-state");
+          var s = STATES[store.state];
+          if (!s) {
+            pill.hidden = true;
+            return;
+          }
+          pill.hidden = false;
+          $("dot-state").className = s.dot ? "dot " + s.dot : "dot";
+          $("txt-state").textContent = t(s.text);
+        }
+
+        function fillReaders(list, selected) {
+          var sel = $("sel-reader");
+          // Only the options added here are dropped, so the translated "all"
+          // option and its data-i18n survive every refresh.
+          Array.prototype.slice.call(sel.options).forEach(function (o) {
+            if (!o.hasAttribute("data-all")) sel.removeChild(o);
+          });
+          list.forEach(function (name) {
+            var o = make("option", null, name);
+            o.value = name;
+            sel.appendChild(o);
+          });
+          sel.value = selected || "";
+        }
+
+        // Everything smc-status drives is refreshed from one place, so an
+        // event, a reconnect and a language switch cannot leave these controls
+        // half-updated.
+        function syncReaderUI() {
+          var allowed = store.remoteControl !== false;
+          $("sel-reader").disabled = !allowed;
+          $("btn-readers-refresh").disabled = !allowed;
+
+          // The agent's state is the only input: a card that is in and has
+          // been read is the only thing a second read can improve on. Nothing
+          // here consults the event log.
+          var ready = store.state === "card-present";
+          var busy = store.state === "reading";
+          var btn = $("btn-read-now");
+          btn.disabled = !ready;
+          btn.setAttribute("aria-busy", busy ? "true" : "false");
+          // The busy state is spelled out in the label, so it does not rely on
+          // a greyed-out button to be understood.
+          btn.textContent = busy ? t("act.readAgainBusy") : t("act.readAgain");
+
+          var note = "";
+          if (!allowed) note = "reader.note.off";
+          else if (store.readers.length === 0) note = "reader.note.none";
+          else if (busy) note = "reader.note.reading";
+          else if (ready) note = "reader.note.ready";
+          $("reader-note").textContent = note ? t(note) : "";
+        }
+
+        /* ---------------------------- transport --------------------------- */
+        var ws = null;
+        var wsRetry = 0;
+        var wsTimer = null;
+
+        function setConn(which, ok, labelKey) {
+          store.conn[which] = ok;
+          if (ok) store.conn.ever = true;
+          var dot = $("dot-" + which);
+          var txt = $("txt-" + which);
+          dot.className = "dot " + (ok ? "on" : "off");
+          txt.textContent = ok ? t("conn.connected") : t(labelKey || "conn.disconnected");
+          if (!ok && !store.conn.sio && !store.conn.ws) {
+            // Nothing is watching a reader any more, so a stale "card in" would
+            // be a claim about a process that is gone.
+            store.state = "";
+            renderStatePill();
+            syncReaderUI();
+          }
+          if (!ok && !store.conn.ever) render();
+        }
+
+        function connectSocketIO() {
+          if (typeof window.io !== "function") {
+            var dot = $("dot-sio");
+            dot.className = "dot off";
+            $("txt-sio").textContent = t("conn.offline");
+            $("pill-sio").title = window.__smcSocketIOCDNFailed
+              ? "socket.io client could not be loaded from the CDN; WebSocket is carrying the data"
+              : "socket.io client unavailable";
+            return;
+          }
+
+          var socket = window.io.connect(window.location.origin, {
+            transports: ["websocket", "polling"]
+          });
+
+          socket.on("connect", function () {
+            wsRetry = 0;
+            setConn("sio", true);
+            // Ask on this transport too. These used to go out only on the
+            // WebSocket open, so a page that reached the agent over socket.io
+            // alone never learned the options or the reader list and sat with
+            // its switches wrong until something else changed.
+            socket.emit("smc-command", { action: "get-options" });
+            socket.emit("smc-command", { action: "get-status" });
+          });
+          socket.on("disconnect", function () {
+            setConn("sio", false);
+          });
+          socket.on("connect_error", function () {
+            setConn("sio", false, "conn.failed");
+          });
+
+          [
+            "smc-data",
+            "smc-inserted",
+            "smc-removed",
+            "smc-error",
+            "smc-options",
+            "smc-status"
+          ].forEach(function (ev) {
+            socket.on(ev, function (payload) {
+              handleEvent(ev, payload, "sio");
+            });
+          });
+
+          // Outbound: the control channel the agent answers with smc-options.
+          window.smcSocket = socket;
+        }
+
+        function sendCommand(obj) {
+          var sent = false;
+          if (window.smcSocket && window.smcSocket.connected) {
+            window.smcSocket.emit("smc-command", obj);
+            sent = true;
+          }
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify(obj));
+            sent = true;
+          }
+          return sent;
+        }
+
+        function connectWS() {
+          if (!window.WebSocket) {
+            setConn("ws", false, "conn.failed");
+            return;
+          }
+          var proto = window.location.protocol === "https:" ? "wss://" : "ws://";
+          try {
+            ws = new WebSocket(proto + window.location.host + "/ws");
+          } catch (e) {
+            setConn("ws", false, "conn.failed");
+            return;
+          }
+
+          ws.onopen = function () {
+            wsRetry = 0;
+            setConn("ws", true);
+            // Ask the agent what it is actually reading, so the switches match
+            // reality on first paint instead of assuming the defaults.
+            sendCommand({ action: "get-options" });
+            // Same reason for the readers, the watched one and the card state:
+            // the reader picker and the read-again button are driven by that
+            // payload alone, so without it they start out disabled.
+            sendCommand({ action: "get-status" });
+          };
+
+          ws.onclose = function () {
+            setConn("ws", false);
+            if (wsTimer) clearTimeout(wsTimer);
+            wsRetry = Math.min(wsRetry + 1, 6);
+            wsTimer = setTimeout(connectWS, Math.min(1000 * wsRetry, 10000));
+          };
+
+          ws.onerror = function () {
+            setConn("ws", false, "conn.failed");
+          };
+
+          // One JSON object per frame — {event, payload}. The old page split on
+          // newlines, which this server never emits.
+          ws.onmessage = function (evt) {
+            if (typeof evt.data !== "string") return;
+            var msg;
+            try {
+              msg = JSON.parse(evt.data);
+            } catch (e) {
+              return;
+            }
+            if (!msg || !msg.event) return;
+            handleEvent(msg.event, msg.payload, "ws");
+          };
+        }
+
+        /* ------------------------------ options --------------------------- */
+        function applyPrivacyPreset(name) {
+          var preset = PRIVACY[name];
+          if (!preset) return;
+          store.ui.mask = preset.mask;
+          store.ui.maskphoto = preset.maskphoto;
+          store.ui.photo = preset.photo;
+          store.ui.json = preset.json;
+          store.ui.autoclear = preset.autoclear;
+          store.ui.nameparts = preset.nameparts;
+          store.ui.parts = preset.parts;
+          syncControls();
+        }
+
+        function syncControls() {
+          $("opt-photo").checked = store.ui.photo;
+          $("opt-parts").checked = store.ui.parts;
+          $("opt-nameparts").checked = store.ui.nameparts;
+          $("opt-json").checked = store.ui.json;
+          $("opt-log").checked = store.ui.log;
+          $("opt-mask").checked = store.ui.mask;
+          $("opt-maskphoto").checked = store.ui.maskphoto;
+          $("opt-autoclear").value = String(store.ui.autoclear);
+
+          document.documentElement.setAttribute("data-privacy", store.ui.privacy);
+          document.documentElement.setAttribute("data-view", store.ui.view);
+          document.documentElement.setAttribute("data-lang", store.ui.lang);
+        }
+
+        function markSeg(segId, value) {
+          var seg = $(segId);
+          if (!seg) return;
+          Array.prototype.forEach.call(seg.querySelectorAll("button"), function (b) {
+            b.setAttribute("aria-pressed", b.dataset.v === value ? "true" : "false");
+          });
+        }
+
+        function applyI18n() {
+          Array.prototype.forEach.call(document.querySelectorAll("[data-i18n]"), function (n) {
+            n.textContent = t(n.dataset.i18n);
+          });
+          $("privacy-note").textContent = t("privacy." + store.ui.privacy);
+          $("applet-note").textContent =
+            store.remoteControl === false ? t("applet.note.off") : t("applet.note.on");
+          markSeg("seg-privacy", store.ui.privacy);
+          markSeg("seg-view", store.ui.view);
+          markSeg("seg-lang", store.ui.lang);
+          // The read-again label and the note are written by syncReaderUI, so a
+          // language switch has to run it again.
+          renderStatePill();
+          syncReaderUI();
+        }
+
+        function syncAppletUI() {
+          var allowed = store.remoteControl !== false;
+          APPLETS.forEach(function (a) {
+            var box = $("opt-" + a.id);
+            box.disabled = !allowed;
+            box.parentNode.classList.toggle("disabled", !allowed);
+          });
+          $("applet-note").textContent =
+            store.remoteControl === false ? t("applet.note.off") : t("applet.note.on");
+        }
+
+        function pushOptions() {
+          var payload = {};
+          APPLETS.forEach(function (a) {
+            payload[a.key] = $("opt-" + a.id).checked;
+          });
+          var sent = sendCommand({ action: "set-options", options: payload });
+          if (!sent) {
+            toast(t("state.noconn.title"), true);
+          }
+        }
+
+        function copyAll() {
+          if (!store.data) return;
+          copyText(JSON.stringify(store.data, null, 2)).then(
+            function () {
+              toast(t("act.copied"));
+            },
+            function () {
+              toast(t("copy.failed"), true);
+            }
+          );
+        }
+
+        function wireControls() {
+          $("seg-privacy").addEventListener("click", function (e) {
+            var b = e.target.closest("button");
+            if (!b) return;
+            store.ui.privacy = b.dataset.v;
+            applyPrivacyPreset(store.ui.privacy);
+            savePrefs();
+            applyI18n();
+            render();
+          });
+
+          $("seg-view").addEventListener("click", function (e) {
+            var b = e.target.closest("button");
+            if (!b) return;
+            store.ui.view = b.dataset.v;
+            syncControls();
+            savePrefs();
+            render();
+          });
+
+          $("seg-lang").addEventListener("click", function (e) {
+            var b = e.target.closest("button");
+            if (!b) return;
+            store.ui.lang = b.dataset.v;
+            syncControls();
+            savePrefs();
+            applyI18n();
+            render();
+          });
+
+          var simple = [
+            "opt-photo",
+            "opt-parts",
+            "opt-nameparts",
+            "opt-json",
+            "opt-log",
+            "opt-mask",
+            "opt-maskphoto"
+          ];
+          simple.forEach(function (id) {
+            $(id).addEventListener("change", function () {
+              store.ui[id.replace("opt-", "")] = $(id).checked;
+              savePrefs();
+              render();
+            });
+          });
+
+          $("opt-autoclear").addEventListener("change", function () {
+            store.ui.autoclear = Number($("opt-autoclear").value);
+            savePrefs();
+            render();
+          });
+
+          APPLETS.forEach(function (a) {
+            $("opt-" + a.id).addEventListener("change", pushOptions);
+          });
+
+          $("sel-reader").addEventListener("change", function () {
+            var name = $("sel-reader").value;
+            store.selected = name;
+            store.choiceMade = true;
+            if (!sendCommand({ action: "set-reader", reader: name })) {
+              toast(t("state.noconn.title"), true);
+            }
+          });
+
+          $("btn-readers-refresh").addEventListener("click", function () {
+            if (!sendCommand({ action: "refresh-readers" })) {
+              toast(t("state.noconn.title"), true);
+            }
+          });
+
+          $("btn-read-now").addEventListener("click", function () {
+            // Checked against the payload-driven state rather than the disabled
+            // attribute, so a queued keypress cannot send a second read.
+            if (store.state !== "card-present") return;
+            if (!sendCommand({ action: "read-now" })) {
+              toast(t("state.noconn.title"), true);
+            }
+          });
+
+          $("btn-copy").addEventListener("click", copyAll);
+          $("btn-reset").addEventListener("click", function () {
+            var base = {};
+            for (var k in DEFAULTS) base[k] = DEFAULTS[k];
+            store.ui = base;
+            applyPrivacyPreset(store.ui.privacy);
+            savePrefs();
+            applyI18n();
+            render();
+          });
+
+          $("lightbox").addEventListener("click", function () {
+            $("lightbox").hidden = true;
+            $("lightbox-img").removeAttribute("src");
+          });
+
+          document.addEventListener("keydown", function (e) {
+            if (e.key === "Escape" && !$("lightbox").hidden) {
+              $("lightbox").hidden = true;
+              $("lightbox-img").removeAttribute("src");
+            }
+          });
+        }
+
+        /* ------------------------------- boot ----------------------------- */
+        function boot() {
+          // On a first visit the toggles have to follow the mode, otherwise the
+          // panel claims "masks the ID number" while the box is unticked.
+          if (!hadStoredPrefs) applyPrivacyPreset(store.ui.privacy);
+          syncControls();
+          applyI18n();
+          syncAppletUI();
+          wireControls();
+          render();
+
+          // A socket.io failure must not cost the WebSocket path. connectWS is
+          // called right after this, so anything thrown here would leave the
+          // page with neither transport.
+          try {
+            connectSocketIO();
+          } catch (e) {
+            var dot = $("dot-sio");
+            dot.className = "dot off";
+            $("txt-sio").textContent = t("conn.failed");
+          }
+          connectWS();
+
+          // Give the transports a moment, then correct the empty state if
+          // nothing managed to connect at all.
+          setTimeout(function () {
+            if (!store.conn.sio && !store.conn.ws && !store.data) render();
+          }, 1200);
+        }
+
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", boot);
+        } else {
+          boot();
+        }
+      })();
     </script>
   </body>
 </html>
