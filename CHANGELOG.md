@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `thai-smartcard-tray` (`cmd/tray`), an optional tray app for macOS, Windows
+  and Linux: reader and card state, shortcuts to the test and settings pages,
+  the expose-to-network toggle, and the read image / laser ID / NHSO switches.
+  It is a thin client of the agent's `/api` — it never touches the config file
+  and never starts the agent; when it cannot reach the agent it says so with
+  the command to start it and keeps polling. On GNOME without the AppIndicator
+  extension it sends a notification pointing at `/settings` instead of failing
+  silently. The tray needs cgo and is its own binary, so the agent stays
+  cross-compilable.
+- Installers for all three platforms, built by the packaging workflow:
+  a Windows Inno Setup installer (installs and starts the service, registers
+  the tray at login machine-wide under `HKLM\…\Run`, which each user can turn
+  off in Settings > Apps > Startup), a macOS `.pkg` built with `pkgbuild`
+  (installs and starts the service, puts the tray in `/Applications`, and
+  registers it at login via a LaunchAgent; signed and notarized when the
+  Apple Developer secrets are configured), and a Linux tray package that
+  depends on the agent's and ships
+  `/etc/xdg/autostart/thai-smartcard-tray.desktop`.
 - TLS `files` mode (`[tls]` in `config.toml`): the operator supplies
   `cert_file` and `key_file`, the agent serves HTTPS on `tls.port` and reloads
   the files when their mtime changes, so a renewed certificate needs no

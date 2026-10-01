@@ -41,3 +41,9 @@ package-deb:
 package-rpm:
 	go build -o ./bin/thai-smartcard-agent.linux-amd64 ./cmd/agent
 	nfpm package -p rpm -f packaging/nfpm.yaml -t ./bin/thai-smartcard-agent.x86_64.rpm
+
+# The tray needs cgo and builds natively per OS (fyne-io/systray), so it is
+# left out of the cross-compiling build-* targets. On Windows add
+# -ldflags "-H=windowsgui" so no console opens.
+tray:
+	CGO_ENABLED=1 go build -o ./bin/thai-smartcard-tray ./cmd/tray

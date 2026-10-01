@@ -18,6 +18,7 @@ it as a library if you would rather build your own.
 - [Reader requirements](#reader-requirements)
 - [Testing without a reader](#testing-without-a-reader)
 - [Run as a service](#run-as-a-service)
+- [Tray](#tray)
 - [Browsers](#browsers)
 - [Upgrading from v2](#upgrading-from-v2)
 - [Other versions](#other-versions)
@@ -547,6 +548,29 @@ pm2-startup install
 pm2 start --name smc -- .\bin\thai-smartcard-agent.exe --config %ProgramData%\ThaiSmartcard\config.toml
 pm2 save
 ```
+
+## Tray
+
+`thai-smartcard-tray` is an optional menu-bar / system-tray app: the reader and
+card state, shortcuts to the test and settings pages, the "expose to network"
+toggle, and the read image / laser ID / NHSO switches. It is a **thin client**
+of the agent's `/api` — it never touches the config file and never starts the
+agent. When it cannot reach the agent it shows "agent is not running" with the
+command to start it for your platform, and keeps polling.
+
+The tray installer requires the agent's. The installer registers the tray to
+start at login; turn it off in the operating system's own list of login items —
+Windows: Settings > Apps > Startup (or Task Manager > Startup), macOS: System
+Settings > General > Login Items, Linux: your desktop's startup applications
+settings. Quitting the tray closes it for the current session only; the agent
+keeps running.
+
+"Expose to network" is a checkable toggle only while a token exists; before
+that, choosing it opens `/settings`, where the agent generates the token and
+shows it once. Turning exposure **off** is always a direct toggle, because it
+is the safe direction. On GNOME the tray needs the AppIndicator extension;
+without it the tray sends a notification pointing at `/settings` instead of
+failing silently.
 
 ## Browsers
 

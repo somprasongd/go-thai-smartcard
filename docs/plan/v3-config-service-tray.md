@@ -441,10 +441,10 @@ packaging only.
 | Phase | Content | Release |
 | :---- | :------ | :------ |
 | 1 | `config.toml` loader (no env), `listen`, `transports`, `allowed_origins`, `token`; `/api/settings`, `/settings`, `/api/info`; split `web/`; remove `set-options`, `set-reader`, `remote_control`, `util` env helpers; fix the ws subscriber race; README, CHANGELOG, Makefile | **v3.0.0** |
-| 2 | `service` subcommand, systemd unit template, `.deb`/`.rpm` for the agent with its dedicated service user and pcsc-lite polkit rule (decision 17), verified on Debian, Ubuntu LTS and Fedora; the packaging workflow's Linux job builds them (decision 20) | v3.1.0 |
-| 3 | TLS `files` mode | v3.2.0 |
-| 4 | Tray (macOS, Windows, Linux), tray packages, installers that install and start the agent service and register the tray at login; the workflow's Windows and macOS jobs build them, with signing and notarization (decision 20) | v3.3.0 |
-| 5 | TLS `auto` mode | later |
+| 2 | `service` subcommand, systemd unit template, `.deb`/`.rpm` for the agent with its dedicated service user and pcsc-lite polkit rule (decision 17), verified on Debian, Ubuntu LTS and Fedora; the packaging workflow's Linux job builds them (decision 20). **Done** (commit 3b8a9b1) except the on-host verification, which still needs real Debian, Ubuntu LTS and Fedora machines before v3.1.0 ships | v3.1.0 |
+| 3 | TLS `files` mode. **Done** (commit 01fdba0) | v3.2.0 |
+| 4 | Tray (macOS, Windows, Linux), tray packages, installers that install and start the agent service and register the tray at login; the workflow's Windows and macOS jobs build them, with signing and notarization (decision 20). **Done** (commit on v3); the macOS .pkg build is verified locally, the Inno Setup and nfpm-tray paths run in CI on a release tag, and signing needs the Apple Developer secrets set | v3.3.0 |
+| 5 | TLS `auto` mode | later — not part of the planned releases, unchanged |
 
 Phase 1 is one release on purpose. Shipping the config file without
 `/settings` would take the toggles away from the bundled page with nothing to

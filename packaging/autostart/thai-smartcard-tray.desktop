@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Thai Smartcard Tray
+Comment=Tray icon for the Thai Smartcard Agent
+Exec=/usr/bin/thai-smartcard-tray
+Terminal=false
+Categories=Utility;
+X-GNOME-Autostart-enabled=true

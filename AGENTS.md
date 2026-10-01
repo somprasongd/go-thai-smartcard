@@ -23,7 +23,8 @@ commands; `build-wasm` targets `cmd/agent`.
 
 ## Project layout
 
-- `cmd/agent` — the daemon: resolves the transport, reads cards on a loop, broadcasts events
+- `cmd/agent` — the daemon: resolves the transport, reads cards on a loop, broadcasts events; `service.go` manages the system service
+- `cmd/tray` — the tray app, a thin client of the agent's `/api`; needs cgo (fyne-io/systray), kept out of the agent so the agent stays cross-compilable
 - `cmd/record` — captures a real card session to a trace file, for tests and for checking readers
 - `cmd/example` — minimal library usage, doubles as the README's example
 - `pkg/config` — the config.toml loader: defaults, strict validation, the templated writer, the fingerprint the settings API round-trips
