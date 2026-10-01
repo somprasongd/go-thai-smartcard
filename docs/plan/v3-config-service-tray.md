@@ -471,22 +471,23 @@ half-changed wire contract. The gate for each PR is the local one from
 - [x] PR 1: ws race fixed; `TestWebSocketBroadcastWhileClientsChurn` runs
       clean under `go test -race ./pkg/server/`. Shipped from `main` as
       v2.0.1, already in `v3` through its base
-- [ ] PR 2: `pkg/config` loader and writer, unknown-key and bad-value cases, the
-      fingerprint refusal on a stale save, the banner
-- [ ] PR 3: agent uses the config only; stale `SMC_*` prints a TOML snippet;
+- [x] PR 2: `pkg/config` loader and writer, unknown-key and bad-value cases, the
+      fingerprint refusal on a stale save, the banner (commit 963a0e3)
+- [x] PR 3: agent uses the config only; stale `SMC_*` prints a TOML snippet;
       `Makefile` has no `SMC_*`, runs packages not files, and has `check`;
-      `.gitignore` covers `config.dev.toml`
-- [ ] PR 4: origin and token checks; tests for each disabled transport
-- [ ] PR 5: `/settings` with the pre-save comment warning; the five route rules
+      `.gitignore` covers `config.dev.toml` (commit e4315fd)
+- [x] PR 4: origin and token checks; tests for each disabled transport
+      (commit 58a8cf6)
+- [x] PR 5: `/settings` with the pre-save comment warning; the five route rules
       tested; the `version` round-trip (a `409` on a stale save), token
       generation shown once, `token_set` on GET and the regenerate action
-      tested
-- [ ] PR 6: README, AGENTS.md and CHANGELOG match the code; the CHANGELOG
+      tested (commit d0b91b0)
+- [x] PR 6: README, AGENTS.md and CHANGELOG match the code; the CHANGELOG
       table uses `SMC_AGENT_PORT`, not `SMC_PORT`; no remaining mention of
       `SMC_*`, `set-options`, `set-reader`, `remote_control` or
       `./cmd/agent/main.go` outside the changelog's history (check with
-      `grep -rn`)
-- [ ] `go build ./... && go test ./... && go vet ./... && test -z "$(gofmt -l .)"`
+      `grep -rn`) (commit b9fcdf0)
+- [x] `go build ./... && go test ./... && go vet ./... && test -z "$(gofmt -l .)"`
       and `GOOS=js GOARCH=wasm go build ./pkg/smc/` on `v3` before the merge to
       `main`
 
