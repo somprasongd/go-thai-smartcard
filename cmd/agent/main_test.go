@@ -11,16 +11,13 @@ import (
 	"github.com/somprasongd/go-thai-smartcard/pkg/smc"
 )
 
-const disabledMessage = "set-options is disabled, set SMC_ALLOW_REMOTE_OPTIONS=true to allow it"
-
 // newTestController wires a controller onto a buffered broadcast channel, so a
 // test can call handle directly and read the answer without a reader running.
-func newTestController(allowRemote bool, seed smc.Options) (*optionsController, chan model.Message) {
+func newTestController(seed smc.Options) (*optionsController, chan model.Message) {
 	broadcast := make(chan model.Message, 8)
 	return &optionsController{
-		store:       smc.NewOptionsStore(seed),
-		broadcast:   broadcast,
-		allowRemote: allowRemote,
+		store:     smc.NewOptionsStore(seed),
+		broadcast: broadcast,
 	}, broadcast
 }
 
@@ -38,7 +35,7 @@ func answers(broadcast chan model.Message) []model.Message {
 }
 
 func TestOptionsControllerSetOptions(t *testing.T) {
-	c, broadcast := newTestController(true, smc.Options{ShowLaserData: true})
+	c, broadcast := newTestController(smc.Options{ShowLaserData: true})
 
 	c.handle(model.Command{
 		Action:  "set-options",
@@ -62,7 +59,7 @@ func TestOptionsControllerSetOptions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	wantJSON := `{"event":"smc-options","payload":{"show_face_image":true,"show_nhso":false,"show_laser":false,"remote_control":true}}`
+	wantJSON := `{"event":"smc-options","payload":{"show_face_image":true,"show_nhso":false,"show_laser":false}}`
 	if string(payload) != wantJSON {
 		t.Errorf("payload =\n%s\nwant\n%s", payload, wantJSON)
 	}
@@ -71,44 +68,21 @@ func TestOptionsControllerSetOptions(t *testing.T) {
 // get-options answers with what is in force, so a page that connects late or
 // after a rejected set-options is not left guessing.
 func TestOptionsControllerGetOptions(t *testing.T) {
-	tests := []struct {
-		name        string
-		allowRemote bool
-		seed        smc.Options
-		wantJSON    string
-	}{
-		{
-			name:        "a gate that is on is reported as such",
-			allowRemote: true,
-			seed:        smc.Options{ShowFaceImage: true, ShowLaserData: true},
-			wantJSON:    `{"event":"smc-options","payload":{"show_face_image":true,"show_nhso":false,"show_laser":true,"remote_control":true}}`,
-		},
-		{
-			name:        "a gate that is off is reported as such",
-			allowRemote: false,
-			seed:        smc.Options{ShowNhsoData: true},
-			wantJSON:    `{"event":"smc-options","payload":{"show_face_image":false,"show_nhso":true,"show_laser":false,"remote_control":false}}`,
-		},
+	c, broadcast := newTestController(smc.Options{ShowFaceImage: true, ShowLaserData: true})
+
+	c.handle(model.Command{Action: "get-options"})
+
+	got := answers(broadcast)
+	if len(got) != 1 {
+		t.Fatalf("got %d broadcasts, want 1: %+v", len(got), got)
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c, broadcast := newTestController(tt.allowRemote, tt.seed)
-
-			c.handle(model.Command{Action: "get-options"})
-
-			got := answers(broadcast)
-			if len(got) != 1 {
-				t.Fatalf("got %d broadcasts, want 1: %+v", len(got), got)
-			}
-			payload, err := json.Marshal(got[0])
-			if err != nil {
-				t.Fatalf("marshal: %v", err)
-			}
-			if string(payload) != tt.wantJSON {
-				t.Errorf("payload =\n%s\nwant\n%s", payload, tt.wantJSON)
-			}
-		})
+	payload, err := json.Marshal(got[0])
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	wantJSON := `{"event":"smc-options","payload":{"show_face_image":true,"show_nhso":false,"show_laser":true}}`
+	if string(payload) != wantJSON {
+		t.Errorf("payload =\n%s\nwant\n%s", payload, wantJSON)
 	}
 }
 
@@ -119,34 +93,21 @@ func TestOptionsControllerRejectsCommands(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		allowRemote bool
 		cmd         model.Command
 		wantMessage string
 	}{
 		{
-			name:        "set-options is refused when the gate is off",
-			allowRemote: false,
-			cmd: model.Command{
-				Action:  "set-options",
-				Options: &model.Options{ShowFaceImage: false},
-			},
-			wantMessage: disabledMessage,
-		},
-		{
 			name:        "an unknown action is an error, not a panic",
-			allowRemote: true,
 			cmd:         model.Command{Action: "delete-everything"},
 			wantMessage: `unknown action "delete-everything"`,
 		},
 		{
 			name:        "a missing action is an error",
-			allowRemote: true,
 			cmd:         model.Command{Options: &model.Options{ShowFaceImage: true}},
 			wantMessage: `unknown action ""`,
 		},
 		{
 			name:        "set-options without an options object is an error",
-			allowRemote: true,
 			cmd:         model.Command{Action: "set-options"},
 			wantMessage: "set-options needs an options object",
 		},
@@ -154,7 +115,7 @@ func TestOptionsControllerRejectsCommands(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c, broadcast := newTestController(tt.allowRemote, seed)
+			c, broadcast := newTestController(seed)
 
 			c.handle(tt.cmd)
 
@@ -179,19 +140,6 @@ func TestOptionsControllerRejectsCommands(t *testing.T) {
 	}
 }
 
-// A page must still be able to see the options while the gate is off, so it
-// can show the current state and disable its toggles.
-func TestOptionsControllerGetOptionsWorksWhileTheGateIsOff(t *testing.T) {
-	c, broadcast := newTestController(false, smc.Options{ShowFaceImage: true})
-
-	c.handle(model.Command{Action: "get-options"})
-
-	got := answers(broadcast)
-	if len(got) != 1 || got[0].Event != "smc-options" {
-		t.Fatalf("got %+v, want a single smc-options broadcast", got)
-	}
-}
-
 func TestOptionsControllerRun(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -213,7 +161,7 @@ func TestOptionsControllerRun(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c, broadcast := newTestController(true, smc.Options{})
+			c, broadcast := newTestController(smc.Options{})
 			command := make(chan model.Command, 1)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -299,10 +247,9 @@ func TestOptionsControllerForwardsReaderControl(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			control := make(chan smc.Control, 4)
 			controller := &optionsController{
-				store:       smc.NewOptionsStore(smc.Options{}),
-				broadcast:   make(chan model.Message, 8),
-				allowRemote: true,
-				control:     control,
+				store:     smc.NewOptionsStore(smc.Options{}),
+				broadcast: make(chan model.Message, 8),
+				control:   control,
 			}
 
 			controller.handle(tt.cmd)
@@ -323,63 +270,6 @@ func TestOptionsControllerForwardsReaderControl(t *testing.T) {
 	}
 }
 
-// Choosing which reader to watch is a configuration change, so it is gated like
-// set-options. Reading again and re-listing are not: neither changes what the
-// agent reads or exposes, and both would be useless if a locked down agent
-// ignored them.
-func TestOptionsControllerGatesSetReaderOnly(t *testing.T) {
-	tests := []struct {
-		name      string
-		cmd       model.Command
-		forwarded bool
-	}{
-		{name: "set-reader is refused", cmd: model.Command{Action: "set-reader", Reader: "X"}, forwarded: false},
-		{name: "read-now still gets through", cmd: model.Command{Action: "read-now"}, forwarded: true},
-		{name: "refresh-readers still gets through", cmd: model.Command{Action: "refresh-readers"}, forwarded: true},
-		{name: "get-status still gets through", cmd: model.Command{Action: "get-status"}, forwarded: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			control := make(chan smc.Control, 4)
-			broadcast := make(chan model.Message, 8)
-			controller := &optionsController{
-				store:       smc.NewOptionsStore(smc.Options{}),
-				broadcast:   broadcast,
-				allowRemote: false,
-				control:     control,
-			}
-
-			controller.handle(tt.cmd)
-
-			select {
-			case got := <-control:
-				if !tt.forwarded {
-					t.Errorf("forwarded %+v although remote control is off", got)
-				}
-			default:
-				if tt.forwarded {
-					t.Error("nothing was forwarded")
-				}
-			}
-
-			var refused bool
-			for _, msg := range answers(broadcast) {
-				if msg.Event != "smc-error" {
-					continue
-				}
-				if payload, ok := msg.Payload.(map[string]string); ok &&
-					strings.Contains(payload["message"], "SMC_ALLOW_REMOTE_OPTIONS") {
-					refused = true
-				}
-			}
-			if !tt.forwarded && !refused {
-				t.Error("a refused set-reader was not explained to the client")
-			}
-		})
-	}
-}
-
 // The read loop spends most of its time inside a card. Blocking the command
 // loop there would stall the server's outbound path with it, so a request that
 // arrives while the loop is busy is dropped rather than queued without bound.
@@ -387,10 +277,9 @@ func TestOptionsControllerDoesNotBlockOnABusyLoop(t *testing.T) {
 	// Unbuffered and never read: the send can only succeed if it is dropped.
 	control := make(chan smc.Control)
 	controller := &optionsController{
-		store:       smc.NewOptionsStore(smc.Options{}),
-		broadcast:   make(chan model.Message, 8),
-		allowRemote: true,
-		control:     control,
+		store:     smc.NewOptionsStore(smc.Options{}),
+		broadcast: make(chan model.Message, 8),
+		control:   control,
 	}
 
 	done := make(chan struct{})

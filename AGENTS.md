@@ -8,25 +8,30 @@ image) to clients over socket.io and WebSockets.
 - Install deps: `go mod download`
 - Build:        `go build ./...`
 - Test:         `go test ./...`
+- Race check:   `go test -race ./pkg/server/` (see Testing instructions)
 - Lint:         `go vet ./...` and `gofmt -l .` (no linter config in the repo)
-- Run agent:    `go run ./cmd/agent/main.go`
-- Library demo: `go run ./cmd/example/main.go`
+- Run agent:    `go run ./cmd/agent` — add `--config <path>` to choose a config
+  file; without it the service config directory is used. `make dev` runs with a
+  git-ignored `config.dev.toml`, written with the defaults on first run
+- Library demo: `go run ./cmd/example`
 
-Go 1.18+ per `go.mod`. `make dev`, `make example` and the `build-*` targets wrap
-the same commands; `build-wasm` targets `cmd/agent`.
+Go 1.18+ per `go.mod`. `make dev`, `make example`, the `build-*` targets and
+`make check` (the whole local gate, including the wasm build) wrap the same
+commands; `build-wasm` targets `cmd/agent`.
 
 ## Project layout
 
 - `cmd/agent` — the daemon: resolves the transport, reads cards on a loop, broadcasts events
 - `cmd/record` — captures a real card session to a trace file, for tests and for checking readers
 - `cmd/example` — minimal library usage, doubles as the README's example
+- `pkg/config` — the config.toml loader: defaults, strict validation, the templated writer, the fingerprint the settings API round-trips
 - `pkg/smc` — card logic only: applet selection, command/GET RESPONSE, TIS-620, parsing
 - `pkg/transport` — the `Transport`/`Card`/`Status` interface `pkg/smc` talks to
 - `pkg/transport/pcsc` — the PC/SC backend (`//go:build !js`)
 - `pkg/apdu` — command APDU constants
 - `pkg/model` — response types and raw-field parsers
 - `pkg/server` — socket.io, WebSocket and the bundled example page
-- `pkg/util` — env helpers, `GetResponseCommand`
+- `pkg/util` — `GetResponseCommand` and the small byte helpers (hex decode, base64)
 - `docs/plan/` — written plans for larger changes, kept as the record of what was decided
 - `testdata/` — trace files, **gitignored**
 
@@ -38,6 +43,10 @@ back plain reader names and `[]byte` APDUs so a non-PC/SC backend can satisfy it
 unchanged. Resolve the backend in one place (`smc.NewTransport()`), not in
 callers. `cmd/record` needs the transport itself rather than a `SmartCard`, which
 is why it takes the transport path.
+
+Only `cmd/*` reads the config file. `pkg/config` is the loader; everything
+below it receives plain values — `pkg/smc` keeps receiving `Options` and a
+reader name, `pkg/server` a listen address and a transport list.
 
 The backend is behind build constraints (`transport_default.go` `!js`,
 `transport_js.go` `js`, `pcsc.go` `!js`), so `pkg/smc` still builds for wasm:
@@ -172,5 +181,5 @@ gh release delete vX.Y.Z --yes && git push --delete origin vX.Y.Z
   contains built binaries and is ignored too
 - If a trace is ever pushed, deleting it in a later commit is not enough — the
   data is public once pushed and history has to be rewritten
-- Keep `.env`-style secrets out of the repo; the agent is configured entirely
-  through `SMC_*` environment variables
+- Keep secrets out of the repo. The agent is configured from one `config.toml`
+  (see `pkg/config`); no environment variables are read

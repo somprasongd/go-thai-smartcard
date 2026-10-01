@@ -149,6 +149,13 @@ type harness struct {
 
 func newHarness(t *testing.T, pause time.Duration, readers ...string) *harness {
 	t.Helper()
+	return newHarnessWithReader(t, pause, "", readers...)
+}
+
+// newHarnessWithReader is newHarness with the daemon seeded to watch one
+// reader from the start, which is what a configured [card] reader produces.
+func newHarnessWithReader(t *testing.T, pause time.Duration, reader string, readers ...string) *harness {
+	t.Helper()
 
 	tr := newScriptedTransport(pause, readers...)
 	card := smc.NewSmartCardWith(tr)
@@ -169,6 +176,7 @@ func newHarness(t *testing.T, pause time.Duration, readers ...string) *harness {
 			Broadcast: broadcast,
 			Options:   smc.NewOptionsStore(smc.Options{}),
 			Control:   h.control,
+			Reader:    reader,
 		})
 	}()
 
@@ -442,4 +450,39 @@ func TestDaemonDropsASelectionThatIsGone(t *testing.T) {
 
 	h.transport.setPresent("Reader A", true)
 	h.settleReads(1)
+}
+
+// A configured [card] reader narrows the watch from the first resolve, the
+// same way a set-reader request would.
+func TestDaemonStartsWatchingAConfiguredReader(t *testing.T) {
+	h := newHarnessWithReader(t, time.Millisecond, "Reader B", "Reader A", "Reader B")
+	h.transport.setPresent("Reader B", true)
+
+	h.settleReads(1)
+
+	status, ok := h.lastStatus()
+	if !ok {
+		t.Fatal("no status was broadcast")
+	}
+	if status.Selected != "Reader B" {
+		t.Errorf("selected = %q, want the configured reader", status.Selected)
+	}
+}
+
+// A configured reader that is not attached falls back to watching everything
+// on the first resolve, rather than waiting for a reader that will never
+// answer.
+func TestDaemonFallsBackWhenTheConfiguredReaderIsMissing(t *testing.T) {
+	h := newHarnessWithReader(t, time.Millisecond, "Reader Z", "Reader A")
+	h.transport.setPresent("Reader A", true)
+
+	h.settleReads(1)
+
+	status, ok := h.lastStatus()
+	if !ok {
+		t.Fatal("no status was broadcast")
+	}
+	if status.Selected != "" {
+		t.Errorf("selected = %q, want empty (watching all) after the configured reader was not attached", status.Selected)
+	}
 }

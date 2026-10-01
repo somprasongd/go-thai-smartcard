@@ -1,7 +1,16 @@
+// Command agent reads a Thai national ID card and broadcasts what it finds to
+// connected clients.
+//
+// Configuration comes from one config.toml file (see pkg/config): --config
+// points at the file, --version prints the version. There are no other flags
+// and no environment variables; a stale SMC_* variable only earns a warning
+// naming its replacement.
 package main
 
 import (
 	"context"
+	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -9,20 +18,32 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/somprasongd/go-thai-smartcard/pkg/config"
 	"github.com/somprasongd/go-thai-smartcard/pkg/model"
 	"github.com/somprasongd/go-thai-smartcard/pkg/server"
 	"github.com/somprasongd/go-thai-smartcard/pkg/smc"
-	"github.com/somprasongd/go-thai-smartcard/pkg/util"
 )
 
+// version is overridden at build time with -ldflags "-X main.version=…".
+var version = "dev"
+
 func main() {
-	port := util.GetEnv("SMC_AGENT_PORT", "9898")
-	showImage := util.GetEnvBool("SMC_SHOW_IMAGE", true)
-	showLaser := util.GetEnvBool("SMC_SHOW_LASER", true)
-	showNhso := util.GetEnvBool("SMC_SHOW_NHSO", false)
-	// On by default so the page's toggles work without extra setup, but see
-	// the warning below before leaving it that way.
-	allowRemoteOptions := util.GetEnvBool("SMC_ALLOW_REMOTE_OPTIONS", true)
+	var (
+		configPath  = flag.String("config", "", "path to config.toml (default: the service config directory)")
+		showVersion = flag.Bool("version", false, "print the version and exit")
+	)
+	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(version)
+		return
+	}
+
+	cfg := loadConfig(*configPath)
+
+	for _, warning := range config.EnvWarnings(os.LookupEnv) {
+		log.Printf("WARNING: %s", warning)
+	}
 
 	broadcast := make(chan model.Message)
 	// Buffered because a page asks for the options and the status back to back
@@ -35,31 +56,25 @@ func main() {
 	control := make(chan smc.Control, 8)
 
 	serverCfg := server.ServerConfig{
-		Broadcast: broadcast,
-		Command:   command,
-		Port:      port,
+		Listen:     cfg.Server.Listen,
+		Port:       cfg.Server.Port,
+		Transports: cfg.Server.Transports,
+		Broadcast:  broadcast,
+		Command:    command,
 	}
 	go server.Serve(serverCfg)
 
-	opts := &smc.Options{
-		ShowFaceImage: showImage,
-		ShowNhsoData:  showNhso,
-		ShowLaserData: showLaser,
-	}
+	store := smc.NewOptionsStore(smc.Options{
+		ShowFaceImage: cfg.Card.ReadFaceImage,
+		ShowNhsoData:  cfg.Card.ReadNHSO,
+		ShowLaserData: cfg.Card.ReadLaserID,
+	})
 	// The daemon re-reads this store on every card insert, which is what lets
-	// the page change what the next read covers.
-	store := smc.NewOptionsStore(*opts)
+	// a settings change apply to the next card without a restart.
 	controller := &optionsController{
-		store:       store,
-		broadcast:   broadcast,
-		allowRemote: allowRemoteOptions,
-		control:     control,
-	}
-
-	if allowRemoteOptions {
-		log.Println("WARNING: SMC_ALLOW_REMOTE_OPTIONS is on, so a page served by this agent can change which applets are read while it runs.")
-		log.Println("WARNING: this agent serves its page with permissive CORS and binds every interface, so anything on the same network that can open a socket to it can send set-options and then read the name, address, ID number and face image the page shows.")
-		log.Println("WARNING: set SMC_ALLOW_REMOTE_OPTIONS=false to pin the options to SMC_SHOW_IMAGE, SMC_SHOW_LASER and SMC_SHOW_NHSO for this process.")
+		store:     store,
+		broadcast: broadcast,
+		control:   control,
 	}
 
 	// Shut the read loop down cleanly on Ctrl+C, so the card and the PC/SC
@@ -79,10 +94,13 @@ func main() {
 	go func() {
 		for {
 			err := smcReader.StartDaemonWith(ctx, smc.DaemonConfig{
-				Broadcast:     broadcast,
-				Options:       store,
-				Control:       control,
-				RemoteControl: func() bool { return allowRemoteOptions },
+				Broadcast: broadcast,
+				Options:   store,
+				Control:   control,
+				Reader:    cfg.Card.Reader,
+				// The control actions are accepted, so the status broadcast
+				// reports remote control as on.
+				RemoteControl: func() bool { return true },
 			})
 			if ctx.Err() != nil {
 				return
@@ -112,25 +130,39 @@ func main() {
 	log.Println("Received shutdown signal, exiting.")
 }
 
-// optionsPayload is the smc-options broadcast.
-//
-// remote_control is not part of the card options: it tells the page whether its
-// toggles are wired to the agent, so a page that gets a false can disable them
-// rather than let the operator press a switch that does nothing.
-type optionsPayload struct {
-	model.Options
-	RemoteControl bool `json:"remote_control"`
+// loadConfig reads the config file, writing the defaults when there is none,
+// and stops the agent on a file it cannot use. The strict loader is the point:
+// a service that starts on a typoed config while the operator believes the
+// typoed value applied is worse than one that does not start.
+func loadConfig(path string) config.Config {
+	if path == "" {
+		path = config.DefaultPath()
+	}
+	cfg, err := config.Load(path)
+	switch {
+	case err == nil:
+		return cfg
+	case errors.Is(err, config.ErrNotFound):
+		cfg = config.Default()
+		if werr := config.Write(path, cfg); werr != nil {
+			log.Printf("no config file at %s and none could be written (%v); running on the defaults", path, werr)
+		} else {
+			log.Printf("no config file at %s, wrote the defaults; hand edits need a restart", path)
+		}
+		return cfg
+	default:
+		log.Fatalf("%v", err)
+		return config.Config{}
+	}
 }
 
-// optionsController applies the control commands the page sends.
+// optionsController applies the control commands a client sends.
 //
-// It lives in the agent rather than in pkg/smc because the gate and the
-// broadcast belong to this process, and pkg/smc stays free of the server's
-// concerns.
+// It lives in the agent rather than in pkg/smc because the broadcast belongs
+// to this process, and pkg/smc stays free of the server's concerns.
 type optionsController struct {
-	store       *smc.OptionsStore
-	broadcast   chan model.Message
-	allowRemote bool
+	store     *smc.OptionsStore
+	broadcast chan model.Message
 	// control reaches the read loop, which is the only thing that knows which
 	// readers are attached and whether a card is in one.
 	control chan<- smc.Control
@@ -158,9 +190,6 @@ func (c *optionsController) run(ctx context.Context, command <-chan model.Comman
 func (c *optionsController) handle(cmd model.Command) {
 	switch cmd.Action {
 	case "set-options":
-		if !c.gate("set-options") {
-			return
-		}
 		if cmd.Options == nil {
 			c.fail("set-options needs an options object")
 			return
@@ -180,9 +209,6 @@ func (c *optionsController) handle(cmd model.Command) {
 		// state. It re-publishes without changing anything.
 		c.sendControl(smc.Control{Kind: smc.ControlReportStatus})
 	case "set-reader":
-		if !c.gate("set-reader") {
-			return
-		}
 		// An empty name is a request to watch every reader, which is the
 		// state the agent starts in.
 		c.sendControl(smc.Control{Kind: smc.ControlSelectReader, Reader: cmd.Reader})
@@ -195,16 +221,6 @@ func (c *optionsController) handle(cmd model.Command) {
 	default:
 		c.fail(fmt.Sprintf("unknown action %q", cmd.Action))
 	}
-}
-
-// gate reports whether a command that changes the agent's behaviour is
-// allowed, saying so when it is not.
-func (c *optionsController) gate(action string) bool {
-	if c.allowRemote {
-		return true
-	}
-	c.fail(fmt.Sprintf("%s is disabled, set SMC_ALLOW_REMOTE_OPTIONS=true to allow it", action))
-	return false
 }
 
 // sendControl hands a request to the read loop without blocking.
@@ -229,11 +245,8 @@ func (c *optionsController) sendControl(cmd smc.Control) {
 func (c *optionsController) broadcastOptions() {
 	current := c.store.Get()
 	c.send(model.Message{
-		Event: "smc-options",
-		Payload: optionsPayload{
-			Options:       toModelOptions(current),
-			RemoteControl: c.allowRemote,
-		},
+		Event:   "smc-options",
+		Payload: toModelOptions(current),
 	})
 }
 

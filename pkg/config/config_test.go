@@ -231,6 +231,30 @@ func TestLoadErrorNamesTheLine(t *testing.T) {
 	}
 }
 
+func TestServerEnabled(t *testing.T) {
+	tests := []struct {
+		name       string
+		transports []string
+		transport  string
+		want       bool
+	}{
+		{"the default list has ws only", []string{"ws"}, "ws", true},
+		{"socketio is off in the default list", []string{"ws"}, "socketio", false},
+		{"both transports can be on", []string{"ws", "socketio"}, "socketio", true},
+		{"an unknown transport is off", []string{"ws"}, "grpc", false},
+		{"an empty list has nothing on", nil, "ws", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Default()
+			cfg.Server.Transports = tt.transports
+			if got := cfg.Server.Enabled(tt.transport); got != tt.want {
+				t.Errorf("Enabled(%q) = %v, want %v", tt.transport, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsLoopbackListen(t *testing.T) {
 	tests := []struct {
 		listen string

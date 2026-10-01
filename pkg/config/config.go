@@ -234,6 +234,17 @@ func isSpace(r rune) bool {
 	return false
 }
 
+// Enabled reports whether the named transport is in the list. A disabled
+// transport is never constructed: no handler, no goroutines.
+func (s Server) Enabled(transport string) bool {
+	for _, t := range s.Transports {
+		if t == transport {
+			return true
+		}
+	}
+	return false
+}
+
 // IsLoopbackListen reports whether the listen address only reaches the local
 // machine: "localhost", ::1, or anything in 127.0.0.0/8.
 func IsLoopbackListen(listen string) bool {

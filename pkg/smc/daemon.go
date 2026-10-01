@@ -48,6 +48,12 @@ type DaemonConfig struct {
 	// Control carries requests the loop acts on while it waits. Nil means no
 	// client can steer it.
 	Control <-chan Control
+	// Reader names the reader to watch from the start, which is where a
+	// configured [card] reader lands. Empty watches every attached one. A
+	// name that is not attached falls back to watching everything on the
+	// first resolve, exactly like a set-reader request naming a missing
+	// reader.
+	Reader string
 	// RemoteControl reports whether the host allows a client to change options
 	// and readers. It is read only while broadcasting. Nil means no.
 	RemoteControl func() bool
@@ -109,6 +115,7 @@ func (s *SmartCard) StartDaemonWith(ctx context.Context, cfg DaemonConfig) error
 		broadcast: cfg.Broadcast,
 		control:   cfg.Control,
 		remote:    cfg.RemoteControl,
+		selected:  cfg.Reader,
 		state:     model.StateWaiting,
 	}
 	return d.run(ctx)

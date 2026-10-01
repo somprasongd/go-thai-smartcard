@@ -6,3 +6,6 @@
 
 # macOS recreates this in any folder opened in Finder.
 .DS_Store
+
+# Development config for `make dev`, written with the defaults on first run.
+/config.dev.toml

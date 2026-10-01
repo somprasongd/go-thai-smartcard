@@ -6,14 +6,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"strconv"
+	"strings"
 
+	"github.com/somprasongd/go-thai-smartcard/pkg/config"
 	"github.com/somprasongd/go-thai-smartcard/pkg/model"
 )
 
 type ServerConfig struct {
-	Port      string
-	Broadcast chan model.Message
+	// Listen is the address to bind, from config.toml [server] listen. An
+	// empty value binds every interface; the config loader never produces
+	// one, and the default is loopback (decision 7).
+	Listen string
+	Port   int
+	// Transports selects what is registered: "ws", "socketio", or both. A
+	// disabled transport is never constructed: no handler, no engine.io
+	// server, no goroutines.
+	Transports []string
+	Broadcast  chan model.Message
 	// Command carries control commands from the clients to the agent. It may
 	// be nil, which leaves the control channel off: inbound frames are then
 	// dropped instead of reaching a consumer that is not there.
@@ -24,35 +36,62 @@ type ServerConfig struct {
 var indexPage []byte
 
 func Serve(cfg ServerConfig) {
-	socketServer := NewSocketIO(cfg.Command)
-	go func() {
-		if err := socketServer.Serve(); err != nil {
-			log.Fatalf("socketio listen error: %s\n", err)
-		}
-	}()
-	defer socketServer.Close()
+	if len(cfg.Transports) == 0 {
+		// config.Load refuses an empty list already; this guards a caller
+		// that built a ServerConfig by hand.
+		log.Fatal("server: no transports configured, refusing to start")
+	}
 
-	webSocket := NewWS(cfg.Command)
+	var socketServer *socketIO
+	if hasTransport(cfg.Transports, config.TransportSocketIO) {
+		socketServer = NewSocketIO(cfg.Command)
+		go func() {
+			if err := socketServer.Serve(); err != nil {
+				log.Fatalf("socketio listen error: %s\n", err)
+			}
+		}()
+		defer socketServer.Close()
+		http.Handle("/socket.io/", socketServer)
+	}
+
+	var webSocket *ws
+	if hasTransport(cfg.Transports, config.TransportWS) {
+		webSocket = NewWS(cfg.Command)
+		http.HandleFunc("/ws", webSocket.Handler)
+	}
 
 	go func() {
 		for {
 			msg, ok := <-cfg.Broadcast
 			if ok {
-				socketServer.Broadcast(msg)
-				webSocket.Broadcast(msg)
+				if socketServer != nil {
+					socketServer.Broadcast(msg)
+				}
+				if webSocket != nil {
+					webSocket.Broadcast(msg)
+				}
 			}
 		}
 	}()
 
-	http.Handle("/socket.io/", socketServer)
-	http.HandleFunc("/ws", webSocket.Handler)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 		w.Write(indexPage)
 	})
 
-	log.Println("Serving at localhost:" + cfg.Port)
-	log.Fatal(http.ListenAndServe(":"+cfg.Port, nil))
+	addr := net.JoinHostPort(cfg.Listen, strconv.Itoa(cfg.Port))
+	log.Println("Serving at " + addr + " (" + strings.Join(cfg.Transports, ", ") + ")")
+	log.Fatal(http.ListenAndServe(addr, nil))
+}
+
+// hasTransport reports whether the list names the transport.
+func hasTransport(list []string, name string) bool {
+	for _, t := range list {
+		if t == name {
+			return true
+		}
+	}
+	return false
 }
 
 // decodeCommand parses one inbound control frame.
