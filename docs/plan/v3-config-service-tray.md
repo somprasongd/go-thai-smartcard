@@ -441,7 +441,7 @@ packaging only.
 | Phase | Content | Release |
 | :---- | :------ | :------ |
 | 1 | `config.toml` loader (no env), `listen`, `transports`, `allowed_origins`, `token`; `/api/settings`, `/settings`, `/api/info`; split `web/`; remove `set-options`, `set-reader`, `remote_control`, `util` env helpers; fix the ws subscriber race; README, CHANGELOG, Makefile | **v3.0.0** |
-| 2 | `service` subcommand, systemd unit template, `.deb`/`.rpm` for the agent with its dedicated service user and pcsc-lite polkit rule (decision 17), verified on Debian, Ubuntu LTS and Fedora; the packaging workflow's Linux job builds them (decision 20). **Done** (commit 3b8a9b1) except the on-host verification, which still needs real Debian, Ubuntu LTS and Fedora machines before v3.1.0 ships | v3.1.0 |
+| 2 | `service` subcommand, systemd unit template, `.deb`/`.rpm` for the agent with its dedicated service user and pcsc-lite polkit rule (decision 17), verified on Debian, Ubuntu LTS and Fedora; the packaging workflow's Linux job builds them (decision 20). **Done** (commits 3b8a9b1, 7804c7d) except the on-host verification: the nfpm configs were validated locally against nfpm v2.41.1 (two real bugs found and fixed there — no `--version` flag, so the version comes from `$NFPM_VERSION` expansion, and directories take `dst` not `path`), and the built .deb was inspected member by member (config `0600 thai-smartcard`, dir `0700`, polkit rule, unit, scripts preinst/postinst/postrm, tray `Depends: thai-smartcard-agent`). What remains is running them on real Debian, Ubuntu LTS and Fedora machines before v3.1.0 ships | v3.1.0 |
 | 3 | TLS `files` mode. **Done** (commit 01fdba0) | v3.2.0 |
 | 4 | Tray (macOS, Windows, Linux), tray packages, installers that install and start the agent service and register the tray at login; the workflow's Windows and macOS jobs build them, with signing and notarization (decision 20). **Done** (commit on v3); the macOS .pkg build is verified locally, the Inno Setup and nfpm-tray paths run in CI on a release tag, and signing needs the Apple Developer secrets set | v3.3.0 |
 | 5 | TLS `auto` mode | later — not part of the planned releases, unchanged |
@@ -622,3 +622,28 @@ more than one file.
 - `--ignore-certificate-errors-spki-list`:
   <https://codereview.chromium.org/2753123002>
 - `BurntSushi/toml`: <https://github.com/BurntSushi/toml>
+
+## Implementation record (2026-10-02)
+
+The plan was implemented on `v3` in one pass, one commit per planned PR:
+`963a0e3` (PR 2), `e4315fd` (PR 3), `58a8cf6` (PR 4), `d0b91b0` (PR 5),
+`b9fcdf0` (PR 6), `3b8a9b1` (phase 2), `01fdba0` (phase 3), `384b3c4`
+(phase 4), `7804c7d` (nfpm fixes found by local package validation). The full
+local gate — build, tests, vet, gofmt, `-race` on `pkg/server`, wasm builds of
+`pkg/smc` and `cmd/agent` — is green, and the agent was smoke-tested live
+(defaults written, `SMC_*` warning, token generation, listener restart on
+exposure, 401 without token, 409 stale save). The macOS `.pkg` builds locally
+(universal tray).
+
+Pending, in order:
+
+1. **User approval** to push `v3` to origin and how to release: one `v3.0.0`
+   release containing phases 1–4 (recommended — the code lands on `main`
+   together, so one tag describes it honestly), four releases following the
+   phase table (tags would differ only by changelog commits), or push + PR
+   with no release yet.
+2. The Linux host verification of decision 17 against the CI-built
+   `.deb`/`.rpm`.
+3. Apple Developer secrets (`MACOS_SIGNING_IDENTITY`, `APPLE_API_KEY_*`) for
+   the tray's signing and notarization (decision 20).
+4. Phase 5 stays "later".
