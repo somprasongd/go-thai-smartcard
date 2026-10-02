@@ -452,6 +452,25 @@ IFD CCID version macOS ships is too old for your reader, Thales publishes a
 newer CCID installer at
 [supportportal.thalesgroup.com KB0027738](https://supportportal.thalesgroup.com/csm?id=kb_article_view&sysparm_article=KB0027738).
 
+### If a read fails with a sharing violation
+
+`scard: Sharing violation` means another handle holds the card exclusively.
+The agent retries the connect for a few seconds before giving up, which rides
+out the common case: a fast re-insert right after the previous read, while
+PC/SC is still releasing the old session.
+
+If **every** insert fails, something else on the machine keeps seizing the
+card. On macOS that is CryptoTokenKit's smart card service, which connects to
+inserted PKI cards on its own; tell macOS to leave this card alone and replug
+the reader:
+
+```sh
+sudo defaults write /Library/Preferences/com.apple.security.smartcard DisabledTokens -array com.apple.CryptoTokenKit.smartcard
+```
+
+On Linux, check for other PC/SC clients (a second agent, a browser doing
+certificate lookups) with `pcscd --foreground --debug` in the background.
+
 ## Testing without a reader
 
 `pkg/transport.FakeCard` replays a recorded trace. Record one against real

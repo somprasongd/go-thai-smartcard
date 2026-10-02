@@ -25,6 +25,15 @@ import (
 // status call as soon as a card changes; the window only bounds the idle case.
 var ErrCardTimeout = errors.New("transport: card wait timed out")
 
+// ErrCardBusy means a Connect failed because another handle holds the card
+// exclusively (the PC/SC sharing violation). It is transient: the holder may
+// be the previous session of this very transport, released a moment before a
+// fast re-insert, or another process that seizes inserted cards — on macOS,
+// CryptoTokenKit's smart card service does that to PKI cards. Callers may
+// retry the connect after a short wait; backends report it by wrapping this
+// sentinel so a plain errors.Is check works without leaking backend types.
+var ErrCardBusy = errors.New("card busy: another handle holds it exclusively (sharing violation)")
+
 // Status is the subset of card status the library actually uses.
 type Status struct {
 	Atr []byte

@@ -72,6 +72,12 @@ func (t *pcscTransport) ListReaders() ([]string, error) {
 func (t *pcscTransport) Connect(reader string) (transport.Card, error) {
 	card, err := t.ctx.Connect(reader, scard.ShareExclusive, scard.ProtocolAny)
 	if err != nil {
+		// A sharing violation means another handle holds the card; callers
+		// can recognise it as transient and retry the connect (see
+		// transport.ErrCardBusy).
+		if errors.Is(err, scard.ErrSharingViolation) {
+			return nil, fmt.Errorf("connect to %q: %w: %v", reader, transport.ErrCardBusy, err)
+		}
 		return nil, fmt.Errorf("connect to %q: %w", reader, explain(err))
 	}
 	return &pcscCard{card: card}, nil

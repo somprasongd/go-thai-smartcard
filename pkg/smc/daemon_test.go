@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -28,6 +30,9 @@ type scriptedTransport struct {
 	armed   map[string]bool
 	// connects counts sessions, so a test can assert a re-read reopened one.
 	connects int
+	// busyConnects makes the next Connect calls fail with a sharing
+	// violation, which is what the retry has to ride out.
+	busyConnects int
 	// pause keeps an idle daemon from spinning while a test decides what to do.
 	pause time.Duration
 }
@@ -63,7 +68,17 @@ func (t *scriptedTransport) ListReaders() ([]string, error) {
 func (t *scriptedTransport) Connect(string) (transport.Card, error) {
 	t.mu.Lock()
 	t.connects++
+	busy := t.busyConnects > 0
+	if busy {
+		t.busyConnects--
+	}
 	t.mu.Unlock()
+	if busy {
+		// What a PC/SC backend reports when another handle holds the card:
+		// errors.Is(err, transport.ErrCardBusy) must hold for the daemon's
+		// retry to fire.
+		return nil, fmt.Errorf("connect to %q: %w: scard: Sharing violation", "test reader", transport.ErrCardBusy)
+	}
 	// A fresh session every time, replaying from the start, so the same card can
 	// be read more than once.
 	return &scriptedCard{trace: personalTrace(false)}, nil
@@ -485,4 +500,45 @@ func TestDaemonFallsBackWhenTheConfiguredReaderIsMissing(t *testing.T) {
 	if status.Selected != "" {
 		t.Errorf("selected = %q, want empty (watching all) after the configured reader was not attached", status.Selected)
 	}
+}
+
+// A connect that loses the exclusive-access race must not fail the read: the
+// daemon rides out a sharing violation with retries and reads the card once
+// the reader frees up.
+func TestDaemonRetriesAConnectThatLostTheExclusiveRace(t *testing.T) {
+	h := newHarness(t, time.Millisecond, "Reader A")
+	h.transport.mu.Lock()
+	h.transport.busyConnects = 2
+	h.transport.mu.Unlock()
+	h.transport.setPresent("Reader A", true)
+
+	reads := h.settleReads(1)
+	if len(reads) == 0 {
+		t.Fatal("the read never happened")
+	}
+	h.transport.mu.Lock()
+	connects := h.transport.connects
+	h.transport.mu.Unlock()
+	if connects < 3 {
+		t.Errorf("connect was called %d times, want at least 3 (two busy rejections plus the read)", connects)
+	}
+}
+
+// Retries are bounded: a reader that never frees up produces the error the
+// client can see, naming the busy reader.
+func TestDaemonGivesUpWhenTheReaderStaysBusy(t *testing.T) {
+	h := newHarness(t, time.Millisecond, "Reader A")
+	h.transport.mu.Lock()
+	h.transport.busyConnects = 999
+	h.transport.mu.Unlock()
+	h.transport.setPresent("Reader A", true)
+
+	h.settle("a busy error", func() bool {
+		for _, msg := range h.errorMessages() {
+			if strings.Contains(msg, "sharing violation") {
+				return true
+			}
+		}
+		return false
+	})
 }

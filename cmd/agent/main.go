@@ -70,6 +70,12 @@ func main() {
 // runAgent is the whole agent: config, listener, read loop. It blocks until
 // ctx is done. The foreground run and the service wrapper both land here.
 func runAgent(ctx context.Context, configPath string) {
+	// Resolve before anything: the listener's settings routes read and write
+	// this path, so an unresolved "" would silently leave /settings and
+	// /api/* unregistered and /settings would serve the bundled test page.
+	if configPath == "" {
+		configPath = config.DefaultPath()
+	}
 	cfg := loadConfig(configPath)
 
 	for _, warning := range config.EnvWarnings(os.LookupEnv) {
