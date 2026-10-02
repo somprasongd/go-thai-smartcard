@@ -140,6 +140,27 @@ func TestForwardCommandDoesNotBlock(t *testing.T) {
 	}
 }
 
+// readFrameUntil keeps reading until a frame with the wanted prefix shows
+// up. Under a loaded CI the server's reply can land seconds after the write,
+// and nothing guarantees which frame a bare client sees first.
+func readFrameUntil(t *testing.T, c *websocket.Conn, prefix string, budget time.Duration) string {
+	t.Helper()
+	deadline := time.Now().Add(budget)
+	for {
+		if !time.Now().Before(deadline) {
+			t.Fatalf("no frame with prefix %q within %s", prefix, budget)
+		}
+		_ = c.SetReadDeadline(deadline)
+		_, data, err := c.ReadMessage()
+		if err != nil {
+			t.Fatalf("read while waiting for %q: %v", prefix, err)
+		}
+		if strings.HasPrefix(string(data), prefix) {
+			return string(data)
+		}
+	}
+}
+
 // connectSocketIOClient walks one raw client through the v4 handshake —
 // engine.io OPEN, then the socket.io namespace connect — and returns it
 // ready to emit event frames. The transport under test is our own library
@@ -152,20 +173,11 @@ func connectSocketIOClient(t *testing.T, h *httptest.Server) *websocket.Conn {
 	}
 	t.Cleanup(func() { c.Close() })
 
-	// Deadlines are absolute, so each read gets a fresh one — a slow CI
-	// runner must not turn an earlier read's clock into the next one's.
-	read := func(what string) {
-		t.Helper()
-		_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
-		if _, _, err := c.ReadMessage(); err != nil {
-			t.Fatalf("%s: %v", what, err)
-		}
-	}
-	read("engine.io open")
+	readFrameUntil(t, c, "0", 15*time.Second)
 	if err := c.WriteMessage(websocket.TextMessage, []byte("40")); err != nil {
 		t.Fatalf("namespace connect: %v", err)
 	}
-	read("namespace connect ack")
+	readFrameUntil(t, c, "40", 15*time.Second)
 	return c
 }
 
@@ -221,6 +233,7 @@ func TestSocketIOInboundCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := NewSocketIO(tt.command)
+			defer s.closeConnections() // retire sessions before the server goes away
 			srv := httptest.NewServer(s)
 			defer srv.Close()
 

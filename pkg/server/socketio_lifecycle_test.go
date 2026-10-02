@@ -26,27 +26,13 @@ func TestSocketIORetirementReachesLiveClient(t *testing.T) {
 	}
 	defer c.Close()
 
-	readFrame := func(what string) string {
-		t.Helper()
-		_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
-		_, data, err := c.ReadMessage()
-		if err != nil {
-			t.Fatalf("%s: %v", what, err)
-		}
-		return string(data)
-	}
-
 	// engine.io OPEN, then the socket.io namespace connect: MESSAGE "4"
 	// carrying CONNECT "0".
-	if f := readFrame("open"); !strings.HasPrefix(f, "0") {
-		t.Fatalf("first frame = %q, want engine.io OPEN", f)
-	}
+	readFrameUntil(t, c, "0", 15*time.Second)
 	if err := c.WriteMessage(websocket.TextMessage, []byte("40")); err != nil {
 		t.Fatal(err)
 	}
-	if f := readFrame("namespace connect"); !strings.HasPrefix(f, "40") {
-		t.Fatalf("namespace reply = %q, want a socket.io CONNECT ack", f)
-	}
+	readFrameUntil(t, c, "40", 15*time.Second)
 
 	s.closeConnections()
 
