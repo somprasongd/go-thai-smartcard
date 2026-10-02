@@ -17,10 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   navigation on top, then the display, privacy and reader controls grouped
   beneath it — sit over a quiet mint-gray desk with a single accent, the deep
   green of the Thai ID card itself. The card data still renders as the paper
-  document with the gold identity band, and it stays the one loud object; on
-  phones the sidebar unpacks so the order becomes navigation, card, controls.
-  The empty state draws the reader slot with a card waiting above it. No
-  behaviour changes: every control, state and page script test is the same.
+  document with the gold identity band, and it stays the one loud object; the
+  event log keeps to a rail beside the card and table views — sticky while
+  the page scrolls, so a read answers "what just happened" without scrolling
+  away — and the rail collapses when the log is switched off or the window
+  is narrow. On phones the sidebar unpacks so the order becomes navigation,
+  card, controls. The empty state draws the reader slot with a card waiting
+  above it. No behaviour changes: every control, state and page script test
+  is the same.
 
 ### Added
 

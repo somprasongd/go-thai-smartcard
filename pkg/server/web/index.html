@@ -319,8 +319,38 @@
         align-content: start;
         padding: 24px 28px 48px;
         width: 100%;
-        max-width: 1180px;
+        max-width: 1360px;
         margin: 0 auto;
+      }
+
+      /* Work area: the card (and its blocks) beside a rail that keeps the
+         event log on screen while the page scrolls. */
+      .workarea {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 336px;
+        gap: 18px;
+        align-items: start;
+      }
+
+      /* The rail is only worth its width while the log is on. */
+      .workarea:has(#panel-log[hidden]) {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .work-main {
+        display: grid;
+        gap: 18px;
+        align-content: start;
+        min-width: 0;
+      }
+
+      #panel-log {
+        position: sticky;
+        top: calc(var(--appbar-h) + 18px);
+      }
+
+      #panel-log .log {
+        max-height: min(58vh, 560px);
       }
 
       .panel {
@@ -1071,6 +1101,20 @@
       }
 
       /* ---------------------------- responsive --------------------------- */
+      @media (max-width: 1240px) {
+        .workarea {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        #panel-log {
+          position: static;
+        }
+
+        #panel-log .log {
+          max-height: 300px;
+        }
+      }
+
       @media (max-width: 1080px) {
         .shell {
           grid-template-columns: minmax(0, 1fr);
@@ -1296,38 +1340,45 @@
       </aside>
 
       <main>
-        <!-- stage: empty state or card/table -->
-        <section class="panel stage" id="stage">
-          <div class="empty" id="empty">
-            <div class="empty-icon" id="empty-icon">💳</div>
-            <h3 id="empty-title">…</h3>
-            <p id="empty-text"></p>
-            <p class="hint" id="empty-hint"></p>
+        <div class="workarea">
+          <div class="work-main">
+            <!-- stage: empty state or card/table -->
+            <section class="panel stage" id="stage">
+              <div class="empty" id="empty">
+                <div class="empty-icon" id="empty-icon">💳</div>
+                <h3 id="empty-title">…</h3>
+                <p id="empty-text"></p>
+                <p class="hint" id="empty-hint"></p>
+              </div>
+
+              <div id="data" hidden></div>
+            </section>
+
+            <!-- address / laser / nhso blocks live under the card -->
+            <div class="blocks" id="blocks" hidden></div>
+
+            <section class="panel" id="panel-json" hidden>
+              <h2>
+                <span data-i18n="panel.json">Payload</span>
+                <span class="count" id="json-count"></span>
+              </h2>
+              <div class="panel-body">
+                <pre class="json" id="json-out"></pre>
+              </div>
+            </section>
           </div>
 
-          <div id="data" hidden></div>
-        </section>
-
-        <!-- address / laser / nhso blocks live under the card -->
-        <div class="blocks" id="blocks" hidden></div>
-
-        <section class="panel" id="panel-json" hidden>
-          <h2>
-            <span data-i18n="panel.json">Payload</span>
-            <span class="count" id="json-count"></span>
-          </h2>
-          <div class="panel-body">
-            <pre class="json" id="json-out"></pre>
-          </div>
-        </section>
-
-        <section class="panel" id="panel-log">
-          <h2>
-            <span data-i18n="panel.log">Events</span>
-            <span class="count" id="log-count">0</span>
-          </h2>
-          <div class="log" id="log"></div>
-        </section>
+          <!-- The events rail sits beside the card so a read answers "what
+               just happened" without scrolling; the rail collapses when the
+               event log is switched off. -->
+          <section class="panel" id="panel-log">
+            <h2>
+              <span data-i18n="panel.log">Events</span>
+              <span class="count" id="log-count">0</span>
+            </h2>
+            <div class="log" id="log"></div>
+          </section>
+        </div>
       </main>
     </div>
 
@@ -2791,6 +2842,13 @@
           document.documentElement.setAttribute("data-privacy", store.ui.privacy);
           document.documentElement.setAttribute("data-view", store.ui.view);
           document.documentElement.setAttribute("data-lang", store.ui.lang);
+
+          // The segs live here, not only in applyI18n: the view click path
+          // runs syncControls without applyI18n, and a seg that only re-syncs
+          // on a language change would highlight the old view.
+          markSeg("seg-privacy", store.ui.privacy);
+          markSeg("seg-view", store.ui.view);
+          markSeg("seg-lang", store.ui.lang);
         }
 
         function markSeg(segId, value) {
