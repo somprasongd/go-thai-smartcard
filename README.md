@@ -589,8 +589,9 @@ position, so an intentional APDU change means re-recording the trace.
 ## Run as a service
 
 The agent is a system service on every platform (Windows Service, systemd,
-launchd); a tray app, where one is installed, is only a viewer and never starts
-the agent. The `.deb`/`.rpm` do all of this for you — they install the service,
+launchd); a tray app, where one is installed, controls the installed service through
+the OS service manager and never spawns an agent process. The `.deb`/`.rpm` do
+all of this for you — they install the service,
 start it, and ship the polkit rule and the default config — and are built by
 the packaging workflow from a release tag. By hand:
 
@@ -610,8 +611,8 @@ thai-smartcard-agent service uninstall  # remove the registration; config.toml s
 
 On macOS and Linux the state-changing ones need `sudo`; on Windows run them
 from an **Administrator** terminal. Stopping the agent deliberately leaves the
-tray app alone, and quitting the tray never stops the agent — it is a service,
-not the tray's child.
+tray app alone. Plain **Quit tray** keeps the service running; the separate
+**Stop agent and quit…** menu offers a confirmed stop followed by closing the tray.
 
 - **Linux** — the packaged unit (`.deb`/`.rpm`) sets `After=pcscd.service`,
   which `service install` cannot express; prefer the package. The service is
@@ -700,8 +701,8 @@ and shortcuts to the test and settings pages. Exposure, the token, and the
 read image / laser ID / NHSO switches are not in the menu — they are all one
 decision each with the token's one-time showing, which only exists on the
 [settings](#settings) page. It is a **thin client**
-of the agent's `/ws` — it never touches the config file and never starts the
-agent. It discovers the running agent from public endpoint metadata and follows
+of the agent's `/ws` — it never touches the config file or spawns an agent
+process. It discovers the running agent from public endpoint metadata and follows
 port changes every two seconds, even while its old socket is connected. The
 test and settings menu links follow the same URL. Unreachable agents,
 authentication refusals, and a disabled WebSocket transport have distinct messages.
@@ -712,6 +713,19 @@ service endpoint, then `http://127.0.0.1:9898` for older agents. For example:
 ```sh
 thai-smartcard-tray --url http://127.0.0.1:9999
 ```
+
+When opened without `--url`, the tray checks the installed service once and
+starts it only if its state is **stopped**. A running or transitioning service
+is left to the OS; the tray connects when its endpoint becomes ready. A verified
+foreground/dev agent also suppresses automatic service startup. Opening an
+explicit `--url` never automatically starts a local service. Automatic startup
+never asks for an administrator password on macOS; manual service actions retain
+the password fallback. An intentional Stop is not undone by background polling.
+
+Menu labels, status messages and tooltips use the logged-in user's primary UI
+language: Thai for `th`, English for all other languages. The language is selected
+when the tray opens. This is independent of the browser page's language and card
+data language. See [tray lifecycle and language](docs/plan/tray-lifecycle-language.md).
 
 An explicit URL never follows discovery. The metadata contains only a local
 URL, process instance ID, schema version and generation; it contains no token,
@@ -769,8 +783,16 @@ The tray installer requires the agent's. The installer registers the tray to
 start at login; turn it off in the operating system's own list of login items —
 Windows: Settings > Apps > Startup (or Task Manager > Startup), macOS: System
 Settings > General > Login Items, Linux: your desktop's startup applications
-settings. Quitting the tray closes it for the current session only; the agent
-keeps running.
+settings. **Quit tray** closes the icon for this session and keeps the shared
+agent available to other clients. **Stop agent and quit…** asks for confirmation,
+stops the service, and closes the tray only after a stopped state is confirmed;
+an error keeps the tray open. Reopening the default tray starts a stopped service.
+
+The service is registered to start at boot (Windows automatic service, macOS
+LaunchDaemon with RunAtLoad, Linux enabled systemd unit); the tray starts at user
+login. There is no required startup order or fixed delay: the OS owns one named
+service and the tray follows endpoint readiness. A tray is not available before
+an interactive login. Closing the tray does not unregister either startup entry.
 
 On GNOME the tray needs the AppIndicator extension;
 without it the tray sends a notification pointing at `/settings` instead of

@@ -88,6 +88,12 @@ func helperState(query func(string) (*Response, error), plist string) (State, er
 	return StateUnknown, fmt.Errorf("control helper: unknown state %q", resp.State)
 }
 
+// Automatic startup must not fall back to an administrator dialog.
+func (helper) startAutomatic() error {
+	_, err := send("start")
+	return err
+}
+
 func (helper) Start() error {
 	if _, err := send("start"); err != nil {
 		return escalate("service start")

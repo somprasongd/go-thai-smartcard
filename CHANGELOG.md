@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Start a confirmed stopped agent service once when the default tray opens;
+  skip running/unknown services, explicit URLs and verified foreground agents.
+- Add a confirmed "Stop agent and quit" action alongside tray-only Quit.
+  macOS uses an in-app native dialog; Enter and Escape cancel by default.
+- Select one tray UI language from the user's system preference: Thai for Thai,
+  English for every other language, including status text and tooltips.
+
 - Bounded service logs with configurable file size, backup count and age in
   `[logging]`. Defaults keep the active file plus three 10 MiB backups and
   expire backups after seven days; daily rotation and idle cleanup also cover
@@ -16,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### Fixed
+
+- Always rebuild `make tray` even when a binary named `tray` exists at the
+  repository root.
 
 - Persist reader selection independently of the command queue and retain it
   when the card daemon retries; reopen PC/SC after startup or broker failure.

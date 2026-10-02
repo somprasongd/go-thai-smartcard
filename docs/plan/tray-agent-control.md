@@ -4,6 +4,15 @@ Status: proposal, written 2026-10-02 after v3.0.1. Decisions are proposed
 defaults, not settled — the table lists them so they can be accepted or
 overturned one by one.
 
+## 2026-10-02 extension
+
+[Tray lifecycle and language](tray-lifecycle-language.md) extends this plan:
+opening the default tray requests a start only for a confirmed stopped service;
+Quit remains tray-only, while Stop agent and quit confirms, stops and verifies
+before exiting. Menu text follows the user's primary system UI language.
+Automatic macOS startup uses the helper without the password fallback. The
+original choices below remain the history of explicit service control.
+
 ## Goal
 
 Add **Start agent / Stop agent / Restart agent** to the tray menu, on macOS,
@@ -192,7 +201,8 @@ Restart agent…     (ใช้หลังแก้ config.toml มือ)
   unreachable → start → reachable within seconds; restart after a hand edit;
   tray started *before* the agent; helper missing on macOS; polkit-absent
   Linux; non-admin kiosk user per OS (open decision 2).
-- Regression: tray Quit still never touches the service; `agent run`
+- Regression: plain tray Quit still never touches the service; the separate
+  Stop agent and quit action verifies a stopped state before exiting; `agent run`
   unaffected.
 
 ## Release

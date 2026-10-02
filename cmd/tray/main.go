@@ -4,8 +4,8 @@
 // service (docs/plan/tray-agent-control.md). It never touches the config
 // file and never spawns an agent process of its own (decision 12) — the
 // control actions ask the OS service manager, which is what owns the single
-// installed run; when it cannot reach the agent it says so and keeps
-// polling.
+// installed run; on startup it asks the service manager to start a stopped service, then
+// keeps polling until the endpoint is ready.
 //
 // The tray needs cgo (fyne-io/systray), which is why it is its own binary and
 // not a flag of the agent: the agent stays cross-compilable.
@@ -56,6 +56,11 @@ type tray struct {
 	mAgentStop    *systray.MenuItem
 	mAgentRestart *systray.MenuItem
 	mQuit         *systray.MenuItem
+	mStopQuit     *systray.MenuItem
+	lang          language
+	serviceOps    sync.Mutex
+	manualControl bool
+	manager       ctl.Manager
 	serviceUI     sync.Mutex
 	serviceState  func() (ctl.State, error)
 	mu            sync.RWMutex
@@ -73,32 +78,33 @@ func onReady() {
 	// No SetTitle: the menu bar shows the icon alone, which is the macOS
 	// convention. (Windows and the Linux appindicator never displayed a title
 	// anyway.) Hovering names the app.
-	systray.SetTooltip("Thai Smartcard Agent")
+	t := &tray{url: "http://127.0.0.1:9898", lang: systemLanguage(), manager: ctl.New()}
+	l := t.lang
+	systray.SetTooltip(l.text("บริการอ่านบัตรประชาชน", "Thai Smartcard Agent"))
 
-	t := &tray{url: "http://127.0.0.1:9898"}
-
-	t.mStatus = systray.AddMenuItem("กำลังต่อกับ agent…", "Waiting for the agent")
+	t.mStatus = systray.AddMenuItem(l.text("กำลังเชื่อมต่อ agent…", "Connecting to agent…"), l.text("รอการเชื่อมต่อ agent", "Waiting for the agent"))
 	t.mStatus.Disable()
 	systray.AddSeparator()
-	t.mTest = systray.AddMenuItem("เปิดหน้าทดสอบ / Open test page", "Open the agent's test page")
-	t.mConfig = systray.AddMenuItem("ตั้งค่า / Settings", "Open /settings")
+	t.mTest = systray.AddMenuItem(l.text("เปิดหน้าทดสอบ", "Open test page"), l.text("เปิดหน้าทดสอบการอ่านบัตร", "Open the agent's test page"))
+	t.mConfig = systray.AddMenuItem(l.text("ตั้งค่า", "Settings"), l.text("เปิดหน้าตั้งค่า", "Open settings"))
 
 	// Start/stop/restart go through the OS service manager (pkg/ctl); the
 	// tray never spawns an agent of its own (decision 12). The items are
 	// enabled or disabled against the service's real state by pollService.
-	t.mAgent = systray.AddMenuItem("Agent", "Control the agent service")
-	t.mAgentStart = t.mAgent.AddSubMenuItem("เริ่ม agent / Start agent", "Start the agent service")
-	t.mAgentStop = t.mAgent.AddSubMenuItem("หยุด agent… / Stop agent…", "Stop the agent service — the reader will not work until started again")
-	t.mAgentRestart = t.mAgent.AddSubMenuItem("รีสตาร์ท agent / Restart agent", "Restart the agent service — what a hand-edited config.toml needs")
+	t.mAgent = systray.AddMenuItem(l.text("บริการ agent", "Agent service"), l.text("ควบคุมบริการอ่านบัตร", "Control the agent service"))
+	t.mAgentStart = t.mAgent.AddSubMenuItem(l.text("เริ่ม agent", "Start agent"), l.text("เริ่มบริการอ่านบัตร", "Start the agent service"))
+	t.mAgentStop = t.mAgent.AddSubMenuItem(l.text("หยุด agent…", "Stop agent…"), l.text("หยุดอ่านบัตรจนกว่าจะเริ่ม agent ใหม่", "Stop card reading until the agent is started again"))
+	t.mAgentRestart = t.mAgent.AddSubMenuItem(l.text("เริ่ม agent ใหม่", "Restart agent"), l.text("เริ่มบริการใหม่หลังแก้ไฟล์ตั้งค่า", "Restart the service after editing its config file"))
 
 	systray.AddSeparator()
 	// Quit closes the tray for this session only; the agent keeps running.
-	t.mQuit = systray.AddMenuItem("ออกจาก tray / Quit", "Close the tray; the agent keeps running")
+	t.mStopQuit = systray.AddMenuItem(l.text("หยุด agent และออก…", "Stop agent and quit…"), l.text("หยุดบริการอ่านบัตรแล้วปิด tray", "Stop card reading and close the tray"))
+	t.mQuit = systray.AddMenuItem(l.text("ออกจาก tray", "Quit tray"), l.text("ปิด tray โดย agent ยังทำงานอยู่", "Close the tray; the agent keeps running"))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	client := newAgentClient(*agentURL)
-	go t.pollService(ctx)
+	go func() { t.autoStart(ctx, client); t.pollService(ctx) }()
 	go client.run(ctx, t.setEndpoint, t.connectionState, func(msg model.Message) {
 		if msg.Event == "smc-status" {
 			if status, ok := msg.Payload.(map[string]any); ok {
@@ -119,6 +125,8 @@ func onReady() {
 			go t.serviceAction("stop")
 		case <-t.mAgentRestart.ClickedCh:
 			go t.serviceAction("restart")
+		case <-t.mStopQuit.ClickedCh:
+			go t.serviceAction("stop-quit")
 		case <-t.mQuit.ClickedCh:
 			systray.Quit()
 			return
@@ -131,26 +139,80 @@ func onReady() {
 // or an osascript prompt waiting for a password can take seconds, and the
 // menu loop must not freeze behind it.
 func (t *tray) serviceAction(action string) {
-	if action == "stop" && !confirm(
-		"Thai Smartcard",
-		"หยุด agent แล้วจะอ่านบัตรไม่ได้จนกว่าจะเริ่มใหม่ — Stop the agent? The reader will not work until started again.",
+	if (action == "stop" || action == "stop-quit") && !confirm(t.lang,
+		t.lang.text("บริการอ่านบัตรประชาชน", "Thai Smartcard"),
+		t.lang.text("หยุด agent แล้วทุกโปรแกรมจะอ่านบัตรไม่ได้จนกว่าจะเริ่มใหม่ ต้องการหยุดหรือไม่?", "Stop the agent? All clients will lose card reading until it is started again."),
 	) {
 		return
 	}
-	m := ctl.New()
-	var err error
-	switch action {
-	case "start":
-		err = m.Start()
-	case "stop":
-		err = m.Stop()
-	case "restart":
-		err = m.Restart()
-	}
+	t.serviceOps.Lock()
+	defer t.serviceOps.Unlock()
+	t.manualControl = true
+	m := t.serviceManager()
+	err := controlService(m, action)
 	if err != nil {
 		log.Printf("agent %s: %v", action, err)
+		alert(t.lang, t.lang.text("ควบคุม agent ไม่สำเร็จ", "Agent control failed"),
+			t.lang.text("ดำเนินการไม่สำเร็จ กรุณาตรวจสอบสถานะ service\n", "The operation failed. Check the service status.\n")+err.Error())
+	} else if action == "stop-quit" {
+		systray.Quit()
+		return
 	}
 	t.refreshServiceState()
+}
+
+func controlService(m ctl.Manager, action string) error {
+	switch action {
+	case "start":
+		if state, err := m.State(); err == nil && state == ctl.StateRunning {
+			return nil
+		}
+		return m.Start()
+	case "stop", "stop-quit":
+		if state, err := m.State(); err == nil && state == ctl.StateStopped {
+			return nil
+		}
+		if err := m.Stop(); err != nil {
+			return err
+		}
+		if action == "stop-quit" {
+			state, err := m.State()
+			if err != nil {
+				return err
+			}
+			if state != ctl.StateStopped {
+				return fmt.Errorf("service did not reach stopped state (%s)", state)
+			}
+		}
+		return nil
+	case "restart":
+		return m.Restart()
+	}
+	return fmt.Errorf("unknown service action %q", action)
+}
+
+func (t *tray) serviceManager() ctl.Manager {
+	if t.manager != nil {
+		return t.manager
+	}
+	return ctl.New()
+}
+
+// Startup is a single attempt, never a watchdog: an intentional Stop stays
+// stopped until a menu action or a new tray session. Explicit URLs and live
+// foreground agents must not start an unrelated machine service.
+func (t *tray) autoStart(ctx context.Context, client *agentClient) {
+	if client.override != "" || client.foregroundRunning(ctx) {
+		return
+	}
+	t.serviceOps.Lock()
+	defer t.serviceOps.Unlock()
+	if ctx.Err() != nil || t.manualControl {
+		return
+	}
+	if err := ctl.EnsureRunning(t.serviceManager()); err != nil {
+		log.Printf("automatic agent start: %v", err)
+	}
 }
 
 // pollService keeps the Agent submenu enabled or disabled against the
@@ -175,7 +237,7 @@ func (t *tray) refreshServiceState() {
 	defer t.serviceUI.Unlock()
 	stateFn := t.serviceState
 	if stateFn == nil {
-		stateFn = ctl.New().State
+		stateFn = t.serviceManager().State
 	}
 	state, err := stateFn()
 	if err != nil {
@@ -185,20 +247,27 @@ func (t *tray) refreshServiceState() {
 		t.mAgentStart.Disable()
 		t.mAgentStop.Disable()
 		t.mAgentRestart.Disable()
-		t.mAgent.SetTooltip("ควบคุม service ไม่ได้ — " + err.Error())
+		if t.mStopQuit != nil {
+			t.mStopQuit.Disable()
+		}
+		t.mAgent.SetTooltip(t.lang.text("ควบคุม service ไม่ได้ — ", "Service control unavailable — ") + err.Error())
 		return
 	}
 	t.mAgentStart.Enable()
 	t.mAgentStop.Enable()
 	t.mAgentRestart.Enable()
+	if t.mStopQuit != nil {
+		t.mStopQuit.Enable()
+	}
+	t.mAgent.SetTooltip(t.lang.text("ไม่ทราบสถานะ service", "Service state unknown"))
 	switch state {
 	case ctl.StateRunning:
 		t.mAgentStart.Disable()
-		t.mAgent.SetTooltip("agent กำลังทำงาน / running")
+		t.mAgent.SetTooltip(t.lang.text("agent กำลังทำงาน", "Agent running"))
 	case ctl.StateStopped:
 		t.mAgentStop.Disable()
 		t.mAgentRestart.Disable()
-		t.mAgent.SetTooltip("agent หยุดอยู่ / stopped")
+		t.mAgent.SetTooltip(t.lang.text("agent หยุดอยู่", "Agent stopped"))
 	}
 }
 
@@ -208,7 +277,7 @@ func (t *tray) setEndpoint(url string) {
 	t.url = url
 	t.mu.Unlock()
 	if runtime.GOOS == "linux" {
-		t.notifyOnce.Do(func() { go checkStatusNotifier(url) })
+		t.notifyOnce.Do(func() { go checkStatusNotifier(url, t.lang) })
 	}
 }
 func (t *tray) connectionState(state string) {
@@ -216,11 +285,11 @@ func (t *tray) connectionState(state string) {
 	case "connected":
 		t.setUp()
 	case "unauthorized":
-		t.mStatus.SetTitle("agent ต้องการสิทธิ์เชื่อมต่อ / authentication required")
-		t.mStatus.SetTooltip("Agent is reachable but the card socket refused authentication")
+		t.mStatus.SetTitle(t.lang.text("agent ต้องการสิทธิ์เชื่อมต่อ", "Agent authentication required"))
+		t.mStatus.SetTooltip(t.lang.text("เชื่อมต่อ agent ได้ แต่ไม่มีสิทธิ์รับข้อมูลบัตร", "Agent is reachable but the card socket refused authentication"))
 	case "unsupported":
-		t.mStatus.SetTitle("agent ไม่เปิด WebSocket / WebSocket unavailable")
-		t.mStatus.SetTooltip("Open Settings to enable the ws transport")
+		t.mStatus.SetTitle(t.lang.text("agent ไม่เปิด WebSocket", "Agent WebSocket unavailable"))
+		t.mStatus.SetTooltip(t.lang.text("เปิดหน้าตั้งค่าเพื่อเปิด WebSocket", "Open Settings to enable WebSocket"))
 	default:
 		t.setDown()
 	}
@@ -240,16 +309,16 @@ func (t *tray) applyStatus(status map[string]any) {
 	var line string
 	switch state {
 	case model.StateReading:
-		line = "กำลังอ่านบัตร… / reading"
+		line = t.lang.text("กำลังอ่านบัตร…", "Reading card…")
 	case model.StateCardPresent:
-		line = "บัตรอยู่ในเครื่องอ่าน / card in"
+		line = t.lang.text("บัตรอยู่ในเครื่องอ่าน", "Card in reader")
 	default:
-		line = "รอบัตร / waiting"
+		line = t.lang.text("รอบัตร", "Waiting for card")
 	}
 	if len(names) > 0 {
 		watching := selected
 		if watching == "" {
-			watching = fmt.Sprintf("ทุกเครื่องอ่าน (%d)", len(names))
+			watching = fmt.Sprintf(t.lang.text("ทุกเครื่องอ่าน (%d)", "All readers (%d)"), len(names))
 		}
 		line += " — " + watching
 	}
@@ -258,27 +327,27 @@ func (t *tray) applyStatus(status map[string]any) {
 }
 
 func (t *tray) setUp() {
-	t.mStatus.SetTitle("เชื่อมต่อ agent แล้ว / connected")
+	t.mStatus.SetTitle(t.lang.text("เชื่อมต่อ agent แล้ว", "Agent connected"))
 }
 
 // setDown says the agent is not reachable, with the terminal way to start it
 // for this platform as a fallback next to the Agent menu's Start item.
 func (t *tray) setDown() {
-	hint := startHint()
-	line := "ติดต่อ agent ไม่ได้ — " + hint
-	t.mStatus.SetTitle("ติดต่อ agent ไม่ได้ / cannot reach agent")
+	hint := startHint(t.lang)
+	line := t.lang.text("ติดต่อ agent ไม่ได้ — ", "Cannot reach agent — ") + hint
+	t.mStatus.SetTitle(t.lang.text("ติดต่อ agent ไม่ได้", "Cannot reach agent"))
 	t.mStatus.SetTooltip(line)
 	log.Printf("cannot reach the agent at %s; %s", t.baseURL(), hint)
 }
 
-func startHint() string {
+func startHint(l language) string {
 	switch runtime.GOOS {
 	case "windows":
-		return "start it with `net start thai-smartcard-agent`"
+		return l.text("เริ่มด้วยคำสั่ง `net start thai-smartcard-agent`", "Start with `net start thai-smartcard-agent`")
 	case "darwin":
-		return "start it with `sudo thai-smartcard-agent service start`"
+		return l.text("เริ่มด้วยคำสั่ง `sudo thai-smartcard-agent service start`", "Start with `sudo thai-smartcard-agent service start`")
 	default:
-		return "start it with `sudo systemctl start thai-smartcard-agent`"
+		return l.text("เริ่มด้วยคำสั่ง `sudo systemctl start thai-smartcard-agent`", "Start with `sudo systemctl start thai-smartcard-agent`")
 	}
 }
 

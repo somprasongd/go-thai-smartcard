@@ -10,7 +10,7 @@ import (
 // behind. Without it (GNOME without the AppIndicator extension) the icon will
 // never appear, so the tray sends a notification pointing at /settings
 // instead of failing silently.
-func checkStatusNotifier(agentURL string) {
+func checkStatusNotifier(agentURL string, l language) {
 	conn, err := dbus.SessionBus()
 	if err != nil {
 		return
@@ -24,7 +24,7 @@ func checkStatusNotifier(agentURL string) {
 			return
 		}
 	}
-	notify(conn, "Thai Smartcard", "เปิด "+agentURL+"/settings เพื่อตั้งค่า — GNOME needs the AppIndicator extension to show a tray icon.")
+	notify(conn, "Thai Smartcard", l.text("GNOME ต้องมีส่วนขยาย AppIndicator เพื่อแสดง tray เปิด ", "GNOME needs the AppIndicator extension to show a tray icon. Open ")+agentURL+"/settings")
 }
 
 // notify sends one desktop notification.
