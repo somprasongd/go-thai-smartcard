@@ -138,7 +138,8 @@ operations in-process, so the single-run-mode guarantee holds: start/stop go
 
 ### Tray menu
 
-New "Agent" submenu between status and settings:
+New "Agent" submenu between the settings item and Quit (the current menu is:
+status line / separator / test page / settings / separator / Quit):
 
 ```
 ● กำลังทำงาน / Running          ← service state (from ctl, not just /api)
@@ -150,9 +151,12 @@ Restart agent…     (ใช้หลังแก้ config.toml มือ)
 - Stop asks for confirmation; Start and Restart do not.
 - Actions run async; the menu item shows a busy state; on error the toast
   says so.
-- The status line keeps its current reachability reporting (`/api/info`),
-  and gains the service state so "not running" can be distinguished from
-  "running but not reachable" (crashed listener) and from "stopped".
+- The status line keeps its current reachability reporting (the `agentClient`
+  discovery + `/api` polling), and gains the service state so "not running"
+  can be distinguished from "running but not reachable" (crashed listener)
+  and from "stopped". Because the state comes from the OS (pkg/ctl) and not
+  from HTTP, Start works even when endpoint discovery fails — exactly the
+  case the terminal hint covers today.
 
 ## Security analysis
 
@@ -193,7 +197,9 @@ Restart agent…     (ใช้หลังแก้ config.toml มือ)
 
 ## Release
 
-- **v3.1.0** (MINOR — new capability; nothing breaking).
+- **v4.2.0** (MINOR — new capability; nothing breaking). The plan was first
+  drafted with v3.1.0 as the target; the project has since shipped v3.0.1,
+  v4.0.0–v4.0.2 and v4.1.0, so v4.2.0 is the next MINOR.
 - CHANGELOG under Added; README "Tray" and "Run as a service" sections gain
   the control story; the v3 plan's decision-12 amendment is recorded here and
   marked there.
@@ -207,9 +213,36 @@ Restart agent…     (ใช้หลังแก้ config.toml มือ)
    Interactive Users, macOS group `admin`. Alternative = lock down to a
    dedicated group/user (tighter, but a plain kiosk operator then cannot use
    the feature it exists for).
-3. **Restart menu item**: proposed = yes (the only UI for "hand edits need a
-   restart"). Alternative = start/stop only.
+3. **Restart menu item**: proposed = yes — and still the only UI for "hand
+   edits need a restart", since UI saves already apply the listener live
+   through the settings transaction. Alternative = start/stop only.
 4. **Confirm on Stop**: proposed = yes, one confirmation. Alternative = no
    confirmation anywhere.
 5. **Menu shape**: proposed = an "Agent" submenu with Start/Stop/Restart.
    Alternative = flat items in the root menu.
+
+## Verified against the code (2026-10-02, main @ 3203a2c, after v4.1.0)
+
+- `cmd/agent/service_desktop.go`: `serviceCommand` already wires
+  install/uninstall/start/stop/restart/status through `kardianos/service`
+  (`newAgentService`, `service.Control`, `svc.Status`); the service name is
+  the constant `thai-smartcard-agent` — the macOS `control-helper` reuses
+  these in-process, as the plan assumes.
+- `cmd/tray`: menu is status / test page / settings / Quit (the read toggles
+  were removed in v4.0.1); the tray discovers the agent endpoint via
+  `internal/discovery` + `agentClient` (`cmd/tray/client.go`) and still shows
+  only the terminal hint when down (`setDown`/`startHint`) — the gap this
+  plan closes is unchanged. `pkg/ctl` is tray-only; the tray has no js build.
+- Packaging anchors all exist as the plan assumes: the polkit directory
+  carries `50-thai-smartcard.pcscd.rules` (the new rule joins it as
+  `49-…agent.rules`), `packaging/windows/installer.iss` has the `[Run]`
+  section with `service install`/`service start` (the `sc sdset` line slots
+  after them), and the macOS postinstall already runs
+  `/usr/local/bin/thai-smartcard-agent service install|start` (the
+  LaunchDaemon plist lines slot beside them). `golang.org/x/sys` is already a
+  dependency, so `windows/svc/mgr` needs no new module.
+- README sections "Run as a service" and "Tray" exist as named.
+- The v3 plan's decision 12 ("tray never spawns the agent") and decision 17
+  (polkit precedent) are the amendment and precedent targets, as referenced.
+- One correction from this pass: the release target, changed from v3.1.0 to
+  v4.2.0 (v4.1.0 shipped in the meantime).
