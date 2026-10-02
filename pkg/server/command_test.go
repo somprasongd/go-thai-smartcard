@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -141,44 +140,91 @@ func TestForwardCommandDoesNotBlock(t *testing.T) {
 	}
 }
 
+// readFrameUntil keeps reading until a frame with the wanted prefix shows
+// up. Under a loaded CI the server's reply can land seconds after the write,
+// and nothing guarantees which frame a bare client sees first.
+func readFrameUntil(t *testing.T, c *websocket.Conn, prefix string, budget time.Duration) string {
+	t.Helper()
+	deadline := time.Now().Add(budget)
+	for {
+		if !time.Now().Before(deadline) {
+			t.Fatalf("no frame with prefix %q within %s", prefix, budget)
+		}
+		_ = c.SetReadDeadline(deadline)
+		_, data, err := c.ReadMessage()
+		if err != nil {
+			t.Fatalf("read while waiting for %q: %v", prefix, err)
+		}
+		if strings.HasPrefix(string(data), prefix) {
+			return string(data)
+		}
+	}
+}
+
+// connectSocketIOClient walks one raw client through the v4 handshake —
+// engine.io OPEN, then the socket.io namespace connect — and returns it
+// ready to emit event frames. The transport under test is our own library
+// now, so exercising the wire is exactly the point.
+func connectSocketIOClient(t *testing.T, h *httptest.Server) *websocket.Conn {
+	t.Helper()
+	c, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(h.URL, "http")+"/socket.io/?EIO=4&transport=websocket", nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { c.Close() })
+
+	readFrameUntil(t, c, "0", 15*time.Second)
+	if err := c.WriteMessage(websocket.TextMessage, []byte("40")); err != nil {
+		t.Fatalf("namespace connect: %v", err)
+	}
+	readFrameUntil(t, c, "40", 15*time.Second)
+	return c
+}
+
 func TestSocketIOInboundCommand(t *testing.T) {
 	tests := []struct {
 		name     string
-		payload  string
+		frame    string // the full wire frame, sent once the namespace is joined
 		command  chan model.Command
 		wantRecv bool
 		want     model.Command
 	}{
 		{
 			name:     "a get-status event reaches the agent",
-			payload:  getStatusJSON,
+			frame:    `42["smc-command",` + getStatusJSON + `]`,
 			command:  make(chan model.Command, 1),
 			wantRecv: true,
 			want:     model.Command{Action: "get-status"},
 		},
 		{
 			name:     "a legacy set-options event decodes to the action name",
-			payload:  legacySetOptions,
+			frame:    `42["smc-command",` + legacySetOptions + `]`,
 			command:  make(chan model.Command, 1),
 			wantRecv: true,
 			want:     model.Command{Action: "set-options"},
 		},
 		{
 			name:     "a JSON encoded event payload reaches the agent",
-			payload:  quotedSetOption,
+			frame:    `42["smc-command",` + quotedSetOption + `]`,
 			command:  make(chan model.Command, 1),
 			wantRecv: true,
 			want:     model.Command{Action: "set-options"},
 		},
 		{
 			name:     "a malformed event is dropped without reaching the agent",
-			payload:  "not json at all",
+			frame:    `42["smc-command","not json at all"]`,
+			command:  make(chan model.Command, 1),
+			wantRecv: false,
+		},
+		{
+			name:     "an event without a payload is dropped",
+			frame:    `42["smc-command"]`,
 			command:  make(chan model.Command, 1),
 			wantRecv: false,
 		},
 		{
 			name:     "a well formed event is dropped when no channel is wired",
-			payload:  getStatusJSON,
+			frame:    `42["smc-command",` + getStatusJSON + `]`,
 			command:  nil,
 			wantRecv: false,
 		},
@@ -187,15 +233,25 @@ func TestSocketIOInboundCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := NewSocketIO(tt.command)
-			defer s.Close()
+			defer s.closeConnections() // retire sessions before the server goes away
+			srv := httptest.NewServer(s)
+			defer srv.Close()
 
-			// The registered handler is called directly: a full engine.io
-			// handshake would only prove the third party library still works.
-			s.onCommand(json.RawMessage(tt.payload))
+			c := connectSocketIOClient(t, srv)
+			if err := c.WriteMessage(websocket.TextMessage, []byte(tt.frame)); err != nil {
+				t.Fatalf("send event: %v", err)
+			}
 
 			if !tt.wantRecv {
-				if len(tt.command) != 0 {
-					t.Fatalf("the agent received %+v, want nothing", <-tt.command)
+				select {
+				case got := <-tt.command:
+					t.Fatalf("the agent received %+v, want nothing", got)
+				case <-time.After(200 * time.Millisecond):
+				}
+				// The connection has to survive the ignored frame: a dropped
+				// command must not cost the page its broadcasts.
+				if err := c.WriteMessage(websocket.TextMessage, []byte(tt.frame)); err != nil {
+					t.Errorf("the connection did not survive the ignored frame: %v", err)
 				}
 				return
 			}

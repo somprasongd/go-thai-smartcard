@@ -4,9 +4,7 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
@@ -107,9 +105,9 @@ func Serve(cfg ServerConfig) {
 // newMux builds one generation of the handler: the enabled transports behind
 // the socket guard, the settings routes behind their own guard, the bundled
 // pages, and the pump that fans every broadcast out to the transports. done
-// is closed when the generation stops, which ends the pump. The transports
-// connections and socket.io accept loop are retired on done. The local
-// Engine.IO patch safely closes sessions even during an unfinished handshake.
+// is closed when the generation stops, which ends the pump. The transports'
+// live sessions are retired on done; a socket.io session that is still
+// handshaking is released with them.
 func newMux(cfg ServerConfig, done <-chan struct{}) *http.ServeMux {
 	guard := newSocketGuard(cfg.AllowedOrigins, cfg.Token, cfg.Listen)
 	settings := &settingsGuard{}
@@ -127,14 +125,9 @@ func newMux(cfg ServerConfig, done <-chan struct{}) *http.ServeMux {
 
 	var socketServer *socketIO
 	if hasTransport(cfg.Transports, config.TransportSocketIO) {
+		// Everything the socket.io transport does runs inside its HTTP
+		// handler; there is no accept loop of its own to stop.
 		socketServer = NewSocketIO(cfg.Command)
-		go func() {
-			// io.EOF is what Serve returns when the server is closed; it is
-			// not an error to report.
-			if err := socketServer.Serve(); err != nil && !errors.Is(err, io.EOF) {
-				log.Fatalf("socketio listen error: %s\n", err)
-			}
-		}()
 	}
 
 	var webSocket *ws
