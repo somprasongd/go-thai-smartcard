@@ -10,14 +10,11 @@
     <title>SMC — Thai ID Card Agent</title>
     <!--
       socket.io's Go server (googollee/go-socket.io) speaks the protocol but does
-      not ship the JavaScript client, so it has to come from a CDN. When this
-      script cannot load the page still works: the WebSocket transport below is
-      dependency free, and the status bar says so instead of failing silently.
+      not ship the JavaScript client, so when socket.io is enabled it has to come
+      from a CDN. The script is injected from boot() only after /api/info says the
+      transport is on: a switched-off transport is never fetched, and when the
+      script cannot load the page still works over the dependency-free WebSocket.
     -->
-    <script
-      src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js"
-      onerror="window.__smcSocketIOCDNFailed = true"
-    ></script>
     <style>
       /* ---------------------------------------------------------------------
          Design tokens. The card look borrows from the physical card: a warm
@@ -141,6 +138,19 @@
         gap: 8px;
         flex-wrap: wrap;
         align-items: center;
+      }
+
+      .topbar-link {
+        margin-left: auto;
+        color: var(--fg-dim);
+        text-decoration: none;
+        font-size: 14px;
+        white-space: nowrap;
+      }
+
+      .topbar-link:hover {
+        color: var(--fg);
+        text-decoration: underline;
       }
 
       .pill {
@@ -991,15 +1001,13 @@
           <b data-i18n="status.reader">Reader</b>
           <span id="txt-reader"></span>
         </span>
-        <span class="pill" id="pill-remote" hidden>
-          <b data-i18n="status.remote">Remote</b>
-          <span id="txt-remote"></span>
-        </span>
         <span class="pill" id="pill-time" hidden>
           <b data-i18n="status.updated">Updated</b>
           <span id="txt-time" class="mono"></span>
         </span>
       </div>
+
+      <a class="topbar-link" href="/settings" data-i18n="nav.settings">Settings</a>
     </header>
 
     <div class="layout">
@@ -1106,10 +1114,8 @@
               <!-- The group title already names the field on screen; the label
                    stays for the accessible name, which is what the tab order
                    and a screen reader announce. -->
-              <label class="sr-only" for="sel-reader" data-i18n="opt.readerPick">Device</label>
-              <select id="sel-reader">
-                <option value="" data-all="1" data-i18n="reader.all">All</option>
-              </select>
+              <label class="sr-only" for="txt-watch">Watched reader</label>
+              <span class="note" id="txt-watch" style="flex: 1"></span>
               <button class="btn" id="btn-readers-refresh" type="button" data-i18n="act.refreshReaders">
                 Refresh
               </button>
@@ -1124,19 +1130,21 @@
 
           <div class="group">
             <p class="group-title" data-i18n="opt.applets">Card data to read</p>
+            <!-- What the agent reads is configuration now, shown here rather
+                 than changed here. -->
             <label class="check">
-              <input type="checkbox" id="opt-face" />
+              <input type="checkbox" id="opt-face" disabled />
               <span data-i18n="applet.face">Face image</span>
             </label>
             <label class="check">
-              <input type="checkbox" id="opt-laser" />
+              <input type="checkbox" id="opt-laser" disabled />
               <span data-i18n="applet.laser">Laser ID</span>
             </label>
             <label class="check">
-              <input type="checkbox" id="opt-nhso" />
+              <input type="checkbox" id="opt-nhso" disabled />
               <span data-i18n="applet.nhso">NHSO (social security)</span>
             </label>
-            <p class="note" id="applet-note"></p>
+            <p class="note"><a href="/settings" data-i18n="nav.settings">Settings</a></p>
           </div>
 
           <div class="group">
@@ -1181,17 +1189,17 @@
 
         /* ==================================================================
          * Wire contract with cmd/agent. These names are fixed by the Go side:
-         *   in : {"action":"set-options","options":{"show_face_image":…,
-         *             "show_nhso":…,"show_laser":…}}  or {"action":"get-options"}
-         *        {"action":"get-status"} | {"action":"set-reader","reader":"…"}
-         *        (reader "" watches every reader) | {"action":"refresh-readers"}
-         *        | {"action":"read-now"}
-         *   out: "smc-options" {show_face_image, show_nhso, show_laser,
-         *             remote_control}
-         *        "smc-status" {readers, selected, state, remote_control},
+         *   in : {"action":"get-options"} | {"action":"get-status"}
+         *        | {"action":"refresh-readers"} | {"action":"read-now"}
+         *        (the read-only set; anything else is answered as an error)
+         *   out: "smc-options" {show_face_image, show_nhso, show_laser}
+         *        "smc-status" {readers, selected, state},
          *             where state is waiting | reading | card-present
          *        "smc-data" (also carries the reader it read from) /
          *        "smc-inserted" / "smc-removed" / "smc-error"
+         *
+         * The card socket is read-only: what the agent reads and which reader
+         * it watches change in /settings, never over the socket.
          *
          * socket.io delivers the bare payload on a named event. The WebSocket
          * delivers one JSON object per frame, shaped {event, payload}.
@@ -1202,7 +1210,6 @@
           th: {
             "app.title": "ตัวอ่านบัตรประชาชน",
             "status.reader": "เครื่องอ่าน",
-            "status.remote": "ควบคุมระยะไกล",
             "status.updated": "อัปเดต",
             "status.state": "สถานะ",
             "conn.connecting": "กำลังเชื่อมต่อ",
@@ -1210,8 +1217,7 @@
             "conn.disconnected": "หลุด",
             "conn.failed": "ใช้ไม่ได้",
             "conn.offline": "CDN โหลดไม่ขึ้น",
-            "remote.on": "เปิด",
-            "remote.off": "ปิด",
+            "conn.disabled": "ปิดอยู่",
             "pill.waiting": "รอใส่บัตร",
             "pill.reading": "กำลังอ่าน",
             "pill.cardPresent": "บัตรในเครื่อง",
@@ -1264,9 +1270,7 @@
             "applet.face": "รูปภาพหน้า",
             "applet.laser": "เลเซอร์ไอดี",
             "applet.nhso": "สิทธิการรักษาพยาบาล",
-            "applet.note.on": "ตัวเลือกเหล่านี้สั่ง agent ให้อ่านจากบัตรแบบทันที ไม่ต้อง restart",
-            "applet.note.off": "agent ปิดการควบคุมระยะไกลอยู่ (SMC_ALLOW_REMOTE_OPTIONS) ตัวเลือกนี้จึงใช้ไม่ได้",
-            "reader.note.off": "agent ปิดการควบคุมระยะไกลอยู่ (SMC_ALLOW_REMOTE_OPTIONS) ปุ่มเลือกเครื่องอ่านจึงใช้ไม่ได้",
+            "nav.settings": "ตั้งค่าที่ /settings",
             "reader.note.none": "ไม่พบเครื่องอ่าน — เสียบเครื่องแล้วกดรีเฟรช",
             "reader.note.reading": "กำลังอ่านบัตรอยู่ รอสักครู่",
             "reader.note.ready": "อ่านบัตรแล้ว กด “อ่านซ้ำ” เพื่ออ่านอีกครั้ง",
@@ -1332,7 +1336,6 @@
           en: {
             "app.title": "Thai ID Card Agent",
             "status.reader": "Reader",
-            "status.remote": "Remote",
             "status.updated": "Updated",
             "status.state": "State",
             "conn.connecting": "connecting",
@@ -1340,8 +1343,7 @@
             "conn.disconnected": "disconnected",
             "conn.failed": "unavailable",
             "conn.offline": "CDN blocked",
-            "remote.on": "on",
-            "remote.off": "off",
+            "conn.disabled": "disabled",
             "pill.waiting": "waiting",
             "pill.reading": "reading",
             "pill.cardPresent": "card in",
@@ -1394,9 +1396,7 @@
             "applet.face": "Face image",
             "applet.laser": "Laser ID",
             "applet.nhso": "Hospital treatment (NHSO)",
-            "applet.note.on": "These are applied to the agent immediately — no restart needed.",
-            "applet.note.off": "The agent has remote control disabled (SMC_ALLOW_REMOTE_OPTIONS).",
-            "reader.note.off": "The agent has remote control disabled (SMC_ALLOW_REMOTE_OPTIONS), so the reader picker does nothing.",
+            "nav.settings": "Change in settings",
             "reader.note.none": "No reader found — plug one in and press refresh.",
             "reader.note.reading": "Reading the card, hold on a moment.",
             "reader.note.ready": "Card read — press “Read again” for another pass.",
@@ -1573,14 +1573,10 @@
           data: null,
           reader: "",
           // What the agent reports in smc-status. "selected" is the reader the
-          // agent watches; "choiceMade" records that the operator picked one
-          // here, which outranks the agent's own idea until that reader is
-          // unplugged.
+          // agent watches, which is configuration now and only displayed here.
           readers: [],
           selected: "",
-          choiceMade: false,
           state: "",
-          remoteControl: null,
           lastError: "",
           conn: { sio: false, ws: false, ever: false }
         };
@@ -2365,13 +2361,8 @@
 
         function applyServerOptions(p) {
           if (!p) return;
-          if (typeof p.remote_control === "boolean") {
-            store.remoteControl = p.remote_control;
-            $("pill-remote").hidden = false;
-            $("txt-remote").textContent = p.remote_control ? t("remote.on") : t("remote.off");
-            syncAppletUI();
-          }
-          // Reflect server truth back into the switches.
+          // Reflect server truth into the read-only displays. What the agent
+          // reads is configuration, shown here and changed in /settings.
           APPLETS.forEach(function (a) {
             if (typeof p[a.key] === "boolean") {
               $("opt-" + a.id).checked = p[a.key];
@@ -2408,17 +2399,9 @@
           }
           store.readers = list;
 
-          if (typeof p.remote_control === "boolean") {
-            store.remoteControl = p.remote_control;
-            $("pill-remote").hidden = false;
-            $("txt-remote").textContent = p.remote_control ? t("remote.on") : t("remote.off");
-            syncAppletUI();
-          }
-
-          // An explicit choice here wins over the agent's idea, and survives a
-          // refresh for as long as that reader is still plugged in. A reader
-          // that disappeared falls back to watching all of them.
-          var pick = store.choiceMade ? store.selected : p.selected;
+          // What the agent watches is its own configuration; a name that is
+          // not attached means it fell back to watching all of them.
+          var pick = p.selected;
           if (typeof pick !== "string" || list.indexOf(pick) === -1) pick = "";
           store.selected = pick;
 
@@ -2442,28 +2425,15 @@
         }
 
         function fillReaders(list, selected) {
-          var sel = $("sel-reader");
-          // Only the options added here are dropped, so the translated "all"
-          // option and its data-i18n survive every refresh.
-          Array.prototype.slice.call(sel.options).forEach(function (o) {
-            if (!o.hasAttribute("data-all")) sel.removeChild(o);
-          });
-          list.forEach(function (name) {
-            var o = make("option", null, name);
-            o.value = name;
-            sel.appendChild(o);
-          });
-          sel.value = selected || "";
+          // A display, not a picker: the watched reader changes in /settings.
+          // An empty selection is the agent watching every attached reader.
+          $("txt-watch").textContent = selected || t("reader.all");
         }
 
         // Everything smc-status drives is refreshed from one place, so an
         // event, a reconnect and a language switch cannot leave these controls
         // half-updated.
         function syncReaderUI() {
-          var allowed = store.remoteControl !== false;
-          $("sel-reader").disabled = !allowed;
-          $("btn-readers-refresh").disabled = !allowed;
-
           // The agent's state is the only input: a card that is in and has
           // been read is the only thing a second read can improve on. Nothing
           // here consults the event log.
@@ -2477,8 +2447,7 @@
           btn.textContent = busy ? t("act.readAgainBusy") : t("act.readAgain");
 
           var note = "";
-          if (!allowed) note = "reader.note.off";
-          else if (store.readers.length === 0) note = "reader.note.none";
+          if (store.readers.length === 0) note = "reader.note.none";
           else if (busy) note = "reader.note.reading";
           else if (ready) note = "reader.note.ready";
           $("reader-note").textContent = note ? t(note) : "";
@@ -2506,7 +2475,35 @@
           if (!ok && !store.conn.ever) render();
         }
 
+        // Set by boot from /api/info: whether the agent serves socket.io at
+        // all. When it does not, the CDN script is never fetched and the pill
+        // reads disabled rather than offline.
+        var sioEnabled = false;
+
+        function setSioDisabled() {
+          var dot = $("dot-sio");
+          dot.className = "dot off";
+          $("txt-sio").textContent = t("conn.disabled");
+          $("pill-sio").title = "socket.io is switched off in config.toml ([server] transports)";
+          window.smcSocket = null;
+        }
+
+        function loadSocketIOClient(then) {
+          var script = document.createElement("script");
+          script.src = "https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js";
+          script.onload = then;
+          script.onerror = function () {
+            window.__smcSocketIOCDNFailed = true;
+            then();
+          };
+          document.head.appendChild(script);
+        }
+
         function connectSocketIO() {
+          if (!sioEnabled) {
+            setSioDisabled();
+            return;
+          }
           if (typeof window.io !== "function") {
             var dot = $("dot-sio");
             dot.className = "dot off";
@@ -2661,8 +2658,6 @@
             n.textContent = t(n.dataset.i18n);
           });
           $("privacy-note").textContent = t("privacy." + store.ui.privacy);
-          $("applet-note").textContent =
-            store.remoteControl === false ? t("applet.note.off") : t("applet.note.on");
           markSeg("seg-privacy", store.ui.privacy);
           markSeg("seg-view", store.ui.view);
           markSeg("seg-lang", store.ui.lang);
@@ -2670,28 +2665,6 @@
           // language switch has to run it again.
           renderStatePill();
           syncReaderUI();
-        }
-
-        function syncAppletUI() {
-          var allowed = store.remoteControl !== false;
-          APPLETS.forEach(function (a) {
-            var box = $("opt-" + a.id);
-            box.disabled = !allowed;
-            box.parentNode.classList.toggle("disabled", !allowed);
-          });
-          $("applet-note").textContent =
-            store.remoteControl === false ? t("applet.note.off") : t("applet.note.on");
-        }
-
-        function pushOptions() {
-          var payload = {};
-          APPLETS.forEach(function (a) {
-            payload[a.key] = $("opt-" + a.id).checked;
-          });
-          var sent = sendCommand({ action: "set-options", options: payload });
-          if (!sent) {
-            toast(t("state.noconn.title"), true);
-          }
         }
 
         function copyAll() {
@@ -2759,19 +2732,6 @@
             render();
           });
 
-          APPLETS.forEach(function (a) {
-            $("opt-" + a.id).addEventListener("change", pushOptions);
-          });
-
-          $("sel-reader").addEventListener("change", function () {
-            var name = $("sel-reader").value;
-            store.selected = name;
-            store.choiceMade = true;
-            if (!sendCommand({ action: "set-reader", reader: name })) {
-              toast(t("state.noconn.title"), true);
-            }
-          });
-
           $("btn-readers-refresh").addEventListener("click", function () {
             if (!sendCommand({ action: "refresh-readers" })) {
               toast(t("state.noconn.title"), true);
@@ -2818,19 +2778,49 @@
           if (!hadStoredPrefs) applyPrivacyPreset(store.ui.privacy);
           syncControls();
           applyI18n();
-          syncAppletUI();
           wireControls();
           render();
 
-          // A socket.io failure must not cost the WebSocket path. connectWS is
-          // called right after this, so anything thrown here would leave the
-          // page with neither transport.
-          try {
-            connectSocketIO();
-          } catch (e) {
-            var dot = $("dot-sio");
-            dot.className = "dot off";
-            $("txt-sio").textContent = t("conn.failed");
+          // Ask what the agent serves before touching the transports, so a
+          // switched-off socket.io shows as disabled, not as a failure, and
+          // its CDN script is never fetched. A socket.io failure must not cost
+          // the WebSocket path: connectWS runs either way, below.
+          var startSIO = function () {
+            try {
+              connectSocketIO();
+            } catch (e) {
+              var dot = $("dot-sio");
+              dot.className = "dot off";
+              $("txt-sio").textContent = t("conn.failed");
+            }
+          };
+          var withoutInfo = function () {
+            // No /api/info to ask — an agent built without the settings API.
+            // Try the transport, as this page always did.
+            sioEnabled = true;
+            loadSocketIOClient(startSIO);
+          };
+          if (window.fetch) {
+            fetch("/api/info")
+              .then(function (r) {
+                return r.ok ? r.json() : null;
+              })
+              .then(function (info) {
+                var transports = info && info.transports;
+                if (transports && transports.indexOf("socketio") === -1) {
+                  setSioDisabled();
+                  return;
+                }
+                if (!transports) {
+                  withoutInfo();
+                  return;
+                }
+                sioEnabled = true;
+                loadSocketIOClient(startSIO);
+              })
+              .catch(withoutInfo);
+          } else {
+            withoutInfo();
           }
           connectWS();
 

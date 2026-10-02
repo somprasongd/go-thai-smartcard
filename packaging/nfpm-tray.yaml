@@ -1,0 +1,28 @@
+# The tray package. It depends on the agent's package: the tray is a viewer
+# for the agent service and is installed alone never (decision 12).
+name: thai-smartcard-tray
+arch: amd64
+platform: linux
+version: ${NFPM_VERSION}
+section: utils
+priority: optional
+maintainer: Somprasong Damyos <somprasongd@gmail.com>
+description: |-
+  Tray icon for the Thai Smartcard Agent. A thin client of the agent's
+  settings API: it shows the reader and card state, opens the test and
+  settings pages, and toggles what the agent reads. Requires the
+  thai-smartcard-agent package.
+homepage: https://github.com/somprasongd/go-thai-smartcard
+license: MIT
+
+depends:
+  - thai-smartcard-agent
+
+contents:
+  - src: ./bin/thai-smartcard-tray.linux-amd64
+    dst: /usr/bin/thai-smartcard-tray
+  # The installer registers the tray at login (decision 15): every user can
+  # turn it off in the desktop's startup applications settings, which writes
+  # a per-user override in ~/.config/autostart/.
+  - src: packaging/autostart/thai-smartcard-tray.desktop
+    dst: /etc/xdg/autostart/thai-smartcard-tray.desktop

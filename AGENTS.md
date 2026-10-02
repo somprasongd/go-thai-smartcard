@@ -8,25 +8,35 @@ image) to clients over socket.io and WebSockets.
 - Install deps: `go mod download`
 - Build:        `go build ./...`
 - Test:         `go test ./...`
+- Race check:   `go test -race ./pkg/server/` (see Testing instructions)
 - Lint:         `go vet ./...` and `gofmt -l .` (no linter config in the repo)
-- Run agent:    `go run ./cmd/agent/main.go`
-- Library demo: `go run ./cmd/example/main.go`
+- Run agent:    `go run ./cmd/agent` — add `--config <path>` to choose a config
+  file; without it the service config directory is used. `make dev` runs with a
+  git-ignored `config.dev.toml`, written with the defaults on first run.
+  `go run ./cmd/agent service install|uninstall|start|stop|restart|status`
+  manages the system service (`service.go`, hidden behind `!js`)
+- Library demo: `go run ./cmd/example`
 
-Go 1.18+ per `go.mod`. `make dev`, `make example` and the `build-*` targets wrap
-the same commands; `build-wasm` targets `cmd/agent`.
+Go 1.18+ per `go.mod`. `make dev`, `make example`, the `build-*` targets and
+`make check` (the whole local gate, including the wasm build) wrap the same
+commands; `build-wasm` targets `cmd/agent`.
 
 ## Project layout
 
-- `cmd/agent` — the daemon: resolves the transport, reads cards on a loop, broadcasts events
+- `cmd/agent` — the daemon: resolves the transport, reads cards on a loop, broadcasts events; `service.go` manages the system service
+- `cmd/tray` — the tray app, a thin client of the agent's `/api`; needs cgo (fyne-io/systray), kept out of the agent so the agent stays cross-compilable
 - `cmd/record` — captures a real card session to a trace file, for tests and for checking readers
 - `cmd/example` — minimal library usage, doubles as the README's example
+- `pkg/config` — the config.toml loader: defaults, strict validation, the templated writer, the fingerprint the settings API round-trips
 - `pkg/smc` — card logic only: applet selection, command/GET RESPONSE, TIS-620, parsing
 - `pkg/transport` — the `Transport`/`Card`/`Status` interface `pkg/smc` talks to
 - `pkg/transport/pcsc` — the PC/SC backend (`//go:build !js`)
 - `pkg/apdu` — command APDU constants
 - `pkg/model` — response types and raw-field parsers
-- `pkg/server` — socket.io, WebSocket and the bundled example page
-- `pkg/util` — env helpers, `GetResponseCommand`
+- `pkg/server` — socket.io, WebSocket and the bundled pages (`pkg/server/web`, embedded)
+- `pkg/util` — `GetResponseCommand` and the small byte helpers (hex decode, base64)
+- `packaging/` — the nfpm config, systemd unit, polkit rule and install scripts the packages ship
+- `docs/plan/` — written plans for larger changes, kept as the record of what was decided
 - `testdata/` — trace files, **gitignored**
 
 ## Architecture constraints
@@ -37,6 +47,10 @@ back plain reader names and `[]byte` APDUs so a non-PC/SC backend can satisfy it
 unchanged. Resolve the backend in one place (`smc.NewTransport()`), not in
 callers. `cmd/record` needs the transport itself rather than a `SmartCard`, which
 is why it takes the transport path.
+
+Only `cmd/*` reads the config file. `pkg/config` is the loader; everything
+below it receives plain values — `pkg/smc` keeps receiving `Options` and a
+reader name, `pkg/server` a listen address and a transport list.
 
 The backend is behind build constraints (`transport_default.go` `!js`,
 `transport_js.go` `js`, `pcsc.go` `!js`), so `pkg/smc` still builds for wasm:
@@ -59,6 +73,11 @@ file, or the whole module stops building there.
 ## Testing instructions
 
 - Unit tests: `go test ./...` (standard library `testing`, no assertion library)
+- Run concurrency tests under the race detector: `go test -race ./pkg/server/`.
+  `TestWebSocketBroadcastWhileClientsChurn` is written for it, and a plain
+  `go test` is not a reliable check on its own
+- Config tests (`pkg/config`) are table-driven and need no reader; the settings
+  and auth tests in `pkg/server` use `httptest`, no reader either
 - **No reader is required.** `pkg/transport.FakeCard` replays a recorded trace,
   and `NewFakeTransport` injects it via `smc.NewSmartCardWith`
 - `TestReadFromRecordedTrace` skips itself until `testdata/trace-real.json`
@@ -73,8 +92,20 @@ file, or the whole module stops building there.
 
 ## PR & commit conventions
 
-- Branch from `main`; never push to it directly. There is no CI yet, so
-  `go build ./... && go test ./... && go vet ./...` is the gate to run locally
+- Branch from `main`; never push feature or fix work to it directly. The one
+  exception is a release: the versioned-changelog commit and its tag are pushed
+  to `main`, as the release workflow below says — that push wins for a release
+  commit only. A change too large for one PR uses an integration branch (the
+  v3 work uses `v3`, see `docs/plan/`): each PR targets it, and it merges into
+  `main` once, so `main` never holds half of a breaking change
+- There is no CI yet, so this is the gate to run locally before a PR — or
+  `make check`, which wraps it including the wasm build:
+  `go build ./... && go test ./... && go vet ./... && test -z "$(gofmt -l .)"`,
+  plus `go test -race ./pkg/server/` when you touch the server
+- There is no test CI, and the gate for a PR stays local (above). The one
+  workflow (`.github/workflows/package.yml`) is packaging only: triggered by a
+  pushed release tag, one job per OS on hosted runners, attaching the packages
+  to the hand-cut GitHub release. It never cuts a release and never runs tests
 - Commit messages in this repo are short, lowercase and imperative, without
   conventional-commit prefixes — e.g. `add get laser id`, `check card.Status
   before card.Transmit`. Match that rather than introducing a new format
@@ -92,10 +123,12 @@ There is no CI, so every step is run by hand and each one has to be checked.
 
 Semantic Versioning, on the API surface rather than the commit count:
 
-- **MAJOR** — an exported symbol is removed or changed incompatibly. The
-  current `[Unreleased]` work is one of these: it deletes the `pkg/util` PC/SC
-  helpers and `cmd/wasm`, so it ships as **v2.0.0**, not a patch.
-- **MINOR** — new capability, e.g. a new `SMC_*` option or a new broadcast event
+- **MAJOR** — an exported symbol is removed or changed incompatibly, or
+  something a deployment relies on changes: a default, a configuration source, a
+  protocol action. v2.0.0 deleted the `pkg/util` PC/SC helpers and `cmd/wasm`;
+  v3.0.0 stopped reading `SMC_*`, changed the default listen address and the
+  default transport, and removed the socket write actions
+- **MINOR** — new capability, e.g. a new config key or a new broadcast event
 - **PATCH** — bug fixes only
 
 ### 2. Version the changelog, then commit it
@@ -160,5 +193,5 @@ gh release delete vX.Y.Z --yes && git push --delete origin vX.Y.Z
   contains built binaries and is ignored too
 - If a trace is ever pushed, deleting it in a later commit is not enough — the
   data is public once pushed and history has to be rewritten
-- Keep `.env`-style secrets out of the repo; the agent is configured entirely
-  through `SMC_*` environment variables
+- Keep secrets out of the repo. The agent is configured from one `config.toml`
+  (see `pkg/config`); no environment variables are read

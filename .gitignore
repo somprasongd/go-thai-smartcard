@@ -6,3 +6,13 @@
 
 # macOS recreates this in any folder opened in Finder.
 .DS_Store
+
+# Development config for `make dev`, written with the defaults on first run.
+/config.dev.toml
+
+# macOS pkg build products
+/build
+
+# stray build outputs at the repo root
+/agent
+/tray

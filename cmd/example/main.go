@@ -21,7 +21,7 @@ func main() {
 	}
 	dataJSON, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err)
 	}
 	log.Printf("Card Data\n%s\n", string(dataJSON))
 }

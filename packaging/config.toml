@@ -1,0 +1,24 @@
+# The default config shipped with the .deb/.rpm. The agent rewrites this file
+# on the first save from /settings; comments added by hand are lost then.
+# See the README for every key and where the file can live.
+
+[server]
+listen = "127.0.0.1"      # "0.0.0.0" exposes the agent to the network
+port = 9898
+transports = ["ws"]       # "ws", "socketio", or both
+allowed_origins = ["*"]   # origins allowed to open a card socket; "*" is any
+token = ""                # required when listen is not loopback
+
+[card]
+read_face_image = true
+read_laser_id = true
+read_nhso = false         # treatment entitlement
+reader = ""               # empty watches every reader
+
+[tls]
+enabled = false
+port = 9899
+mode = "files"            # "files"; "auto" comes later
+cert_file = ""
+key_file = ""
+hostnames = []

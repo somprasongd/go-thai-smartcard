@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>SMC — Settings</title>
+    <style>
+      :root {
+        --bg: #0e1116;
+        --bg-elev: #161b23;
+        --line: #2a323e;
+        --fg: #e6e9ef;
+        --fg-dim: #98a2b3;
+        --accent: #c8102e;
+        --ok: #22c55e;
+        --warn: #f59e0b;
+        --danger: #ef4444;
+        --radius: 12px;
+        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans Thai",
+          "Leelawadee UI", "Sarabun", Roboto, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--sans);
+        font-size: 15px;
+        line-height: 1.5;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 20px;
+        background: var(--bg-elev);
+        border-bottom: 1px solid var(--line);
+      }
+      header .brand { font-weight: 700; letter-spacing: 0.04em; }
+      header a { color: var(--fg-dim); text-decoration: none; }
+      header a:hover { color: var(--fg); }
+      main { max-width: 720px; margin: 0 auto; padding: 20px; display: grid; gap: 16px; }
+      section {
+        background: var(--bg-elev);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 16px 18px;
+      }
+      h2 { margin: 0 0 4px; font-size: 16px; }
+      h2 small { color: var(--fg-dim); font-weight: 400; margin-left: 8px; }
+      .hint { color: var(--fg-dim); font-size: 13px; margin: 2px 0 10px; }
+      .row { display: flex; align-items: center; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
+      .row label { min-width: 150px; color: var(--fg-dim); }
+      input[type="text"], input[type="number"], input[type="password"], textarea {
+        background: #0b0e13;
+        color: var(--fg);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 7px 10px;
+        font-family: var(--mono);
+        font-size: 14px;
+      }
+      input[type="text"] { width: 220px; }
+      input[type="number"] { width: 110px; }
+      textarea { width: 100%; resize: vertical; }
+      .checks { display: grid; gap: 6px; }
+      .checks label { display: flex; gap: 8px; align-items: baseline; }
+      .note { color: var(--fg-dim); font-size: 13px; }
+      .warning { color: var(--warn); font-size: 13px; }
+      .error { color: var(--danger); font-size: 13px; }
+      .ok { color: var(--ok); font-size: 13px; }
+      code, .token {
+        font-family: var(--mono);
+        background: #0b0e13;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 6px 10px;
+        word-break: break-all;
+      }
+      button {
+        background: var(--accent);
+        color: #fff;
+        border: 0;
+        border-radius: 8px;
+        padding: 8px 16px;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      button.secondary { background: #232b36; color: var(--fg); }
+      button:disabled { opacity: 0.5; cursor: default; }
+      .savebar {
+        display: grid;
+        gap: 8px;
+        background: var(--bg-elev);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 16px 18px;
+      }
+      .savebar .actions { display: flex; gap: 10px; align-items: center; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="brand">SMC</span>
+      <strong>ตั้งค่า — Settings</strong>
+      <a href="/">← หน้าทดสอบ / test page</a>
+    </header>
+
+    <main>
+      <div class="error" id="boot-error" hidden></div>
+
+      <section>
+        <h2>Server <small>[server]</small></h2>
+        <p class="hint">
+          การแก้ค่า server จะรีสตาร์ท listener ให้เอง — pages ที่เปิดอยู่จะเชื่อมต่อใหม่เอง / a server change restarts the listener.
+        </p>
+        <div class="row">
+          <label for="listen">listen</label>
+          <input type="text" id="listen" spellcheck="false" />
+          <span class="hint">"0.0.0.0" = เปิดให้เครือข่ายเข้าถึง / exposes the agent to the network (ต้องมี token)</span>
+        </div>
+        <div class="row">
+          <label for="port">port</label>
+          <input type="number" id="port" min="1" max="65535" />
+        </div>
+        <div class="row">
+          <label>transports</label>
+          <span class="checks" style="display: flex; gap: 16px">
+            <label><input type="checkbox" id="t-ws" /> WebSocket (default)</label>
+            <label><input type="checkbox" id="t-socketio" /> socket.io (opt-in)</label>
+          </span>
+        </div>
+        <div class="row" style="display: block">
+          <label for="origins">allowed_origins — หนึ่ง origin ต่อบรรทัด / one per line</label>
+          <textarea id="origins" rows="3" spellcheck="false"></textarea>
+          <p class="hint">* อนุญาตทุก origin / <b>*</b> allows any origin</p>
+          <p class="warning" id="wildcard-warning" hidden>
+            ⚠ ตอนนี้อนุญาตทุก origin: เว็บไซต์อื่นที่คุณเปิดก็อ่านบัตรได้ / any site you visit can read the card.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>Socket token <small>[server] token</small></h2>
+        <p class="hint">
+          ต้องมีเมื่อเปิดให้เครือข่ายภายนอกเข้าถึง / required when the agent listens beyond localhost.
+          ส่งผ่าน <code>?token=</code> บน URL ของ socket หรือ <code>Authorization: Bearer</code> —
+          โชว์ครั้งเดียวตอนสร้าง / shown once when generated.
+        </p>
+        <div class="row">
+          <span>สถานะ / status:</span>
+          <span id="token-state" class="note"></span>
+          <button class="secondary" id="btn-token">สร้าง token</button>
+        </div>
+        <div id="token-reveal" hidden>
+          <p class="warning">คัดลอกตอนนี้ — จะไม่แสดงอีก / copy it now, it will not be shown again:</p>
+          <div class="row">
+            <span class="token" id="token-value"></span>
+            <button class="secondary" id="btn-copy">คัดลอก / copy</button>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Card <small>[card]</small></h2>
+        <p class="hint">มีผลตั้งแต่บัตรใบถัดไป / applies on the next card insert — ไม่ต้องรีสตาร์ท</p>
+        <div class="checks">
+          <label><input type="checkbox" id="c-face" /> อ่านรูปหน้า / read face image</label>
+          <label><input type="checkbox" id="c-laser" /> อ่านเลขหลังบัตร / read laser ID</label>
+          <label><input type="checkbox" id="c-nhso" /> อ่านสิทธิการรักษา / read NHSO entitlement</label>
+        </div>
+        <div class="row" style="margin-top: 10px">
+          <label for="reader">reader</label>
+          <input type="text" id="reader" spellcheck="false" />
+          <span class="hint">เว้นว่าง = ทุกเครื่องอ่าน / empty watches every reader</span>
+        </div>
+      </section>
+
+      <section>
+        <h2>TLS <small>[tls]</small></h2>
+        <p class="hint">
+          จำเป็นเมื่อหน้าเว็บภายนอกเป็น https แล้วคุยกับ agent / needed when an https page talks to the agent.
+          ใบรับรองต้องเชื่อถือได้โดยเครื่องที่รันเบราว์เซอร์ / the certificate must be trusted by the machine running the browser.
+        </p>
+        <div class="checks">
+          <label><input type="checkbox" id="tls-enabled" /> เปิด HTTPS / enable</label>
+        </div>
+        <div class="row">
+          <label for="tls-port">port</label>
+          <input type="number" id="tls-port" min="1" max="65535" />
+        </div>
+        <div class="row">
+          <label for="tls-cert">cert_file</label>
+          <input type="text" id="tls-cert" spellcheck="false" style="width: 380px" />
+        </div>
+        <div class="row">
+          <label for="tls-key">key_file</label>
+          <input type="text" id="tls-key" spellcheck="false" style="width: 380px" />
+        </div>
+      </section>
+
+      <div class="savebar">
+        <p class="warning">
+          การบันทึกเขียน config.toml ใหม่ทั้งไฟล์: comment ที่เพิ่มเองจะหาย / saving rewrites
+          config.toml from a template — comments added by hand are lost.
+          การแก้ไฟล์เองมีผลหลังรีสตาร์ท / hand edits take effect after a restart.
+        </p>
+        <div class="actions">
+          <button id="btn-save">บันทึก / save</button>
+          <button class="secondary" id="btn-reload" hidden>โหลดใหม่ / reload</button>
+          <span id="save-status"></span>
+        </div>
+      </div>
+    </main>
+
+    <script>
+      (function () {
+        "use strict";
+
+        var state = { version: "", tokenSet: false };
+
+        function $(id) {
+          return document.getElementById(id);
+        }
+
+        function setStatus(text, cls) {
+          var el = $("save-status");
+          el.textContent = text;
+          el.className = cls || "note";
+        }
+
+        function bootError(text) {
+          var el = $("boot-error");
+          el.textContent = text;
+          el.hidden = false;
+        }
+
+        function fill(config, tokenSet) {
+          $("listen").value = config.server.listen;
+          $("port").value = config.server.port;
+          $("t-ws").checked = (config.server.transports || []).indexOf("ws") !== -1;
+          $("t-socketio").checked = (config.server.transports || []).indexOf("socketio") !== -1;
+          $("origins").value = (config.server.allowed_origins || []).join("\n");
+          $("c-face").checked = config.card.read_face_image;
+          $("c-laser").checked = config.card.read_laser_id;
+          $("c-nhso").checked = config.card.read_nhso;
+          $("reader").value = config.card.reader;
+          $("tls-enabled").checked = config.tls.enabled;
+          $("tls-port").value = config.tls.port;
+          $("tls-cert").value = config.tls.cert_file;
+          $("tls-key").value = config.tls.key_file;
+          tokenSet ? showTokenSet() : showTokenMissing();
+          syncWarnings();
+        }
+
+        function collect() {
+          var transports = [];
+          if ($("t-ws").checked) transports.push("ws");
+          if ($("t-socketio").checked) transports.push("socketio");
+          var origins = $("origins").value
+            .split("\n")
+            .map(function (line) { return line.trim(); })
+            .filter(function (line) { return line !== ""; });
+          return {
+            server: {
+              listen: $("listen").value.trim() || "127.0.0.1",
+              port: parseInt($("port").value, 10) || 9898,
+              transports: transports,
+              allowed_origins: origins,
+              token: ""
+            },
+            card: {
+              read_face_image: $("c-face").checked,
+              read_laser_id: $("c-laser").checked,
+              read_nhso: $("c-nhso").checked,
+              reader: $("reader").value.trim()
+            },
+            tls: {
+              enabled: $("tls-enabled").checked,
+              port: parseInt($("tls-port").value, 10) || 9899,
+              mode: "files",
+              cert_file: $("tls-cert").value.trim(),
+              key_file: $("tls-key").value.trim(),
+              hostnames: []
+            }
+          };
+        }
+
+        function syncWarnings() {
+          var origins = $("origins").value.split("\n").map(function (l) { return l.trim(); });
+          $("wildcard-warning").hidden = origins.indexOf("*") === -1;
+        }
+
+        function showTokenSet() {
+          $("token-state").textContent = "ตั้งไว้แล้ว / set";
+          $("btn-token").textContent = "สร้าง token ใหม่ / regenerate";
+          state.tokenSet = true;
+        }
+
+        function showTokenMissing() {
+          $("token-state").textContent = "ยังไม่มี / not set";
+          $("btn-token").textContent = "สร้าง token / generate";
+          state.tokenSet = false;
+        }
+
+        function revealToken(token) {
+          $("token-value").textContent = token;
+          $("token-reveal").hidden = false;
+          showTokenSet();
+        }
+
+        async function load() {
+          try {
+            var res = await fetch("/api/settings");
+            if (!res.ok) {
+              bootError("โหลดค่าไม่สำเร็จ / loading failed: " + res.status);
+              return;
+            }
+            var data = await res.json();
+            state.version = data.version;
+            fill(data.config, data.token_set);
+          } catch (e) {
+            bootError("ติดต่อ agent ไม่ได้ / cannot reach the agent: " + e);
+          }
+        }
+
+        async function save(extra) {
+          $("btn-save").disabled = true;
+          setStatus("กำลังบันทึก…", "note");
+          var body = Object.assign({ config: collect(), version: state.version }, extra || {});
+          try {
+            var res = await fetch("/api/settings", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json", "X-SMC-Settings": "1" },
+              body: JSON.stringify(body)
+            });
+            if (res.status === 409) {
+              // The file changed on disk since it was served (decision 14).
+              setStatus("ไฟล์ถูกแก้บนดิสก์ — กดโหลดใหม่ก่อนบันทึก / the file changed on disk, reload before saving", "error");
+              $("btn-reload").hidden = false;
+              return;
+            }
+            if (!res.ok) {
+              var text = await res.text();
+              setStatus("บันทึกไม่สำเร็จ / save failed: " + text, "error");
+              return;
+            }
+            var data = await res.json();
+            state.version = data.version;
+            if (data.token) revealToken(data.token);
+            setStatus("บันทึกแล้ว — ค่า server ใหม่มีผลทันที, ค่า card ใช้กับบัตรใบถัดไป / saved", "ok");
+          } catch (e) {
+            setStatus("ติดต่อ agent ไม่ได้ / cannot reach the agent: " + e, "error");
+          } finally {
+            $("btn-save").disabled = false;
+          }
+        }
+
+        $("btn-save").addEventListener("click", function () { save(); });
+        $("btn-reload").addEventListener("click", function () {
+          $("btn-reload").hidden = true;
+          $("token-reveal").hidden = true;
+          load().then(function () { setStatus("โหลดใหม่แล้ว / reloaded", "note"); });
+        });
+        $("btn-token").addEventListener("click", function () {
+          if (state.tokenSet && !window.confirm("สร้าง token ใหม่? token เดิมใช้ไม่ได้ทันที / regenerate? the old token stops working at once")) {
+            return;
+          }
+          save({ regenerate_token: true });
+        });
+        $("btn-copy").addEventListener("click", function () {
+          navigator.clipboard.writeText($("token-value").textContent).then(
+            function () { setStatus("คัดลอกแล้ว / copied", "ok"); },
+            function () { setStatus("คัดลอกไม่ได้ ลอง select เอง / copy failed, select it by hand", "error"); }
+          );
+        });
+        $("origins").addEventListener("input", syncWarnings);
+
+        load();
+      })();
+    </script>
+  </body>
+</html>

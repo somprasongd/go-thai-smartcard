@@ -24,8 +24,9 @@ type Message struct {
 	Payload any    `json:"payload,omitempty"`
 }
 
-// Options is the wire form of the card reading options, so a client can ask
-// for a different set of applets while the agent runs.
+// Options is the wire form of the card reading options, broadcast as
+// smc-options so a client can see what the agent reads. The set itself
+// changes through /settings or the tray, never over the socket.
 //
 // It mirrors smc.Options instead of using it, because pkg/server must not
 // import pkg/smc: the transport layer should not depend on the card logic, and
@@ -37,17 +38,14 @@ type Options struct {
 }
 
 // Command is a client request on the control channel, for example
-// {"action":"set-options","options":{...}} or {"action":"get-options"}.
+// {"action":"get-options"}.
 //
-// Options is a pointer so get-options can travel without the client inventing
-// values it does not mean. A set-options without options is rejected by the
-// agent rather than being read as "everything off".
+// The card socket is read-only: settings change through /settings or the tray,
+// never over the socket. An action the agent does not know — including the
+// removed set-options and set-reader — is answered with an smc-error naming
+// the unknown action.
 type Command struct {
-	Action  string   `json:"action"`
-	Options *Options `json:"options,omitempty"`
-	// Reader names the reader to watch, for the set-reader action. Empty means
-	// every attached reader, which is also how the agent starts.
-	Reader string `json:"reader,omitempty"`
+	Action string `json:"action"`
 }
 
 // Daemon states, as a client sees them.
@@ -71,10 +69,6 @@ type Status struct {
 	Readers  []string `json:"readers"`
 	Selected string   `json:"selected"`
 	State    string   `json:"state"`
-	// RemoteControl reports whether set-options and set-reader are permitted,
-	// so a client can disable its switches instead of offering one that does
-	// nothing.
-	RemoteControl bool `json:"remote_control"`
 }
 
 type FormatedDate string

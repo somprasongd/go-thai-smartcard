@@ -1,0 +1,40 @@
+#!/bin/sh
+# pkgbuild postinstall: install and start the agent service, put the tray in
+# /Applications, and register the tray at login through a LaunchAgent
+# (decision 15: the installer registers it; a user turns it off in
+# System Settings > General > Login Items).
+
+set -e
+
+# The agent service: install and start (decision 12 — installers install and
+# start it; the tray never spawns the agent).
+/usr/local/bin/thai-smartcard-agent service install || true
+/usr/local/bin/thai-smartcard-agent service start || true
+
+APP=/Applications/ThaiSmartcardTray.app
+
+# The tray runs at login for every user. A LaunchAgent in /Library applies to
+# all users of the machine; each user can turn it off in their own Login
+# Items, which writes a per-user override.
+cat > /Library/LaunchAgents/com.thaismartcard.tray.plist <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.thaismartcard.tray</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$APP/Contents/MacOS/thai-smartcard-tray</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>
+PLIST
+chown root:wheel /Library/LaunchAgents/com.thaismartcard.tray.plist
+chmod 644 /Library/LaunchAgents/com.thaismartcard.tray.plist
+
+exit 0

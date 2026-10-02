@@ -1,0 +1,27 @@
+[Unit]
+Description=Thai Smartcard Agent
+Documentation=https://github.com/somprasongd/go-thai-smartcard
+# kardianos/service cannot express dependencies on Linux, so the packaged unit
+# sets the ordering itself: the agent needs pcscd's socket to reach the reader.
+After=pcscd.service
+Wants=pcscd.service
+
+[Service]
+Type=simple
+# Decision 17: a dedicated system user, not root. Root would pass pcsc-lite's
+# polkit check for free but widens the agent for no gain; the polkit rule
+# shipped next to this unit grants the user the two pcsc-lite actions instead.
+User=thai-smartcard
+Group=thai-smartcard
+ExecStart=/usr/bin/thai-smartcard-agent --config /etc/thai-smartcard/config.toml
+Restart=always
+RestartSec=5s
+# The config file can hold the socket token; keep the write surface to it.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/etc/thai-smartcard
+
+[Install]
+WantedBy=multi-user.target

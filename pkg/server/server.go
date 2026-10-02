@@ -4,55 +4,165 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net"
 	"net/http"
+	"strconv"
+	"strings"
 
+	"github.com/somprasongd/go-thai-smartcard/pkg/config"
 	"github.com/somprasongd/go-thai-smartcard/pkg/model"
 )
 
 type ServerConfig struct {
-	Port      string
+	// Listen is the address to bind, from config.toml [server] listen. An
+	// empty value binds every interface; the config loader never produces
+	// one, and the default is loopback (decision 7).
+	Listen string
+	Port   int
+	// Transports selects what is registered: "ws", "socketio", or both. A
+	// disabled transport is never constructed: no handler, no engine.io
+	// server, no goroutines.
+	Transports []string
+	// AllowedOrigins are the origins allowed to open a card socket, from
+	// config.toml [server] allowed_origins. "*" allows any origin. A request
+	// with no Origin header is a non-browser client and skips the check.
+	AllowedOrigins []string
+	// Token is the socket token, checked in one middleware in front of both
+	// transports. It is required when Listen is not loopback.
+	Token     string
 	Broadcast chan model.Message
 	// Command carries control commands from the clients to the agent. It may
 	// be nil, which leaves the control channel off: inbound frames are then
 	// dropped instead of reaching a consumer that is not there.
 	Command chan model.Command
+	// Version is the agent's own version, reported by /api/info.
+	Version string
+	// TLS is the [tls] table. When Enabled, the agent serves HTTPS on
+	// TLS.Port from TLS.CertFile/TLS.KeyFile and forces the plain listener
+	// to loopback.
+	TLS config.TLS
+	// ConfigPath is the config file the settings API reads and writes. Empty
+	// leaves /api/* and /settings unregistered.
+	ConfigPath string
+	// OnChange is called with the saved config after a successful PUT and
+	// after the response is written; the agent applies the card options and
+	// restarts the listener there. It may be nil.
+	OnChange func(config.Config)
 }
 
-//go:embed index.html
+//go:embed web/index.html
 var indexPage []byte
 
+//go:embed web/settings.html
+var settingsPage []byte
+
+// Serve serves forever on one listener. The agent uses Manager instead, so a
+// settings save can restart the listener; Serve is the one-generation form
+// for callers that never reconfigure.
 func Serve(cfg ServerConfig) {
-	socketServer := NewSocketIO(cfg.Command)
-	go func() {
-		if err := socketServer.Serve(); err != nil {
-			log.Fatalf("socketio listen error: %s\n", err)
-		}
-	}()
-	defer socketServer.Close()
+	if len(cfg.Transports) == 0 {
+		// config.Load refuses an empty list already; this guards a caller
+		// that built a ServerConfig by hand.
+		log.Fatal("server: no transports configured, refusing to start")
+	}
+	mux := newMux(cfg, nil)
+	addr := net.JoinHostPort(cfg.Listen, strconv.Itoa(cfg.Port))
+	log.Println("Serving at " + addr + " (" + strings.Join(cfg.Transports, ", ") + ")")
+	log.Fatal(http.ListenAndServe(addr, mux))
+}
 
-	webSocket := NewWS(cfg.Command)
+// newMux builds one generation of the handler: the enabled transports behind
+// the socket guard, the settings routes behind their own guard, the bundled
+// pages, and the pump that fans every broadcast out to the transports. done
+// is closed when the generation stops, which ends the pump. The transports
+// themselves are never torn down: go-socket.io's Close is not safe to call
+// while Serve runs, and a generation lives until the process does.
+func newMux(cfg ServerConfig, done <-chan struct{}) *http.ServeMux {
+	guard := newSocketGuard(cfg.AllowedOrigins, cfg.Token, cfg.Listen)
+	settings := &settingsGuard{}
+	api := &settingsAPI{
+		path:       cfg.ConfigPath,
+		transports: cfg.Transports,
+		version:    cfg.Version,
+		tlsEnabled: cfg.TLS.Enabled,
+		onChange:   cfg.OnChange,
+	}
 
-	go func() {
-		for {
-			msg, ok := <-cfg.Broadcast
-			if ok {
-				socketServer.Broadcast(msg)
-				webSocket.Broadcast(msg)
+	var socketServer *socketIO
+	if hasTransport(cfg.Transports, config.TransportSocketIO) {
+		socketServer = NewSocketIO(cfg.Command)
+		go func() {
+			// io.EOF is what Serve returns when the server is closed; it is
+			// not an error to report.
+			if err := socketServer.Serve(); err != nil && !errors.Is(err, io.EOF) {
+				log.Fatalf("socketio listen error: %s\n", err)
 			}
+		}()
+	}
+
+	var webSocket *ws
+	if hasTransport(cfg.Transports, config.TransportWS) {
+		webSocket = NewWS(cfg.Command)
+	}
+
+	mux := http.NewServeMux()
+	if socketServer != nil {
+		mux.Handle("/socket.io/", guard.wrap(socketServer))
+	}
+	if webSocket != nil {
+		mux.Handle("/ws", guard.wrap(http.HandlerFunc(webSocket.Handler)))
+	}
+	if cfg.ConfigPath != "" {
+		mux.Handle("/api/info", settings.wrap(http.HandlerFunc(api.serveInfo)))
+		mux.Handle("/api/settings", settings.wrap(http.HandlerFunc(api.serveSettings)))
+		mux.Handle("/settings", settings.wrap(servePage(settingsPage)))
+	}
+	mux.HandleFunc("/", servePage(indexPage))
+
+	if cfg.Broadcast != nil {
+		go func() {
+			for {
+				select {
+				case <-done:
+					return
+				case msg, ok := <-cfg.Broadcast:
+					if ok {
+						if socketServer != nil {
+							socketServer.Broadcast(msg)
+						}
+						if webSocket != nil {
+							webSocket.Broadcast(msg)
+						}
+					}
+				}
+			}
+		}()
+	}
+	return mux
+}
+
+// servePage writes one embedded page with its content type set, so neither
+// page depends on content sniffing.
+func servePage(page []byte) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		w.Write(page)
+	}
+}
+
+// hasTransport reports whether the list names the transport.
+func hasTransport(list []string, name string) bool {
+	for _, t := range list {
+		if t == name {
+			return true
 		}
-	}()
-
-	http.Handle("/socket.io/", socketServer)
-	http.HandleFunc("/ws", webSocket.Handler)
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(200)
-		w.Write(indexPage)
-	})
-
-	log.Println("Serving at localhost:" + cfg.Port)
-	log.Fatal(http.ListenAndServe(":"+cfg.Port, nil))
+	}
+	return false
 }
 
 // decodeCommand parses one inbound control frame.

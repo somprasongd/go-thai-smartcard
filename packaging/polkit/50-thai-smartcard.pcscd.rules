@@ -1,0 +1,15 @@
+// Grant the thai-smartcard service user access to pcscd and to the card.
+//
+// pcsc-lite has enabled polkit by default upstream since late 2023, and its
+// default denies any process without an active local session — exactly what a
+// system service is. Without this rule the agent logs
+// SCARD_W_SECURITY_VIOLATION instead of listing readers. The rule is inert on
+// systems whose pcscd has no polkit, so the one file works everywhere.
+
+polkit.addRule(function(action, subject) {
+    if ((action.id == "org.debian.pcsc-lite.access_pcsc" ||
+         action.id == "org.debian.pcsc-lite.access_card") &&
+        subject.user == "thai-smartcard") {
+        return polkit.Result.YES;
+    }
+});
