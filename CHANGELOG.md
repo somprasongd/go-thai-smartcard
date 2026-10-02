@@ -74,6 +74,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The "not reading this" hints on the card page no longer send people to
+  `SMC_SHOW_LASER` / `SMC_SHOW_NHSO` environment variables the agent stopped
+  reading versions ago. The laser, NHSO and face-photo hints now name the
+  matching toggle and link it to /settings, where the card read switches live;
+  card options apply on the next insert, so no restart is mentioned either.
 - A card that macOS CryptoTokenKit was holding no longer blocks the read
   until the card is pulled and re-seated. The session was opened exclusive,
   which PC/SC refuses the moment any other handle exists — and CryptoTokenKit

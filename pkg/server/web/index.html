@@ -771,6 +771,13 @@
         color: var(--warn);
       }
 
+      .absent a {
+        color: var(--accent-deep);
+        font-weight: 600;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
+
       /* ------------------------------ table ------------------------------ */
       table.fields-table {
         width: 100%;
@@ -1421,9 +1428,9 @@
             "privacy.kiosk": "ปิดบังเลขประชาชนและรูปหน้า และล้างข้อมูลเมื่อถอดบัตร เหมาะกับจอที่คนยืนดูข้างๆ",
             "privacy.dev": "แสดงข้อมูลทุกอย่าง ไม่ล้างอัตโนมัติ เปิด JSON ดิบไว้",
             "privacy.counter": "ตัวอักษรและรูปใหญ่ขึ้น ลดรายละเอียดรอง เหมาะกับหน้าร้าน",
-            "hint.laser": "ยังไม่ได้เปิดอ่านเลเซอร์ไอดี — ตั้ง <code>SMC_SHOW_LASER=true</code> แล้ว restart agent หรือเปิดสวิตช์ด้านข้าง",
-            "hint.nhso": "ยังไม่ได้เปิดอ่านข้อมูลสิทธิการรักษาพยาบาล — ตั้ง <code>SMC_SHOW_NHSO=true</code> แล้ว restart agent หรือเปิดสวิตช์ด้านข้าง",
-            "hint.photo": "ไม่ได้อ่านรูปหน้า — เปิดสวิตช์ “รูปหน้า” ด้านข้างแล้วใส่บัตรใหม่",
+            "hint.laser": "ยังไม่ได้เปิดอ่านเลขหลังบัตร — เปิด “อ่านเลขหลังบัตร” ในหน้า <settings>ตั้งค่า</settings> แล้วใส่บัตรใหม่",
+            "hint.nhso": "ยังไม่ได้เปิดอ่านสิทธิการรักษาพยาบาล — เปิด “อ่านสิทธิการรักษา” ในหน้า <settings>ตั้งค่า</settings> แล้วใส่บัตรใหม่",
+            "hint.photo": "ไม่ได้อ่านรูปหน้า — เปิด “อ่านรูปหน้า” ในหน้า ตั้งค่า แล้วใส่บัตรใหม่",
             "card.title": "บัตรประชาชน",
             "card.sub": "พ.ศ. 2535 – 2568",
             "card.cid": "เลขประจำตัวประชาชน",
@@ -1544,9 +1551,9 @@
             "privacy.kiosk": "Masks the ID number and the portrait, and clears data on removal. Suited to a screen people stand and look at.",
             "privacy.dev": "Shows everything, never auto-clears, keeps the raw JSON open.",
             "privacy.counter": "Larger type and photo, less secondary detail. Suited to a counter.",
-            "hint.laser": "Laser ID reading is off — set <code>SMC_SHOW_LASER=true</code> and restart the agent, or flip the switch beside this.",
-            "hint.nhso": "Hospital treatment reading is off — set <code>SMC_SHOW_NHSO=true</code> and restart the agent, or flip the switch beside this.",
-            "hint.photo": "No face image was read — enable the “Face image” switch beside this and re-insert the card.",
+            "hint.laser": "Laser ID reading is off — turn on “Read laser ID” in <settings>Settings</settings>, then re-insert the card.",
+            "hint.nhso": "NHSO entitlement reading is off — turn on “Read NHSO entitlement” in <settings>Settings</settings>, then re-insert the card.",
+            "hint.photo": "No face image was read — turn on “Read face image” in Settings, then re-insert the card.",
             "card.title": "National Identity Card",
             "card.sub": "B.E. 2535 – 2568",
             "card.cid": "ID number",
@@ -2237,12 +2244,36 @@
 
         // An absent applet is a configuration fact, not a mystery: say which
         // env var turns it on.
+        // Hint text is mostly plain, but may carry <code>…</code> chips and a
+        // <settings>…</settings> link to the settings page, where the read
+        // toggles live; everything else becomes a plain text node.
         function hintBox(i18nKey) {
           var box = make("div", "absent");
-          var parts = t(i18nKey).split(/<code>|<\/code>/);
-          box.appendChild(document.createTextNode(parts[0] || ""));
-          if (parts[1]) box.appendChild(make("code", null, parts[1]));
-          if (parts[2]) box.appendChild(document.createTextNode(parts[2]));
+          var code = null;
+          var link = null;
+          t(i18nKey)
+            .split(/(<code>|<\/code>|<settings>|<\/settings>)/)
+            .forEach(function (part) {
+              if (!part) return;
+              if (part === "<code>") {
+                code = make("code");
+                box.appendChild(code);
+              } else if (part === "</code>") {
+                code = null;
+              } else if (part === "<settings>") {
+                link = make("a");
+                link.href = "/settings";
+                box.appendChild(link);
+              } else if (part === "</settings>") {
+                link = null;
+              } else if (code) {
+                code.textContent += part;
+              } else if (link) {
+                link.textContent += part;
+              } else {
+                box.appendChild(document.createTextNode(part));
+              }
+            });
           return box;
         }
 
@@ -2303,8 +2334,8 @@
             clear(dataHost);
             dataHost.hidden = true;
             // With no card read, an applet is not "switched off" — it simply
-            // has nothing to report. Saying SMC_SHOW_LASER here would send
-            // someone to reconfigure an agent that is working fine.
+            // has nothing to report. Sending someone to Settings here would
+            // reconfigure an agent that is working fine.
             $("blocks").hidden = true;
             applySidebars();
             return;
