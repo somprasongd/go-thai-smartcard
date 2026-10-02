@@ -94,20 +94,22 @@ func TestManagerRetiresSocketIOConnections(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer mgr.Close()
-	conn, _, err := websocket.DefaultDialer.Dial("ws://"+mgr.PlainAddr()+"/socket.io/?EIO=3&transport=websocket", nil)
+	conn, _, err := websocket.DefaultDialer.Dial("ws://"+mgr.PlainAddr()+"/socket.io/?EIO=4&transport=websocket", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer conn.Close()
+	// v4 handshake: engine.io OPEN from the server, then the client joins
+	// the default namespace and gets its ack back.
 	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	for {
-		_, payload, err := conn.ReadMessage()
-		if err != nil {
-			t.Fatal("socket.io handshake", err)
-		}
-		if strings.HasPrefix(string(payload), "40") {
-			break
-		}
+	if _, payload, err := conn.ReadMessage(); err != nil || !strings.HasPrefix(string(payload), "0") {
+		t.Fatal("socket.io handshake", err)
+	}
+	if err := conn.WriteMessage(websocket.TextMessage, []byte("40")); err != nil {
+		t.Fatal("socket.io handshake", err)
+	}
+	if _, payload, err := conn.ReadMessage(); err != nil || !strings.HasPrefix(string(payload), "40") {
+		t.Fatal("socket.io handshake", err)
 	}
 	cfg.Port = freePort(t)
 	if err = mgr.Replace(cfg); err != nil {

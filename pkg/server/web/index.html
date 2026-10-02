@@ -9,11 +9,12 @@
     />
     <title>SMC — Thai ID Card Agent</title>
     <!--
-      socket.io's Go server (googollee/go-socket.io) speaks the protocol but does
-      not ship the JavaScript client, so when socket.io is enabled it has to come
-      from a CDN. The script is injected from boot() only after /api/info says the
-      transport is on: a switched-off transport is never fetched, and when the
-      script cannot load the page still works over the dependency-free WebSocket.
+      socket.io's Go server (go-socketio-v4) speaks the protocol but does not
+      ship the JavaScript client, so when socket.io is enabled it has to come
+      from a CDN. The script is injected from boot() only after /api/info says
+      the transport is on: a switched-off transport is never fetched, and when
+      the script cannot load the page still works over the dependency-free
+      WebSocket.
     -->
     <style>
       /* ---------------------------------------------------------------------
@@ -2859,7 +2860,7 @@
 
         function loadSocketIOClient(then) {
           var script = document.createElement("script");
-          script.src = "https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js";
+          script.src = "https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.8.1/socket.io.js";
           script.onload = then;
           script.onerror = function () {
             window.__smcSocketIOCDNFailed = true;
@@ -2883,7 +2884,9 @@
             return;
           }
 
-          var socket = window.io.connect(window.location.origin, {
+          // v4 client: websocket first, polling as the fallback, with the
+          // usual upgrade path when the page starts on polling instead.
+          var socket = window.io(window.location.origin, {
             transports: ["websocket", "polling"]
           });
 

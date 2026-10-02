@@ -255,12 +255,12 @@ It is the default transport; socket.io is opt-in (see
 ### Via socket.io
 
 Enable it first with `transports = ["ws", "socketio"]`, then use the socket.io
-**2.x** client (the Go server speaks the v2 protocol):
+**4.x** client (the Go server speaks the v4 protocol):
 
 ```html
-<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.8.1/socket.io.js"></script>
 <script>
-  const socket = io.connect('http://localhost:9898', {
+  const socket = io('http://localhost:9898', {
     query: { token: 'THE-TOKEN' }   // when the agent requires one
   });
 
@@ -277,7 +277,7 @@ in front of both transports, before the upgrade or handshake: a bad token gets
 `401` and never sees an event.
 
 - Browsers pass `?token=<token>` on the socket URL — it is the only form a
-  browser can send. socket.io 2.x takes it as the `query` option.
+  browser can send. socket.io 4.x takes it as the `query` option.
 - Other clients may send `Authorization: Bearer <token>` instead, which keeps
   the token out of URLs. If both are present the header wins.
 - The comparison is constant-time and the agent never logs request URLs.

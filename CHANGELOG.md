@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** the opt-in socket.io transport now speaks the socket.io v4
+  protocol, served by [go-socketio-v4](https://github.com/somprasongd/go-socketio-v4)
+  instead of the unmaintained v2-era library. Clients must move to a
+  socket.io v4 client — e.g. `socket.io-client@4.x` or the 4.8.1 CDN build
+  the bundled page now loads. WebSocket-only deployments are unaffected: the
+  default transport is still `ws` and its protocol is unchanged.
+
+### Removed
+
+- The vendored `third_party/go-socket.io` fork and its local Engine.IO
+  shutdown patch; the replacement handles retirement natively and is
+  validated by the official Engine.IO protocol compliance suite.
+
 ## [4.4.0] - 2026-10-03
 
 ### Added
