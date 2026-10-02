@@ -7,58 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- `thai-smartcard-tray` (`cmd/tray`), an optional tray app for macOS, Windows
-  and Linux: reader and card state, shortcuts to the test and settings pages,
-  the expose-to-network toggle, and the read image / laser ID / NHSO switches.
-  It is a thin client of the agent's `/api` — it never touches the config file
-  and never starts the agent; when it cannot reach the agent it says so with
-  the command to start it and keeps polling. On GNOME without the AppIndicator
-  extension it sends a notification pointing at `/settings` instead of failing
-  silently. The tray needs cgo and is its own binary, so the agent stays
-  cross-compilable.
-- Installers for all three platforms, built by the packaging workflow:
-  a Windows Inno Setup installer (installs and starts the service, registers
-  the tray at login machine-wide under `HKLM\…\Run`, which each user can turn
-  off in Settings > Apps > Startup), a macOS `.pkg` built with `pkgbuild`
-  (installs and starts the service, puts the tray in `/Applications`, and
-  registers it at login via a LaunchAgent; signed and notarized when the
-  Apple Developer secrets are configured), and a Linux tray package that
-  depends on the agent's and ships
-  `/etc/xdg/autostart/thai-smartcard-tray.desktop`.
-- TLS `files` mode (`[tls]` in `config.toml`): the operator supplies
-  `cert_file` and `key_file`, the agent serves HTTPS on `tls.port` and reloads
-  the files when their mtime changes, so a renewed certificate needs no
-  restart. With TLS on, the plain HTTP listener is forced to loopback. A bad
-  certificate stops the listener restart rather than leaving the agent
-  claiming `https` it cannot serve; `/api/info` reports whether TLS is on.
-- `thai-smartcard-agent service install|uninstall|start|stop|restart|status`
-  ([kardianos/service](https://github.com/kardianos/service)), which registers
-  the agent as a system service on Windows, Linux and macOS. A bare invocation
-  runs in the foreground at a terminal and under the service manager otherwise;
-  `run` is the spelled-out foreground form. The installed service points at the
-  config file in the service location.
-- `.deb` and `.rpm` for the agent, built from one nfpm config by the packaging
-  workflow when a release tag is pushed (one job, `ubuntu-latest`; artifacts
-  attach to the hand-cut release). The package installs and starts the service,
-  and carries the systemd unit — which sets `After=pcscd.service`, something
-  `service install` cannot express on Linux — the default config, and the
-  polkit rule below.
-- The service runs as the dedicated `thai-smartcard` system user, not root,
-  with a polkit rule (`/etc/polkit-1/rules.d/50-thai-smartcard.pcscd.rules`)
-  granting it pcsc-lite's `org.debian.pcsc-lite.access_pcsc` and
-  `org.debian.pcsc-lite.access_card` actions. Upstream pcsc-lite enables polkit
-  by default and denies any process without an active local session, which is
-  exactly what a system service is; the rule is inert where pcscd has no
-  polkit, so one package works everywhere.
-
-### Changed
-
-- When pcscd refuses the connection the agent names
-  `SCARD_W_SECURITY_VIOLATION` and points at the polkit rule instead of
-  failing generically.
-
 ## [3.0.0] - 2026-10-02
 
 This release is breaking. In one sentence each: **environment variables are not
@@ -109,6 +57,49 @@ See [Upgrading from v2](README.md#upgrading-from-v2) in the README for the full
   fingerprint and its stale-save refusal, the env warnings — table-driven, no
   reader needed), and `pkg/server` settings/auth tests covering each route
   rule, the `version` round-trip, and token generation.
+- `thai-smartcard-tray` (`cmd/tray`), an optional tray app for macOS, Windows
+  and Linux: reader and card state, shortcuts to the test and settings pages,
+  the expose-to-network toggle, and the read image / laser ID / NHSO switches.
+  It is a thin client of the agent's `/api` — it never touches the config file
+  and never starts the agent; when it cannot reach the agent it says so with
+  the command to start it and keeps polling. On GNOME without the AppIndicator
+  extension it sends a notification pointing at `/settings` instead of failing
+  silently. The tray needs cgo and is its own binary, so the agent stays
+  cross-compilable.
+- Installers for all three platforms, built by the packaging workflow:
+  a Windows Inno Setup installer (installs and starts the service, registers
+  the tray at login machine-wide under `HKLM\…\Run`, which each user can turn
+  off in Settings > Apps > Startup), a macOS `.pkg` built with `pkgbuild`
+  (installs and starts the service, puts the tray in `/Applications`, and
+  registers it at login via a LaunchAgent; signed and notarized when the
+  Apple Developer secrets are configured), and a Linux tray package that
+  depends on the agent's and ships
+  `/etc/xdg/autostart/thai-smartcard-tray.desktop`.
+- TLS `files` mode (`[tls]` in `config.toml`): the operator supplies
+  `cert_file` and `key_file`, the agent serves HTTPS on `tls.port` and reloads
+  the files when their mtime changes, so a renewed certificate needs no
+  restart. With TLS on, the plain HTTP listener is forced to loopback. A bad
+  certificate stops the listener restart rather than leaving the agent
+  claiming `https` it cannot serve; `/api/info` reports whether TLS is on.
+- `thai-smartcard-agent service install|uninstall|start|stop|restart|status`
+  ([kardianos/service](https://github.com/kardianos/service)), which registers
+  the agent as a system service on Windows, Linux and macOS. A bare invocation
+  runs in the foreground at a terminal and under the service manager otherwise;
+  `run` is the spelled-out foreground form. The installed service points at the
+  config file in the service location.
+- `.deb` and `.rpm` for the agent, built from one nfpm config by the packaging
+  workflow when a release tag is pushed (one job, `ubuntu-latest`; artifacts
+  attach to the hand-cut release). The package installs and starts the service,
+  and carries the systemd unit — which sets `After=pcscd.service`, something
+  `service install` cannot express on Linux — the default config, and the
+  polkit rule below.
+- The service runs as the dedicated `thai-smartcard` system user, not root,
+  with a polkit rule (`/etc/polkit-1/rules.d/50-thai-smartcard.pcscd.rules`)
+  granting it pcsc-lite's `org.debian.pcsc-lite.access_pcsc` and
+  `org.debian.pcsc-lite.access_card` actions. Upstream pcsc-lite enables polkit
+  by default and denies any process without an active local session, which is
+  exactly what a system service is; the rule is inert where pcscd has no
+  polkit, so one package works everywhere.
 
 ### Changed
 
@@ -135,6 +126,9 @@ See [Upgrading from v2](README.md#upgrading-from-v2) in the README for the full
   `[card] reader` watches from the first resolve.
 - The settings API applies options through a callback rather than importing
   the card logic: only `cmd/*` reads the config file.
+- When pcscd refuses the connection the agent names
+  `SCARD_W_SECURITY_VIOLATION` and points at the polkit rule instead of
+  failing generically.
 
 ### Removed
 
