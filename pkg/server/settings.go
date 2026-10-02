@@ -178,10 +178,6 @@ type putSettings struct {
 	Version string `json:"version"`
 	// RegenerateToken replaces the socket token and returns the new one once.
 	RegenerateToken bool `json:"regenerate_token"`
-	// ClearToken removes the socket token, for an agent that went back to
-	// loopback and wants to hold no secret. Beyond loopback there is no such
-	// thing: the strict loader refuses a config that exposes without a token.
-	ClearToken bool `json:"clear_token"`
 }
 
 func (api *settingsAPI) put(w http.ResponseWriter, r *http.Request) {
@@ -206,24 +202,13 @@ func (api *settingsAPI) put(w http.ResponseWriter, r *http.Request) {
 	// Decision 16: the agent generates the token. The first PUT that turns
 	// exposure on while there is no token makes one, writes it in this same
 	// save, and returns it in this response only; the regenerate action goes
-	// through the same path.
+	// through the same path. There is no clear action: a token is enforced
+	// only beyond loopback and exposure without one is impossible, so a token
+	// on a loopback agent is inert and regeneration is the only way it
+	// changes.
 	generated := ""
 	exposing := !config.IsLoopbackListen(next.Server.Listen)
-	// ClearToken is the one way a save removes the token, and only loopback
-	// accepts it: beyond loopback the strict loader refuses a config with no
-	// token, and honoring the clear there would race the generator below into
-	// minting one nobody asked for.
-	if body.ClearToken {
-		if body.RegenerateToken {
-			http.Error(w, "clear_token and regenerate_token cannot be combined", http.StatusBadRequest)
-			return
-		}
-		if exposing {
-			http.Error(w, "cannot clear the token while the agent listens beyond loopback; switch listen back to a local address first", http.StatusBadRequest)
-			return
-		}
-		next.Server.Token = ""
-	} else if body.RegenerateToken || (exposing && next.Server.Token == "") {
+	if body.RegenerateToken || (exposing && next.Server.Token == "") {
 		token, err := config.RandomToken()
 		if err != nil {
 			http.Error(w, "generate token: "+err.Error(), http.StatusInternalServerError)
