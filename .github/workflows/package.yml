@@ -35,10 +35,10 @@ jobs:
         run: go build -o ./bin/thai-smartcard-agent.linux-amd64 ./cmd/agent
 
       - name: Install nfpm
-        run: |
-          curl -sSLo /tmp/nfpm.deb \
-            https://github.com/goreleaser/nfpm/releases/download/v2.41.1/nfpm_amd64.deb
-          sudo dpkg -i /tmp/nfpm.deb
+        # go install pins the same version validated locally; release-asset
+        # URLs have proven brittle (a 404 body written by curl -o is an
+        # invalid .deb that dpkg only rejects afterwards).
+        run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.41.1
 
       - name: Package .deb and .rpm
         # nfpm takes the version from the config file, which expands
@@ -48,9 +48,9 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p ./dist
-          NFPM_VERSION="$VERSION" nfpm package -p deb -f packaging/nfpm.yaml \
+          NFPM_VERSION="$VERSION" "$(go env GOPATH)/bin/nfpm" package -p deb -f packaging/nfpm.yaml \
             -t "./dist/thai-smartcard-agent_${VERSION}_amd64.deb"
-          NFPM_VERSION="$VERSION" nfpm package -p rpm -f packaging/nfpm.yaml \
+          NFPM_VERSION="$VERSION" "$(go env GOPATH)/bin/nfpm" package -p rpm -f packaging/nfpm.yaml \
             -t "./dist/thai-smartcard-agent-${VERSION}.x86_64.rpm"
 
       - name: Attach to the release
