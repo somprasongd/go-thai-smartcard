@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Separate agent readiness from card status in the tray, with a colored status
+  dot and the discovered endpoint/port in its tooltip. Replace the three service
+  commands with Restart and Pause/Resume; Pause stops the shared service.
+
 - Start a confirmed stopped agent service once when the default tray opens;
   skip running/unknown services, explicit URLs and verified foreground agents.
 - Add a confirmed "Stop agent and quit" action alongside tray-only Quit.

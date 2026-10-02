@@ -52,8 +52,11 @@ type tray struct {
 	mTest         *systray.MenuItem
 	mConfig       *systray.MenuItem
 	mAgent        *systray.MenuItem
-	mAgentStart   *systray.MenuItem
-	mAgentStop    *systray.MenuItem
+	mAgentToggle  *systray.MenuItem
+	mAgentStatus  *systray.MenuItem
+	connection    string
+	observedState ctl.State
+	serviceErr    error
 	mAgentRestart *systray.MenuItem
 	mQuit         *systray.MenuItem
 	mStopQuit     *systray.MenuItem
@@ -82,19 +85,21 @@ func onReady() {
 	l := t.lang
 	systray.SetTooltip(l.text("บริการอ่านบัตรประชาชน", "Thai Smartcard Agent"))
 
+	t.mAgentStatus = systray.AddMenuItem(l.text("กำลังตรวจสอบ agent…", "Checking agent…"), "")
+	t.mAgentStatus.Disable()
 	t.mStatus = systray.AddMenuItem(l.text("กำลังเชื่อมต่อ agent…", "Connecting to agent…"), l.text("รอการเชื่อมต่อ agent", "Waiting for the agent"))
 	t.mStatus.Disable()
 	systray.AddSeparator()
 	t.mTest = systray.AddMenuItem(l.text("เปิดหน้าทดสอบ", "Open test page"), l.text("เปิดหน้าทดสอบการอ่านบัตร", "Open the agent's test page"))
 	t.mConfig = systray.AddMenuItem(l.text("ตั้งค่า", "Settings"), l.text("เปิดหน้าตั้งค่า", "Open settings"))
 
-	// Start/stop/restart go through the OS service manager (pkg/ctl); the
+	// Restart and Pause/Resume go through the OS service manager (pkg/ctl); the
 	// tray never spawns an agent of its own (decision 12). The items are
 	// enabled or disabled against the service's real state by pollService.
 	t.mAgent = systray.AddMenuItem(l.text("บริการ agent", "Agent service"), l.text("ควบคุมบริการอ่านบัตร", "Control the agent service"))
-	t.mAgentStart = t.mAgent.AddSubMenuItem(l.text("เริ่ม agent", "Start agent"), l.text("เริ่มบริการอ่านบัตร", "Start the agent service"))
-	t.mAgentStop = t.mAgent.AddSubMenuItem(l.text("หยุด agent…", "Stop agent…"), l.text("หยุดอ่านบัตรจนกว่าจะเริ่ม agent ใหม่", "Stop card reading until the agent is started again"))
-	t.mAgentRestart = t.mAgent.AddSubMenuItem(l.text("เริ่ม agent ใหม่", "Restart agent"), l.text("เริ่มบริการใหม่หลังแก้ไฟล์ตั้งค่า", "Restart the service after editing its config file"))
+	t.mAgentRestart = t.mAgent.AddSubMenuItem(l.text("เริ่ม agent ใหม่", "Restart agent"), l.text("เริ่มบริการใหม่", "Restart the agent service"))
+	t.mAgentToggle = t.mAgent.AddSubMenuItem(l.text("พัก agent…", "Pause agent…"), l.text("หยุดบริการอ่านบัตรจนกว่าจะทำงานต่อ", "Stop the service until Resume is selected"))
+	t.mAgentToggle.Disable()
 
 	systray.AddSeparator()
 	// Quit closes the tray for this session only; the agent keeps running.
@@ -119,10 +124,8 @@ func onReady() {
 			openBrowser(t.baseURL())
 		case <-t.mConfig.ClickedCh:
 			openBrowser(t.baseURL() + "/settings")
-		case <-t.mAgentStart.ClickedCh:
-			go t.serviceAction("start")
-		case <-t.mAgentStop.ClickedCh:
-			go t.serviceAction("stop")
+		case <-t.mAgentToggle.ClickedCh:
+			go t.serviceAction("toggle")
 		case <-t.mAgentRestart.ClickedCh:
 			go t.serviceAction("restart")
 		case <-t.mStopQuit.ClickedCh:
@@ -134,21 +137,33 @@ func onReady() {
 	}
 }
 
-// serviceAction runs one control action after any confirmation Stop needs,
+// serviceAction runs one control action after any confirmation Pause needs,
 // then refreshes the menu. It runs on its own goroutine: a systemctl restart
 // or an osascript prompt waiting for a password can take seconds, and the
 // menu loop must not freeze behind it.
 func (t *tray) serviceAction(action string) {
+	// Ignore duplicate clicks while a prompt or operation is in progress; a
+	// queued toggle could otherwise resume immediately after a pause.
+	if !t.serviceOps.TryLock() {
+		return
+	}
+	defer t.serviceOps.Unlock()
+	t.manualControl = true
+	m := t.serviceManager()
+	if action == "toggle" {
+		var err error
+		action, err = toggleAction(m)
+		if err != nil {
+			t.refreshServiceState()
+			return
+		}
+	}
 	if (action == "stop" || action == "stop-quit") && !confirm(t.lang,
 		t.lang.text("บริการอ่านบัตรประชาชน", "Thai Smartcard"),
 		t.lang.text("หยุด agent แล้วทุกโปรแกรมจะอ่านบัตรไม่ได้จนกว่าจะเริ่มใหม่ ต้องการหยุดหรือไม่?", "Stop the agent? All clients will lose card reading until it is started again."),
 	) {
 		return
 	}
-	t.serviceOps.Lock()
-	defer t.serviceOps.Unlock()
-	t.manualControl = true
-	m := t.serviceManager()
 	err := controlService(m, action)
 	if err != nil {
 		log.Printf("agent %s: %v", action, err)
@@ -240,21 +255,17 @@ func (t *tray) refreshServiceState() {
 		stateFn = t.serviceManager().State
 	}
 	state, err := stateFn()
+	t.observedState, t.serviceErr = state, err
+	t.renderAgentStatus()
+	t.mAgentToggle.Disable()
+	t.mAgentRestart.Disable()
+	if t.mStopQuit != nil {
+		t.mStopQuit.Disable()
+	}
 	if err != nil {
-		// A missing service or denied status query leaves control unavailable.
-		// macOS manual installs return unknown without error so explicit
-		// password-backed actions remain enabled without polling prompts.
-		t.mAgentStart.Disable()
-		t.mAgentStop.Disable()
-		t.mAgentRestart.Disable()
-		if t.mStopQuit != nil {
-			t.mStopQuit.Disable()
-		}
 		t.mAgent.SetTooltip(t.lang.text("ควบคุม service ไม่ได้ — ", "Service control unavailable — ") + err.Error())
 		return
 	}
-	t.mAgentStart.Enable()
-	t.mAgentStop.Enable()
 	t.mAgentRestart.Enable()
 	if t.mStopQuit != nil {
 		t.mStopQuit.Enable()
@@ -262,10 +273,14 @@ func (t *tray) refreshServiceState() {
 	t.mAgent.SetTooltip(t.lang.text("ไม่ทราบสถานะ service", "Service state unknown"))
 	switch state {
 	case ctl.StateRunning:
-		t.mAgentStart.Disable()
+		t.mAgentToggle.SetTitle(t.lang.text("พัก agent…", "Pause agent…"))
+		t.mAgentToggle.SetTooltip(t.lang.text("หยุดบริการอ่านบัตรจนกว่าจะทำงานต่อ", "Stop card reading for all clients until Resume"))
+		t.mAgentToggle.Enable()
 		t.mAgent.SetTooltip(t.lang.text("agent กำลังทำงาน", "Agent running"))
 	case ctl.StateStopped:
-		t.mAgentStop.Disable()
+		t.mAgentToggle.SetTitle(t.lang.text("ให้ agent ทำงานต่อ", "Resume agent"))
+		t.mAgentToggle.SetTooltip(t.lang.text("เริ่มบริการอ่านบัตร", "Start the agent service"))
+		t.mAgentToggle.Enable()
 		t.mAgentRestart.Disable()
 		t.mAgent.SetTooltip(t.lang.text("agent หยุดอยู่", "Agent stopped"))
 	}
@@ -276,11 +291,18 @@ func (t *tray) setEndpoint(url string) {
 	t.mu.Lock()
 	t.url = url
 	t.mu.Unlock()
+	t.serviceUI.Lock()
+	t.renderAgentStatus()
+	t.serviceUI.Unlock()
 	if runtime.GOOS == "linux" {
 		t.notifyOnce.Do(func() { go checkStatusNotifier(url, t.lang) })
 	}
 }
 func (t *tray) connectionState(state string) {
+	t.serviceUI.Lock()
+	defer t.serviceUI.Unlock()
+	t.connection = state
+	t.renderAgentStatus()
 	switch state {
 	case "connected":
 		t.setUp()
@@ -296,6 +318,8 @@ func (t *tray) connectionState(state string) {
 }
 
 func (t *tray) applyStatus(status map[string]any) {
+	t.serviceUI.Lock()
+	defer t.serviceUI.Unlock()
 	state, _ := status["state"].(string)
 	selected, _ := status["selected"].(string)
 	readers, _ := status["readers"].([]any)
@@ -331,7 +355,7 @@ func (t *tray) setUp() {
 }
 
 // setDown says the agent is not reachable, with the terminal way to start it
-// for this platform as a fallback next to the Agent menu's Start item.
+// for this platform as a fallback when service control is unavailable.
 func (t *tray) setDown() {
 	hint := startHint(t.lang)
 	line := t.lang.text("ติดต่อ agent ไม่ได้ — ", "Cannot reach agent — ") + hint

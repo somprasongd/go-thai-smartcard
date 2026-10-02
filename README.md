@@ -731,9 +731,9 @@ An explicit URL never follows discovery. The metadata contains only a local
 URL, process instance ID, schema version and generation; it contains no token,
 configuration or card data. The tray verifies the instance via `/api/info`.
 
-### Start / stop / restart from the tray
+### Restart / pause / resume from the tray
 
-The **Agent** submenu starts, stops and restarts the agent's system service on
+The **Agent service** submenu controls the agent's system service on
 every OS, without a terminal and without elevating the tray itself. Each OS
 authorises it through its own mechanism — the tray never spawns an agent
 process of its own; the service manager owns the single installed run:
@@ -744,8 +744,17 @@ process of its own; the service manager owns the single installed run:
 | Windows | the installer grants **Interactive Users** start/stop on this one service (`sc sdset`); the tray calls the Service Control Manager directly |
 | macOS | the `.pkg` installs a root helper (`com.thaismartcard.control`) that listens on a **local unix socket restricted to group `admin`** and forwards to the service; a manual install without the helper falls back to an administrator-password dialog per action |
 
-Stopping the agent stops card reading until it is started again, so **Stop
-asks for confirmation**; Start and Restart do not (Restart is what a
+The first tray row shows agent readiness independently of the reader/card row:
+green means the card WebSocket is connected; amber means the service is running
+but not connected, or authentication/WebSocket settings prevent receiving data;
+red means the service is stopped; gray means it is unavailable and the service
+state cannot be determined. Text accompanies every color. Hover over the status
+row to see the discovered URL and port. A connected foreground agent takes
+precedence over the installed service's status.
+
+The Agent service submenu has **Restart** and **Pause / Resume**. Pause stops
+the OS service and card reading for all clients, so it asks for confirmation;
+Resume starts the service again. Restart does not ask for confirmation (it is what a
 hand-edited `config.toml` needs — saves from
 [settings](#settings) apply live). Where the mechanism is missing — no
 polkit agent on a headless Linux, a manual Windows install without the
