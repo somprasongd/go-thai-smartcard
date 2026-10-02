@@ -273,7 +273,7 @@ func TestStartDaemonCtxWithAppliesAnOptionChangeMidLoop(t *testing.T) {
 	if second.Card == nil {
 		t.Fatalf("second read has no card section although ShowLaserData was turned on: %+v", second)
 	}
-	if second.Card.LaserId != "L600150000000000000001820015510000" {
+	if second.Card.LaserId != "AB1234567890" {
 		t.Errorf("LaserId = %q", second.Card.LaserId)
 	}
 
