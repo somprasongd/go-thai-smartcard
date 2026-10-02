@@ -30,6 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is no state to clear out of, and regenerating stays the one way a token
   changes.
 
+### Fixed
+
+- The test page kept the "cannot reach the agent" panel after the WebSocket
+  connected. Nothing repainted the empty state when a transport came up — it
+  was written before anything connected, and only a card event or a total
+  failure would redraw it — so a healthy agent sat under a green WebSocket
+  pill with a panel claiming the live channel was down, until a card was
+  inserted. The first successful connection now repaints it into the waiting
+  state.
+
 ## [4.1.0] - 2026-10-02
 
 ### Added
