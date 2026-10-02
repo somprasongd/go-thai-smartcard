@@ -95,8 +95,12 @@ the agent reads and who may connect to it — the one place that changes them.
 What a save does:
 
 - `[card]` — applies on the next card insert, no restart.
-- `[server]` and `[tls]` — the listener restarts on the new values;
-  connected pages reconnect.
+- `[server]` and `[tls]` — changed ports are reserved before applying the save;
+  unchanged listeners are reused. A failed bind or endpoint publication keeps
+  the previous configuration and running listener. The agent process and card
+  read loop do not restart. Settings moves to the new URL after success; when
+  a one-time token is shown, copy it before using the link to the new page.
+  Reopen other browser tabs on an old port from the tray.
 - The file is rewritten from a template. **Comments added by hand are lost on
   the next save.** A hand edit takes effect after a restart.
 
@@ -455,19 +459,38 @@ newer CCID installer at
 
 ### If a read fails with a sharing violation
 
-`scard: Sharing violation` means another handle holds the card exclusively.
-The agent retries the connect for a few seconds before giving up, which rides
-out the common case: a fast re-insert right after the previous read, while
-PC/SC is still releasing the old session.
+`scard: Sharing violation` means another handle has the card. The agent
+connects shared and locks the card with a transaction for the length of a
+read, so it coexists with the handle macOS parks on every inserted PKI card,
+and when a connect still loses the race it keeps retrying whole reads for as
+long as the card stays inserted: one error naming the holder, then the data
+the moment the way in opens.
 
-If **every** insert fails, something else on the machine keeps seizing the
-card. On macOS that is CryptoTokenKit's smart card service, which connects to
-inserted PKI cards on its own; tell macOS to leave this card alone and replug
-the reader:
+When the error says the card is **locked exclusively**, retrying cannot win —
+PC/SC has no way to take a card back from another handle. Remove the card and
+insert it again. That is also the way out of a lock left behind by an app
+force-quit while holding the card, which survives the app's death inside the
+PC/SC broker. As a last resort the broker itself can be restarted; launchd
+starts it again on demand:
 
 ```sh
-sudo defaults write /Library/Preferences/com.apple.security.smartcard DisabledTokens -array com.apple.CryptoTokenKit.smartcard
+sudo killall ctkpcscd
 ```
+
+If the card keeps getting seized on insert, macOS is claiming it as an
+identity token. Tell CryptoTokenKit to leave the card alone, then replug the
+reader (a reboot is the certain way to apply it):
+
+```sh
+sudo defaults write /Library/Preferences/com.apple.security.smartcard DisabledTokens -array com.apple.CryptoTokenKit.pivtoken
+```
+
+`pivtoken` is the built-in driver macOS offers for third-party PKI cards and
+the one Apple documents disabling. With the card seated,
+`system_profiler SPSmartCardsDataType` shows which driver claimed it under
+"SmartCard Drivers" and whether it is currently held as a token under
+"Available SmartCards". Undo with
+`sudo defaults delete /Library/Preferences/com.apple.security.smartcard DisabledTokens`.
 
 On Linux, check for other PC/SC clients (a second agent, a browser doing
 certificate lookups) with `pcscd --foreground --debug` in the background.
@@ -605,8 +628,41 @@ read image / laser ID / NHSO switches are not in the menu — they are all one
 decision each with the token's one-time showing, which only exists on the
 [settings](#settings) page. It is a **thin client**
 of the agent's `/ws` — it never touches the config file and never starts the
-agent. When it cannot reach the agent it shows "agent is not running" with the
-command to start it for your platform, and keeps polling.
+agent. It discovers the running agent from public endpoint metadata and follows
+port changes every two seconds, even while its old socket is connected. The
+test and settings menu links follow the same URL. Unreachable agents,
+authentication refusals, and a disabled WebSocket transport have distinct messages.
+
+URL precedence is an explicit `--url`, a verified per-user endpoint, a verified
+service endpoint, then `http://127.0.0.1:9898` for older agents. For example:
+
+```sh
+thai-smartcard-tray --url http://127.0.0.1:9999
+```
+
+An explicit URL never follows discovery. The metadata contains only a local
+URL, process instance ID, schema version and generation; it contains no token,
+configuration or card data. The tray verifies the instance via `/api/info`.
+
+| Agent mode | Endpoint file |
+| :-- | :-- |
+| Linux service | `/var/lib/thai-smartcard/endpoint.json` |
+| macOS service | `/Library/Application Support/ThaiSmartcardEndpoint/endpoint.json` |
+| Windows service | `%ProgramData%\ThaiSmartcardEndpoint\endpoint.json` |
+| Foreground / dev | `<os.UserCacheDir()>/thai-smartcard/endpoint.json` |
+
+One publisher owns each slot through a process lock. Multiple foreground agents
+under one user need explicit tray URLs for the additional instances. If endpoint
+publication fails at startup, the agent continues with a warning and remains
+usable via an explicit URL. A port change through Settings is refused until the
+new endpoint can be published. Discovery is local only and does not bypass socket
+authentication: a network-exposed agent may still refuse the tray's unauthenticated
+socket. A listener bound only to a specific LAN IP has no discoverable loopback URL.
+
+Other browser tabs on the previous port cannot discover the new URL from the
+filesystem; reopen the test page from the tray. See the
+[endpoint discovery plan](docs/plan/tray-endpoint-discovery.md) for the save and
+rollback contract.
 
 The tray installer requires the agent's. The installer registers the tray to
 start at login; turn it off in the operating system's own list of login items —

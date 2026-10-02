@@ -7,8 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Local endpoint discovery for the tray, for both foreground agents and system
+  services. The tray verifies the process identity and follows port changes
+  without editing login/startup arguments; `--url` remains an explicit override.
+- `instance_id` in `/api/info` and `endpoint_url` in successful transactional
+  `/api/settings` responses. Endpoint files contain no token or card data.
+
 ### Changed
 
+- Settings saves now reserve changed listeners before applying, reuse unchanged
+  HTTP/TLS sockets, and report apply failures instead of returning success first.
+  Config and endpoint files use atomic replacement. Failed publication restores
+  the previous runtime and original config bytes, with hand-edit conflict protection.
+- Settings follows a changed port after success, retaining one-time tokens on
+  screen until the user chooses the new Settings link. Retired sockets are closed
+  after flushing the save response; authentication failures have a distinct tray status.
+- The tray icon is now a monochrome card inserted into a reader, replacing
+  the red card. macOS adapts the icon to the menu bar appearance; Windows
+  uses an ICO with multiple sizes and Linux uses the transparent white PNG.
 - The kiosk preset clears the screen the moment the card leaves the reader,
   instead of holding it for five seconds. The wait read as a lag because
   nothing on screen announced it, and on a screen anyone can walk up to, the
@@ -32,6 +50,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A card that macOS CryptoTokenKit was holding no longer blocks the read
+  until the card is pulled and re-seated. The session was opened exclusive,
+  which PC/SC refuses the moment any other handle exists — and CryptoTokenKit
+  parks a shared handle on every inserted PKI card for as long as the card
+  stays seated, so the connect sat in sharing violations through every retry
+  and only ever got through by beating the probe to a fresh insert. The
+  session is now opened shared and locked with a transaction, which
+  coexists with the parked handle and still shuts every other process out of
+  the card for the whole read. The connect also bursts its retries a few
+  hundred milliseconds wide, and the daemon keeps retrying whole reads for
+  as long as the card stays inserted — one notice that another application
+  holds the card, then the read itself the moment the way in opens. When the
+  reader reports the card locked exclusively — a hold no retry can break —
+  the error now says so and names the way out: remove the card and insert it
+  again. The agent also closes its held session on shutdown, which used to
+  leak into the PC/SC broker on macOS and keep the card locked for every
+  later insert until the reader was emptied, and releasing a session the
+  reader has already dropped on its own — an invalid handle or a removed
+  card — no longer logs a disconnect error.
 - The test page kept the "cannot reach the agent" panel after the WebSocket
   connected. Nothing repainted the empty state when a transport came up — it
   was written before anything connected, and only a card event or a total

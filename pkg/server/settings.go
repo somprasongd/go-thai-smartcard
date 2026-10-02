@@ -126,7 +126,9 @@ type settingsAPI struct {
 	// onChange is called with the saved config after the response is written.
 	// The agent applies the card options and restarts the listener; it is
 	// called in its own goroutine and may be nil.
-	onChange func(config.Config)
+	onChange      func(config.Config)
+	applySettings func(config.Config, string) (SettingsResult, error)
+	instanceID    string
 }
 
 // servedConfig is the config as a client sees it: everything but the token,
@@ -141,9 +143,10 @@ type servedConfig struct {
 // what is enabled before it connects.
 func (api *settingsAPI) serveInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"version":    api.version,
-		"transports": api.transports,
-		"tls":        api.tlsEnabled,
+		"version":     api.version,
+		"transports":  api.transports,
+		"tls":         api.tlsEnabled,
+		"instance_id": api.instanceID,
 	})
 }
 
@@ -218,7 +221,19 @@ func (api *settingsAPI) put(w http.ResponseWriter, r *http.Request) {
 		next.Server.Token = token
 	}
 
-	if err := config.Save(api.path, next, body.Version); err != nil {
+	result := SettingsResult{}
+	var saveErr error
+	if api.applySettings != nil {
+		result, saveErr = api.applySettings(next, body.Version)
+	} else {
+		saveErr = config.Save(api.path, next, body.Version)
+	}
+	if err := saveErr; err != nil {
+		var applyErr *SettingsError
+		if errors.As(err, &applyErr) {
+			http.Error(w, err.Error(), applyErr.Status)
+			return
+		}
 		if errors.Is(err, config.ErrStale) {
 			http.Error(w, "the file changed on disk, reload before saving", http.StatusConflict)
 			return
@@ -228,8 +243,20 @@ func (api *settingsAPI) put(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if result.AfterResponse != nil {
+		defer func() {
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			result.AfterResponse()
+		}()
+	}
 
-	version, err := config.Fingerprint(api.path)
+	version := result.Version
+	err = nil
+	if version == "" {
+		version, err = config.Fingerprint(api.path)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -244,9 +271,12 @@ func (api *settingsAPI) put(w http.ResponseWriter, r *http.Request) {
 		// Shown once, by the page or the tray; it is never sent again.
 		resp["token"] = generated
 	}
+	if result.EndpointURL != "" {
+		resp["endpoint_url"] = result.EndpointURL
+	}
 	writeJSON(w, http.StatusOK, resp)
 
-	if api.onChange != nil {
+	if api.applySettings == nil && api.onChange != nil {
 		go api.onChange(next)
 	}
 }

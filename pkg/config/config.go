@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	toml "github.com/BurntSushi/toml"
+	"github.com/somprasongd/go-thai-smartcard/internal/atomicfile"
 )
 
 // Transport names accepted in [server] transports.
@@ -119,7 +120,7 @@ func Default() Config {
 // the offending key can be found in it, the line, so an administrator editing
 // over SSH can go straight to it.
 func Load(path string) (Config, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := atomicfile.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return Config{}, ErrNotFound
@@ -286,7 +287,7 @@ func (c Config) OriginAllowed(origin string) bool {
 // because mtime granularity depends on the filesystem and nanoseconds since
 // the epoch do not survive JavaScript's float64 numbers.
 func Fingerprint(path string) (string, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := atomicfile.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return "", nil
@@ -302,17 +303,30 @@ func Fingerprint(path string) (string, error) {
 // on disk since the caller was served it; the caller answers 409 and reloads
 // rather than silently undoing a hand edit (decision 14).
 func Save(path string, cfg Config, expectVersion string) error {
+	_, err := SaveVersion(path, cfg, expectVersion)
+	return err
+}
+
+// SaveVersion returns the fingerprint of the bytes this save wrote, rather
+// than re-reading a file that an administrator may already have edited.
+func SaveVersion(path string, cfg Config, expectVersion string) (string, error) {
 	if pr := validate(cfg); len(pr) > 0 {
-		return fmt.Errorf("config is not valid: %s: %s", strings.Join(pr[0].key, "."), pr[0].msg)
+		return "", fmt.Errorf("config is not valid: %s: %s", strings.Join(pr[0].key, "."), pr[0].msg)
 	}
 	current, err := Fingerprint(path)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if current != expectVersion {
-		return ErrStale
+		return "", ErrStale
 	}
-	return Write(path, cfg)
+	if err := Write(path, cfg); err != nil {
+		return "", err
+	}
+	var buf bytes.Buffer
+	render(&buf, cfg)
+	sum := sha256.Sum256(buf.Bytes())
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // Write renders cfg as a commented file and replaces path with it.
@@ -331,11 +345,32 @@ func Write(path string, cfg Config) error {
 			return err
 		}
 	}
-	if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
+	return atomicfile.Write(path, buf.Bytes(), 0o600)
+}
+
+// Validate lets a settings transaction reject a candidate before reserving
+// listeners or replacing any files.
+func Validate(cfg Config) error {
+	if pr := validate(cfg); len(pr) > 0 {
+		return fmt.Errorf("config is not valid: %s: %s", strings.Join(pr[0].key, "."), pr[0].msg)
+	}
+	return nil
+}
+
+// Restore preserves the original bytes, including comments, but refuses to
+// overwrite a hand edit made after the transaction's own write.
+func Restore(path string, original []byte, existed bool, expected string) error {
+	current, err := Fingerprint(path)
+	if err != nil {
 		return err
 	}
-	// WriteFile leaves the mode of an existing file alone.
-	return os.Chmod(path, 0o600)
+	if current != expected {
+		return ErrStale
+	}
+	if !existed {
+		return os.Remove(path)
+	}
+	return atomicfile.Write(path, original, 0o600)
 }
 
 const banner = `# thai-smartcard-agent configuration.

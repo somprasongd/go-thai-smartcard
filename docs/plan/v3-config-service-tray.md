@@ -46,6 +46,14 @@ management API, auto-update.
 | 18 | Safari is documented, not worked around: the README carries a browser support matrix, and a Safari kiosk serves its UI from the agent's own page. `wss://` with a trusted certificate stays the only way for an external `https` page on Safari to reach the agent | WebKit blocks `ws://127.0.0.1` from `https` pages on purpose — bug 171934 closed its localhost duplicate as *"should be prevented even more strictly"* — so it is policy, not a bug to wait out. Firefox has allowed it since v55 and Chrome treats loopback as trustworthy. The agent-served page is same-origin `http`, which works in every browser including Safari, with no code |
 | 19 | The README documents two Chrome kiosk paths for Local Network Access: serve the UI from the agent (local to local, exempt), or have IT set the `LocalNetworkAccessAllowedForUrls` policy for an external `https` app — with the warning that dismissing Chrome's prompt three times blocks the site permanently. The plan records Chrome 142 (PNA replaced by LNA) and Chrome 147 (WebSocket and WebTransport included, April 2026) | Chrome 147 has enforced LNA on WebSockets since April 2026; the origin-trial escape expired in September 2026, and there is no machine-wide allow-all — only the per-site policy. The version numbers are confirmed against Chrome's own pages, replacing the secondary sources this plan first cited |
 | 20 | Every package is built by GitHub Actions on GitHub-hosted runners — one workflow, one job per OS, triggered by the release tags the manual workflow already pushes, its artifacts attached to the hand-cut GitHub release | The repository is public, so hosted minutes are free and nothing needs a self-hosted runner. Triggering on the tag keeps the `AGENTS.md` release workflow intact: CI adds packages to a release, it never cuts one. See [Packaging CI](#packaging-ci) |
+| 21 | The agent publishes local endpoint metadata for the tray; explicit `--url` overrides verified user/service discovery. Settings applies synchronously and retires old connections after flushing the response | Accepted 2026-10-02: changing the port must not strand the tray or report success when binding failed. The tray still never reads config or receives tokens. See [the discovery/save contract](tray-endpoint-discovery.md) |
+
+The [endpoint discovery plan](tray-endpoint-discovery.md) supersedes this
+document's original asynchronous listener-restart flow. The current save reserves
+changed sockets, reuses unchanged sockets, applies/publishes transactionally,
+and returns `endpoint_url`; a failed apply keeps the old running configuration.
+Foreground discovery is per user, managed-service discovery is shared, and a
+startup publication failure warns without preventing the agent from serving.
 
 ## Findings in the current code
 

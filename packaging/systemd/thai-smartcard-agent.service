@@ -21,7 +21,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/etc/thai-smartcard
+ReadWritePaths=/etc/thai-smartcard /var/lib/thai-smartcard
 
 [Install]
 WantedBy=multi-user.target

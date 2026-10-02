@@ -68,19 +68,60 @@ func (t *pcscTransport) ListReaders() ([]string, error) {
 	return readers, nil
 }
 
-// Connect opens an exclusive session with the card in reader.
+// Connect opens a session with the card in reader and locks it against every
+// other handle for the session's lifetime.
+//
+// The lock does not come from SCARD_SHARE_EXCLUSIVE. An exclusive connect is
+// refused the moment any other handle exists, and on macOS CryptoTokenKit
+// parks a shared handle on every inserted PKI card for as long as the card
+// stays seated — an exclusive connect sits in sharing violations forever, no
+// matter how often it is retried, and the only reads that ever got through
+// were the ones that beat the probe to a fresh insert. A shared connect
+// coexists with that parked handle, and the transaction opened right after
+// keeps the other side off the wire anyway: while the transaction is open,
+// another handle's transmits fail, which is the guarantee the exclusive
+// session was chosen for.
 func (t *pcscTransport) Connect(reader string) (transport.Card, error) {
-	card, err := t.ctx.Connect(reader, scard.ShareExclusive, scard.ProtocolAny)
+	card, err := t.ctx.Connect(reader, scard.ShareShared, scard.ProtocolAny)
 	if err != nil {
-		// A sharing violation means another handle holds the card; callers
+		// A sharing violation means another handle holds the card in a way
+		// even a shared connect cannot cross (an exclusive holder); callers
 		// can recognise it as transient and retry the connect (see
 		// transport.ErrCardBusy).
 		if errors.Is(err, scard.ErrSharingViolation) {
-			return nil, fmt.Errorf("connect to %q: %w: %v", reader, transport.ErrCardBusy, err)
+			return nil, fmt.Errorf("connect to %q: %w: %v%s", reader, transport.ErrCardBusy, err, t.heldExclusiveNote(reader))
 		}
 		return nil, fmt.Errorf("connect to %q: %w", reader, explain(err))
 	}
+	if err := card.BeginTransaction(); err != nil {
+		// The handle is ours but the wire is not, which is the same shape of
+		// transient as the connect refusal above — someone else is mid-
+		// transaction, and they let go eventually.
+		_ = card.Disconnect(scard.LeaveCard)
+		if errors.Is(err, scard.ErrSharingViolation) {
+			return nil, fmt.Errorf("begin transaction on %q: %w: %v%s", reader, transport.ErrCardBusy, err, t.heldExclusiveNote(reader))
+		}
+		return nil, fmt.Errorf("begin transaction on %q: %w", reader, explain(err))
+	}
 	return &pcscCard{card: card}, nil
+}
+
+// heldExclusiveNote describes a card the reader reports locked exclusively —
+// the one sharing violation no amount of retrying can beat, because PC/SC
+// offers no way to take a card back from another handle. Empty when the lock
+// is the transient kind a later attempt can win.
+//
+// The check is a stateless UNAWARE status query: it answers immediately and
+// touches none of the state the removal watches track.
+func (t *pcscTransport) heldExclusiveNote(reader string) string {
+	states := []scard.ReaderState{{Reader: reader, CurrentState: scard.StateUnaware}}
+	if err := t.ctx.GetStatusChange(states, statusChangeTimeout); err != nil {
+		return ""
+	}
+	if states[0].EventState&scard.StateExclusive == 0 {
+		return ""
+	}
+	return " (the reader reports the card locked exclusively by another process, and no retry can take it back — remove the card and insert it again)"
 }
 
 // WaitCardPresent blocks until a card is present.
@@ -187,7 +228,18 @@ func (c *pcscCard) Transmit(cmd []byte) ([]byte, error) {
 }
 
 func (c *pcscCard) Disconnect() error {
+	// End the transaction Connect opened, because the disconnect is refused
+	// while one is active. "No transaction active" is the state this call is
+	// moving out of anyway, so its error is not worth reporting.
+	_ = c.card.EndTransaction(scard.LeaveCard)
 	if err := c.card.Disconnect(scard.UnpowerCard); err != nil {
+		// An invalid handle or a removed card means the broker has already
+		// ended this session on its own — the card was pulled, or the reader
+		// let the handle die while the card sat idle. Releasing is the goal,
+		// and it is already met, so neither is an error worth reporting.
+		if errors.Is(err, scard.ErrInvalidHandle) || errors.Is(err, scard.ErrRemovedCard) {
+			return nil
+		}
 		return fmt.Errorf("disconnect: %w", err)
 	}
 	return nil

@@ -138,7 +138,7 @@ func (p *agentProgram) Start(_ service.Service) error {
 	p.done = make(chan struct{})
 	go func() {
 		defer close(p.done)
-		runAgent(ctx, p.configPath)
+		runAgentMode(ctx, p.configPath, true)
 	}()
 	return nil
 }

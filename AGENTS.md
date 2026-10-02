@@ -8,7 +8,7 @@ image) to clients over socket.io and WebSockets.
 - Install deps: `go mod download`
 - Build:        `go build ./...`
 - Test:         `go test ./...`
-- Race check:   `go test -race ./pkg/server/` (see Testing instructions)
+- Race check:   `go test -race ./pkg/server/ ./cmd/tray/` (see Testing instructions)
 - Lint:         `go vet ./...` and `gofmt -l .` (no linter config in the repo)
 - Run agent:    `go run ./cmd/agent` — add `--config <path>` to choose a config
   file; without it the service config directory is used. `make dev` runs with a
@@ -28,6 +28,8 @@ commands; `build-wasm` targets `cmd/agent`.
 - `cmd/record` — captures a real card session to a trace file, for tests and for checking readers
 - `cmd/example` — minimal library usage, doubles as the README's example
 - `pkg/config` — the config.toml loader: defaults, strict validation, the templated writer, the fingerprint the settings API round-trips
+- `internal/discovery` — public local endpoint metadata, instance verification and publisher locks; no config or token data
+- `internal/atomicfile` — staged file replacement, including Windows share/delete and private-file ACL handling
 - `pkg/smc` — card logic only: applet selection, command/GET RESPONSE, TIS-620, parsing
 - `pkg/transport` — the `Transport`/`Card`/`Status` interface `pkg/smc` talks to
 - `pkg/transport/pcsc` — the PC/SC backend (`//go:build !js`)
@@ -52,6 +54,15 @@ Only `cmd/*` reads the config file. `pkg/config` is the loader; everything
 below it receives plain values — `pkg/smc` keeps receiving `Options` and a
 reader name, `pkg/server` a listen address and a transport list.
 
+Tray discovery reads endpoint metadata, never agent config. The agent publishes
+after a successful listener start/apply. Foreground runs use the user's cache;
+managed services use the shared OS path. Explicit tray `--url` overrides discovery.
+Settings saves are serialized by one process coordinator: reserve listeners,
+persist/apply/publish, flush the response, then retire old connections. A failed
+apply restores original config bytes unless a later hand edit prevents rollback;
+that conflict must be reported, never overwritten. Keep legacy `OnChange` callers
+working when the transactional callback is absent.
+
 The backend is behind build constraints (`transport_default.go` `!js`,
 `transport_js.go` `js`, `pcsc.go` `!js`), so `pkg/smc` still builds for wasm:
 
@@ -73,9 +84,12 @@ file, or the whole module stops building there.
 ## Testing instructions
 
 - Unit tests: `go test ./...` (standard library `testing`, no assertion library)
-- Run concurrency tests under the race detector: `go test -race ./pkg/server/`.
+- Run concurrency tests under the race detector: `go test -race ./pkg/server/ ./cmd/tray/`.
   `TestWebSocketBroadcastWhileClientsChurn` is written for it, and a plain
   `go test` is not a reliable check on its own
+- Settings script navigation tests execute Node.js when available and skip with
+  an explicit reason otherwise; run `node pkg/server/web/settings_test.cjs` to
+  verify port navigation and one-time token preservation directly.
 - Config tests (`pkg/config`) are table-driven and need no reader; the settings
   and auth tests in `pkg/server` use `httptest`, no reader either
 - **No reader is required.** `pkg/transport.FakeCard` replays a recorded trace,
