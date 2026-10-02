@@ -1845,6 +1845,8 @@
           counter: { mask: false, maskphoto: false, photo: true, json: false, autoclear: 0, nameparts: false, parts: false }
         };
 
+        // Respect explicit preferences on reload; derive a preset on first visit.
+        var hadStoredPrefs = false;
         var store = {
           ui: loadPrefs(),
           data: null,
@@ -1857,11 +1859,6 @@
           lastError: "",
           conn: { sio: false, ws: false, ever: false }
         };
-
-        // True when the previous visit left explicit choices behind. Those are
-        // respected on reload; a first visit has to derive its toggles from the
-        // active privacy preset instead.
-        var hadStoredPrefs = false;
 
         function loadPrefs() {
           var base = {};
@@ -1878,7 +1875,7 @@
               // card display. Split it so neither choice is lost: th/en prefs
               // agree with the old behaviour, and "both" becomes UI Thai with
               // the card showing both names.
-              if (saved.lang) {
+              if (saved.lang && saved.dataLang === undefined) {
                 base.dataLang = saved.lang;
                 if (saved.lang === "both") base.lang = "th";
               }
@@ -2018,7 +2015,6 @@
           for (var i = 0; i < 12; i++) sum += Number(cid.charAt(i)) * (13 - i);
           var check = 11 - (sum % 11);
           if (check >= 10) check -= 10;
-          if (check === 1) check = 0;
           return check === Number(cid.charAt(12));
         }
 
@@ -2652,6 +2648,8 @@
         }
 
         function clearData() {
+          $("lightbox").hidden = true;
+          $("lightbox-img").removeAttribute("src");
           store.data = null;
           $("pill-time").hidden = true;
           render();

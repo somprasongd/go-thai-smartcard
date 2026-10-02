@@ -90,6 +90,7 @@ func (s *socketIO) closeConnections() {
 	for _, c := range clients {
 		_ = c.Close()
 	}
+	_ = s.Server.Close()
 }
 
 func (s *socketIO) Broadcast(msg model.Message) {

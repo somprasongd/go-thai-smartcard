@@ -10,14 +10,20 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/somprasongd/go-thai-smartcard/pkg/smc"
 	"github.com/somprasongd/go-thai-smartcard/pkg/transport"
+	"github.com/somprasongd/go-thai-smartcard/pkg/util"
 )
 
 func main() {
@@ -78,6 +84,12 @@ func run(out, name, note, readerName string, faceImage, nhso, laser bool) error 
 	}
 	defer t.Close()
 
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	return capture(ctx, t, out, name, note, readerName, faceImage, nhso, laser)
+}
+
+func capture(ctx context.Context, t transport.Transport, out, name, note, readerName string, faceImage, nhso, laser bool) error {
 	readers, err := t.ListReaders()
 	if err != nil {
 		return err
@@ -93,26 +105,45 @@ func run(out, name, note, readerName string, faceImage, nhso, laser bool) error 
 		return fmt.Errorf("reader %q not attached; available: %s", reader, strings.Join(readers, ", "))
 	}
 	log.Printf("Using reader: %s", reader)
-	log.Println("Insert the card now, then press Ctrl+C once the read is done.")
-
+	log.Println("Waiting for an inserted card; Ctrl+C cancels.")
+	for {
+		_, err := t.WaitCardPresent(ctx, []string{reader})
+		if errors.Is(err, transport.ErrCardTimeout) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		break
+	}
 	card, err := t.Connect(reader)
 	if err != nil {
 		return err
 	}
 
+	defer func() {
+		if err := card.Disconnect(); err != nil {
+			log.Printf("disconnect: %v", err)
+		}
+	}()
 	rec := transport.Record(card, name)
+	status, err := rec.Status()
+	if err != nil {
+		return err
+	}
+	response := util.GetResponseCommand(status.Atr)
 	rec.Trace().Note = note
 
 	// Read through the normal card logic so the captured trace matches the
 	// sequence the library actually issues.
-	smcReader := smc.NewPersonalReader(rec, nil)
+	smcReader := smc.NewPersonalReader(rec, response)
 	if err := smcReader.Select(); err != nil {
 		return fmt.Errorf("select personal applet: %w", err)
 	}
 	smcReader.Read(faceImage)
 
 	if laser {
-		cardReader := smc.NewCardReader(rec, nil)
+		cardReader := smc.NewCardReader(rec, response)
 		if err := cardReader.Select(); err != nil {
 			return fmt.Errorf("select card applet: %w", err)
 		}
@@ -120,15 +151,11 @@ func run(out, name, note, readerName string, faceImage, nhso, laser bool) error 
 	}
 
 	if nhso {
-		nhsoReader := smc.NewNhsoReader(rec, nil)
+		nhsoReader := smc.NewNhsoReader(rec, response)
 		if err := nhsoReader.Select(); err != nil {
 			return fmt.Errorf("select nhso applet: %w", err)
 		}
 		nhsoReader.Read()
-	}
-
-	if err := card.Disconnect(); err != nil {
-		log.Printf("disconnect: %v", err)
 	}
 
 	trace := rec.Trace()

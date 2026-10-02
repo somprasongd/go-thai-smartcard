@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -27,7 +29,7 @@ type settingsCoordinator struct {
 	openPublisher     func() (*discovery.Publisher, error)
 	serverConfig      func(config.Config) server.ServerConfig
 	store             *smc.OptionsStore
-	control           chan smc.Control
+	selection         *smc.ReaderStore
 	commitPublication func(*discovery.Publication) error
 }
 
@@ -64,17 +66,18 @@ func (c *settingsCoordinator) apply(next config.Config, expected string) (server
 	if err := config.Validate(next); err != nil {
 		return server.SettingsResult{}, &server.SettingsError{Status: http.StatusBadRequest, Err: err}
 	}
-	version, err := config.Fingerprint(c.path)
-	if err != nil {
-		return fail(err)
-	}
-	if version != expected {
-		return server.SettingsResult{}, config.ErrStale
-	}
 	original, err := atomicfile.ReadFile(c.path)
 	existed := err == nil
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fail(err)
+	}
+	version := ""
+	if existed {
+		sum := sha256.Sum256(original)
+		version = hex.EncodeToString(sum[:])
+	}
+	if version != expected {
+		return server.SettingsResult{}, config.ErrStale
 	}
 	changed := !reflect.DeepEqual(next.Server, c.current.Server) || !reflect.DeepEqual(next.TLS, c.current.TLS)
 	var prepared *server.Prepared
@@ -139,17 +142,12 @@ func (c *settingsCoordinator) apply(next config.Config, expected string) (server
 			return fail(err)
 		}
 	}
-	previous := c.current
 	c.current = next
 	if c.store != nil {
 		c.store.Set(cardOptions(next.Card))
 	}
-	if next.Card.Reader != previous.Card.Reader && c.control != nil {
-		select {
-		case c.control <- smc.Control{Kind: smc.ControlSelectReader, Reader: next.Card.Reader}:
-		default:
-			log.Printf("dropping a reader control request, the read loop is busy")
-		}
+	if c.selection != nil {
+		c.selection.Set(next.Card.Reader)
 	}
 	result := server.SettingsResult{Version: savedVersion}
 	if urlErr == nil {

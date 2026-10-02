@@ -10,9 +10,13 @@ check the served fingerprint, reserve changed ports and validate certificates,
 then stage public metadata before writing anything. Config replacement is atomic,
 private, and retains the old raw bytes for rollback. Apply starts the candidate
 generation while keeping old listeners alive; publish its actual loopback URL.
-Only successful application updates the current configuration and card options.
+Only successful application updates the current configuration, card options,
+and durable reader selection. Selection is checked between bounded card waits
+and retained across daemon retries; it never depends on spare command-queue space.
+Settings and the served fingerprint come from the same file snapshot.
 Return the new fingerprint and `endpoint_url`, flush the response, then retire
-old generations and their WebSocket/socket.io connections. Unchanged HTTP/TLS
+old generations and their WebSocket/socket.io connections. The local Engine.IO
+shutdown patch also releases incomplete handshakes and ends the accept loop. Unchanged HTTP/TLS
 bindings are reused instead of colliding with the process's own sockets.
 
 An invalid configuration returns 400, a stale fingerprint 409, and bind/persist/

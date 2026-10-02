@@ -104,9 +104,8 @@ func Serve(cfg ServerConfig) {
 // the socket guard, the settings routes behind their own guard, the bundled
 // pages, and the pump that fans every broadcast out to the transports. done
 // is closed when the generation stops, which ends the pump. The transports
-// connections are retired on done. The socket.io server object is retained:
-// closing its engine while a handshake enqueues a session can panic in the
-// third-party library, so retirement closes tracked clients instead.
+// connections and socket.io accept loop are retired on done. The local
+// Engine.IO patch safely closes sessions even during an unfinished handshake.
 func newMux(cfg ServerConfig, done <-chan struct{}) *http.ServeMux {
 	guard := newSocketGuard(cfg.AllowedOrigins, cfg.Token, cfg.Listen)
 	settings := &settingsGuard{}

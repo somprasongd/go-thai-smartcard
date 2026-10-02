@@ -56,6 +56,8 @@ type tray struct {
 	mAgentStop    *systray.MenuItem
 	mAgentRestart *systray.MenuItem
 	mQuit         *systray.MenuItem
+	serviceUI     sync.Mutex
+	serviceState  func() (ctl.State, error)
 	mu            sync.RWMutex
 	url           string
 	notifyOnce    sync.Once
@@ -169,12 +171,17 @@ func (t *tray) pollService(ctx context.Context) {
 }
 
 func (t *tray) refreshServiceState() {
-	state, err := ctl.New().State()
+	t.serviceUI.Lock()
+	defer t.serviceUI.Unlock()
+	stateFn := t.serviceState
+	if stateFn == nil {
+		stateFn = ctl.New().State
+	}
+	state, err := stateFn()
 	if err != nil {
-		// No working control mechanism: no systemd, no polkit agent, the
-		// helper not installed and the operator cancelled the prompt. Keep
-		// the items disabled and let the tooltip say why, exactly like the
-		// terminal hint does.
+		// A missing service or denied status query leaves control unavailable.
+		// macOS manual installs return unknown without error so explicit
+		// password-backed actions remain enabled without polling prompts.
 		t.mAgentStart.Disable()
 		t.mAgentStop.Disable()
 		t.mAgentRestart.Disable()

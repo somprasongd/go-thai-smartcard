@@ -315,17 +315,13 @@ func (api *settingsAPI) put(w http.ResponseWriter, r *http.Request) {
 // recomputed on every request, never cached at startup, so a hand edit made
 // after the agent started is caught (decision 14).
 func (api *settingsAPI) read() (config.Config, string, error) {
-	cfg, err := config.Load(api.path)
+	cfg, version, err := config.LoadVersion(api.path)
 	if errors.Is(err, config.ErrNotFound) {
 		// The agent writes the defaults at startup; a missing file here means
 		// the directory was not writable. Serve the defaults rather than
 		// 500ing a page that could otherwise be read.
 		return config.Default(), "", nil
 	}
-	if err != nil {
-		return config.Config{}, "", err
-	}
-	version, err := config.Fingerprint(api.path)
 	if err != nil {
 		return config.Config{}, "", err
 	}

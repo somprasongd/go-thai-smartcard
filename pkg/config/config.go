@@ -130,6 +130,23 @@ func Load(path string) (Config, error) {
 	return decode(raw, path)
 }
 
+// LoadVersion ties the stale-save token to the exact bytes the caller saw.
+func LoadVersion(path string) (Config, string, error) {
+	raw, err := atomicfile.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return Config{}, "", ErrNotFound
+	}
+	if err != nil {
+		return Config{}, "", err
+	}
+	cfg, err := decode(raw, path)
+	if err != nil {
+		return Config{}, "", err
+	}
+	sum := sha256.Sum256(raw)
+	return cfg, hex.EncodeToString(sum[:]), nil
+}
+
 func decode(raw []byte, path string) (Config, error) {
 	cfg := Default()
 	md, err := toml.Decode(string(raw), &cfg)

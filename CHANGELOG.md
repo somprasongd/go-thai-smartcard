@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Persist reader selection independently of the command queue and retain it
+  when the card daemon retries; reopen PC/SC after startup or broker failure.
+- Wait for card-session cleanup before closing the transport on shutdown.
+- Retire socket.io accept loops and incomplete handshakes safely when settings
+  replace listeners (with a documented local Engine.IO patch).
+- Read settings and their optimistic-lock version from one file snapshot.
+- Serialize tray service-menu updates, use only granted Windows service rights
+  and release both SCM handles; allow the macOS manual-install fallback.
+- Preserve saved privacy and separate interface/data language preferences,
+  fix ID checksums ending in 1, clear enlarged portraits with card data, and
+  preserve "all readers" when refreshing the settings dropdown.
+- Record only after card insertion, use the card ATR's GET RESPONSE variant,
+  release sessions on capture failures, and save traces privately (0600).
+- Sign the staged macOS application and agent that the installer packages,
+  and declare PC/SC runtime dependencies in Linux packages.
+- Keep live service checks read-only and opt-in so unit tests cannot stop an
+  installed agent.
+
 ### Changed
 
 - The interface language moved to a ไทย/EN toggle in both pages' app bar, and

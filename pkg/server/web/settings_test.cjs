@@ -11,7 +11,7 @@ const config = {
 };
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
-async function scenario(response, status = 200, alreadyRevealed = false) {
+async function scenario(response, status = 200, alreadyRevealed = false, readerRefresh = false) {
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, {
@@ -34,12 +34,18 @@ async function scenario(response, status = 200, alreadyRevealed = false) {
     }, URL,
     window: { location: { origin: 'http://127.0.0.1:9898', assign: url => navigations.push(url) }, confirm: () => true },
     navigator: { clipboard: { writeText: async () => {} } },
-    fetch: async (_url, options) => options ? {
+    fetch: async (_url, options) => _url === "/api/readers" ? { ok: true, json: async () => ({readers:["saved reader"]}) } : options ? {
       ok: status === 200, status, json: async () => response, text: async () => 'port is occupied'
-    } : { ok: true, json: async () => ({ config, version: 'old', token_set: false }) }
+    } : { ok: true, json: async () => ({ config: {...config, card: {...config.card, reader: readerRefresh ? "saved reader" : ""}}, version: 'old', token_set: false }) }
   };
   vm.runInNewContext(script, context);
   await settle();
+  if (readerRefresh) {
+    assert.equal(element('reader').value, 'saved reader');
+    element('reader').value = '';
+    await element('btn-reader-refresh').listeners.click();
+    assert.equal(element('reader').value, '', 'refresh discarded all-readers selection');
+  }
   if (alreadyRevealed) { element('token-reveal').hidden = false; element('token-value').textContent = 'previous-token'; }
   element('port').value = 9999;
   element('btn-save').listeners.click();
@@ -49,6 +55,7 @@ async function scenario(response, status = 200, alreadyRevealed = false) {
 
 (async () => {
   const moved = { version: 'new', endpoint_url: 'http://127.0.0.1:9999' };
+  await scenario(moved, 200, false, true);
   let result = await scenario(moved);
   assert.deepEqual(result.navigations, ['http://127.0.0.1:9999/settings']);
   result = await scenario({ ...moved, token: 'shown-once' });

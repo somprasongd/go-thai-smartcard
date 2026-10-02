@@ -17,3 +17,13 @@ func TestSettingsPagePortNavigation(t *testing.T) {
 		t.Fatalf("settings script: %v\n%s", err, output)
 	}
 }
+
+func TestCardPagePreferencesAndPrivacy(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node.js is needed for the card page script behavior check")
+	}
+	if output, err := exec.Command(node, "web/index_test.cjs").CombinedOutput(); err != nil {
+		t.Fatalf("card script: %v\n%s", err, output)
+	}
+}

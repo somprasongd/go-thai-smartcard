@@ -19,6 +19,17 @@ description: |-
 homepage: https://github.com/somprasongd/go-thai-smartcard
 license: MIT
 
+# Runtime names differ between Debian and RPM distributions.
+overrides:
+  deb:
+    depends:
+      - libpcsclite1
+      - pcscd
+  rpm:
+    depends:
+      - pcsc-lite-libs
+      - pcsc-lite
+
 contents:
   # Public endpoint metadata is separate from the private configuration.
   - type: dir

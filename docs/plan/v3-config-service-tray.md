@@ -182,6 +182,8 @@ names the agent actually reads (see
 - `ws` registers `/ws` (gorilla/websocket).
 - `socketio` registers `/socket.io/` (go-socket.io v1.6.2, which speaks the
   socket.io v2 protocol, so clients use the 2.x client as the README shows).
+  A local v1.6.2 fork fixes Engine.IO shutdown during handshake/listener
+  retirement; see `third_party/go-socket.io/PATCHES.md`.
 - An empty list is a config error.
 - A disabled transport is never constructed: no `/socket.io/` handler, no
   engine.io server, no goroutines.

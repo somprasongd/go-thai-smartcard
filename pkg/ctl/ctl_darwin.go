@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -62,8 +63,20 @@ func (helper) available() bool {
 }
 
 func (helper) State() (State, error) {
-	resp, err := send("status")
+	return helperState(send, "/Library/LaunchDaemons/"+serviceName+".plist")
+}
+
+func helperState(query func(string) (*Response, error), plist string) (State, error) {
+	resp, err := query("status")
 	if err != nil {
+		if resp != nil {
+			return StateUnknown, err
+		}
+		// Unknown state still permits the explicit password-backed actions.
+		// Do not prompt while the tray polls status.
+		if _, statErr := os.Stat(plist); statErr == nil {
+			return StateUnknown, nil
+		}
 		return StateUnknown, err
 	}
 	switch resp.State {

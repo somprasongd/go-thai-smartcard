@@ -575,7 +575,7 @@
       (function () {
         "use strict";
 
-        var state = { version: "", tokenSet: false, reader: "" };
+        var state = { version: "", tokenSet: false, reader: "", readersLoaded: false };
 
         /* ------------------------------- i18n ------------------------------ */
         // The interface language is one switch shared with the card page: it
@@ -821,6 +821,7 @@
           $("c-nhso").checked = config.card.read_nhso;
           $("reader").value = config.card.reader;
           state.reader = config.card.reader;
+          state.readersLoaded = false;
           $("tls-enabled").checked = config.tls.enabled;
           $("tls-port").value = config.tls.port;
           $("tls-cert").value = config.tls.cert_file;
@@ -903,7 +904,7 @@
         async function loadReaders() {
           var sel = $("reader");
           var status = $("reader-status");
-          var current = sel.value || state.reader || "";
+          var current = state.readersLoaded ? sel.value : (state.reader || "");
           var readers = null; // null: the agent did not answer
           try {
             var res = await fetch("/api/readers");
@@ -922,6 +923,7 @@
             sel.appendChild(readerOption(current, current + " " + t("reader.notAttached")));
           }
           sel.value = current;
+          state.readersLoaded = true;
           if (readers === null) {
             status.textContent = t("rs.unknown");
             status.className = "note";

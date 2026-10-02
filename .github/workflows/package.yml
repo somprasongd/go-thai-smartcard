@@ -141,7 +141,11 @@ jobs:
           VERSION="${VERSION#v}"
           PKG="build/thai-smartcard-agent-${VERSION}.pkg"
           codesign --deep --force --options runtime \
-            --sign "$MACOS_SIGNING_IDENTITY" build/ThaiSmartcardTray.app
+            --sign "$MACOS_SIGNING_IDENTITY" build/pkgroot/Applications/ThaiSmartcardTray.app
+          codesign --force --options runtime \
+            --sign "$MACOS_SIGNING_IDENTITY" build/pkgroot/usr/local/bin/thai-smartcard-agent
+          codesign --verify --deep --strict build/pkgroot/Applications/ThaiSmartcardTray.app
+          codesign --verify --strict build/pkgroot/usr/local/bin/thai-smartcard-agent
           pkgbuild --root build/pkgroot --scripts packaging/macos/scripts \
             --identifier com.thaismartcard.agent --version "$VERSION" \
             --install-location / "$PKG"
