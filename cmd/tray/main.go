@@ -1,30 +1,25 @@
-// Command tray is the Thai Smartcard tray app: a thin client of the agent's
-// /api. It never touches the config file and never spawns the agent
-// (decision 12) — when it cannot reach the agent it says so with the command
-// to start it and keeps polling.
+// Command tray is the Thai Smartcard tray app: a thin client of the agent.
+// It shows the reader and card state from the /ws broadcast and opens the
+// test and settings pages; it never touches the config file and never spawns
+// the agent (decision 12) — when it cannot reach the agent it says so with
+// the command to start it and keeps polling.
 //
 // The tray needs cgo (fyne-io/systray), which is why it is its own binary and
 // not a flag of the agent: the agent stays cross-compilable.
 package main
 
 import (
-	"bytes"
 	_ "embed"
-	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
-	"net/http"
 	"os/exec"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 
 	"fyne.io/systray"
 	"github.com/gorilla/websocket"
-	"github.com/somprasongd/go-thai-smartcard/pkg/config"
 	"github.com/somprasongd/go-thai-smartcard/pkg/model"
 )
 
@@ -39,21 +34,14 @@ func main() {
 }
 
 // tray is the menu and the state behind it. Everything the menu shows comes
-// from the agent over the network: the card state from the /ws broadcast, the
-// expose state and token from /api/settings. What the agent reads is config
-// with one source of truth, so the menu carries no switches for it.
+// from the agent over the network: the card state from the /ws broadcast.
+// Exposure and the socket token are one decision and the token's one-time
+// showing only exists on the settings page, so the menu carries no switch
+// for them either.
 type tray struct {
-	client *http.Client
-
-	mu       sync.Mutex
-	cfg      config.Config // the last served config, without the token
-	version  string
-	tokenSet bool
-
 	mStatus *systray.MenuItem
 	mTest   *systray.MenuItem
 	mConfig *systray.MenuItem
-	mExpose *systray.MenuItem
 	mQuit   *systray.MenuItem
 }
 
@@ -64,7 +52,7 @@ func onReady() {
 	// anyway.) Hovering names the app.
 	systray.SetTooltip("Thai Smartcard Agent")
 
-	t := &tray{client: &http.Client{Timeout: 5 * time.Second}}
+	t := &tray{}
 
 	t.mStatus = systray.AddMenuItem("กำลังต่อกับ agent…", "Waiting for the agent")
 	t.mStatus.Disable()
@@ -72,16 +60,10 @@ func onReady() {
 	t.mTest = systray.AddMenuItem("เปิดหน้าทดสอบ / Open test page", "Open the agent's test page")
 	t.mConfig = systray.AddMenuItem("ตั้งค่า / Settings", "Open /settings")
 	systray.AddSeparator()
-	// Decision 16: a checkable toggle only while a token exists; before that
-	// it opens /settings, where the token ceremony happens.
-	t.mExpose = systray.AddMenuItemCheckbox("เปิดให้เครือข่ายเข้าถึง / Expose to network", "Serve the agent beyond localhost", false)
-	systray.AddSeparator()
 	// Quit closes the tray for this session only; the agent keeps running.
 	t.mQuit = systray.AddMenuItem("ออกจาก tray / Quit", "Close the tray; the agent keeps running")
 
 	go t.watchCardState()
-	go t.followOptionClicks()
-	go t.refreshSettings()
 
 	if runtime.GOOS == "linux" {
 		// GNOME without the AppIndicator extension never shows the icon;
@@ -95,8 +77,6 @@ func onReady() {
 			openBrowser(*agentURL)
 		case <-t.mConfig.ClickedCh:
 			openBrowser(*agentURL + "/settings")
-		case <-t.mExpose.ClickedCh:
-			go t.toggleExpose()
 		case <-t.mQuit.ClickedCh:
 			systray.Quit()
 			return
@@ -195,138 +175,6 @@ func startHint() string {
 		return "start it with `sudo thai-smartcard-agent service start`"
 	default:
 		return "start it with `sudo systemctl start thai-smartcard-agent`"
-	}
-}
-
-// followExposeState mirrors the agent's answers back into the expose
-// checkmark, so a hand edit or a second settings page cannot leave the menu
-// lying about what is exposed.
-func (t *tray) followOptionClicks() {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-	for range ticker.C {
-		t.refreshSettings()
-	}
-}
-
-func (t *tray) refreshSettings() {
-	cfg, version, tokenSet, err := t.fetchSettings()
-	if err != nil {
-		// The settings toggles stay as they are; the status line already
-		// says the agent is unreachable.
-		return
-	}
-	t.mu.Lock()
-	t.cfg, t.version, t.tokenSet = cfg, version, tokenSet
-	t.mu.Unlock()
-
-	exposed := !config.IsLoopbackListen(cfg.Server.Listen)
-	if tokenSet {
-		t.mExpose.Enable()
-		setChecked(t.mExpose, exposed)
-		t.mExpose.SetTooltip("Serve the agent beyond localhost; a token exists")
-	} else {
-		setChecked(t.mExpose, false)
-		t.mExpose.SetTooltip("Open /settings first: the agent generates the token there")
-	}
-}
-
-type settingsResponse struct {
-	Config   config.Config `json:"config"`
-	Version  string        `json:"version"`
-	TokenSet bool          `json:"token_set"`
-}
-
-func (t *tray) fetchSettings() (config.Config, string, bool, error) {
-	resp, err := t.client.Get(*agentURL + "/api/settings")
-	if err != nil {
-		return config.Config{}, "", false, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return config.Config{}, "", false, fmt.Errorf("GET /api/settings: %s", resp.Status)
-	}
-	var body settingsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return config.Config{}, "", false, err
-	}
-	return body.Config, body.Version, body.TokenSet, nil
-}
-
-// toggleExpose implements the expose toggle. Off is always a direct toggle —
-// it is the safe direction. On is direct only while a token exists; before
-// that it opens /settings, where the agent generates and shows one.
-func (t *tray) toggleExpose() {
-	t.mu.Lock()
-	tokenSet := t.tokenSet
-	t.mu.Unlock()
-	if !tokenSet {
-		openBrowser(*agentURL + "/settings")
-		return
-	}
-
-	err := t.save(func(c *config.Config) {
-		if config.IsLoopbackListen(c.Server.Listen) {
-			c.Server.Listen = "0.0.0.0"
-		} else {
-			c.Server.Listen = "127.0.0.1"
-		}
-	})
-	t.afterSave(err)
-}
-
-// save PUTs the config with the fingerprint it was served. A 409 means the
-// file changed on disk since it was served: refetch and ask the user to
-// repeat the action (decision 14).
-func (t *tray) save(mutate func(*config.Config)) error {
-	t.mu.Lock()
-	cfg, version := t.cfg, t.version
-	t.mu.Unlock()
-	mutate(&cfg)
-
-	raw, err := json.Marshal(map[string]any{"config": cfg, "version": version})
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequest(http.MethodPut, *agentURL+"/api/settings", bytes.NewReader(raw))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SMC-Settings", "1")
-	resp, err := t.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	switch resp.StatusCode {
-	case http.StatusOK:
-		t.refreshSettings()
-		return nil
-	case http.StatusConflict:
-		t.refreshSettings()
-		return errors.New("the file changed on disk; reload done, repeat the action")
-	default:
-		return fmt.Errorf("save failed: %s", resp.Status)
-	}
-}
-
-func (t *tray) afterSave(err error) {
-	if err != nil {
-		log.Println(err)
-		return
-	}
-}
-
-// setChecked drives the menu checkmark from state, because the click and the
-// answer do not land in the same order.
-func setChecked(item *systray.MenuItem, checked bool) {
-	if checked != item.Checked() {
-		if checked {
-			item.Check()
-		} else {
-			item.Uncheck()
-		}
 	}
 }
 

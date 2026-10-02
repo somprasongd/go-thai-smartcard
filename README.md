@@ -66,7 +66,7 @@ Three presets set the display switches together:
 
 | Preset | ID number | Portrait | Screen after removal | Type |
 | :----- | :-------- | :------- | :------------------- | :--- |
-| **kiosk** | masked | blurred | cleared after a few seconds | normal |
+| **kiosk** | masked | blurred | cleared the moment the card leaves | normal |
 | **dev** | shown | shown | kept | normal, raw payload open |
 | **counter** | shown | shown | kept | enlarged |
 
@@ -90,8 +90,7 @@ way.
 
 <http://localhost:9898/settings> is a self-contained page (plain HTML, no CDN,
 so it works on a hospital network that cannot reach the internet) for everything
-the agent reads and who may connect to it. The tray app, where one is
-installed, calls the same API.
+the agent reads and who may connect to it — the one place that changes them.
 
 What a save does:
 
@@ -600,12 +599,12 @@ pm2 save
 ## Tray
 
 `thai-smartcard-tray` is an optional menu-bar / system-tray app: the icon
-stands alone in the menu bar, and the menu holds the reader and card state,
-shortcuts to the test and settings pages, and the "expose to network" toggle.
-The read image / laser ID / NHSO switches are not in the menu — what the agent
-reads is configuration with one source of truth, changed in
-[settings](#settings). It is a **thin client**
-of the agent's `/api` — it never touches the config file and never starts the
+stands alone in the menu bar, and the menu holds the reader and card state
+and shortcuts to the test and settings pages. Exposure, the token, and the
+read image / laser ID / NHSO switches are not in the menu — they are all one
+decision each with the token's one-time showing, which only exists on the
+[settings](#settings) page. It is a **thin client**
+of the agent's `/ws` — it never touches the config file and never starts the
 agent. When it cannot reach the agent it shows "agent is not running" with the
 command to start it for your platform, and keeps polling.
 
@@ -616,10 +615,7 @@ Settings > General > Login Items, Linux: your desktop's startup applications
 settings. Quitting the tray closes it for the current session only; the agent
 keeps running.
 
-"Expose to network" is a checkable toggle only while a token exists; before
-that, choosing it opens `/settings`, where the agent generates the token and
-shows it once. Turning exposure **off** is always a direct toggle, because it
-is the safe direction. On GNOME the tray needs the AppIndicator extension;
+On GNOME the tray needs the AppIndicator extension;
 without it the tray sends a notification pointing at `/settings` instead of
 failing silently.
 
@@ -662,7 +658,7 @@ This release is breaking in five ways, in one sentence each:
 3. **The default transport is `ws`.** socket.io clients stop working until
    `transports = ["ws", "socketio"]` is set.
 4. **The card socket is read-only.** `set-options`, `set-reader` and
-   `remote_control` are gone; settings change through `/settings` or the tray.
+   `remote_control` are gone; settings change through `/settings`.
 5. **The `pkg/util` env helpers are removed** (`GetEnv`, `GetEnvInt`,
    `GetEnvBool`). Code that imported them moves to its own configuration
    source.
