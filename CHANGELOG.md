@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- The "expose to network" toggle in the tray menu. Exposure and the socket
+  token are one decision, and generating a token shows it exactly once —
+  something only the settings page can do — so the tray opens `/settings` for
+  it instead of carrying a second control that has to be kept in sync with
+  the agent. The menu now holds the reader and card state and the test and
+  settings page shortcuts.
 - The `clear_token` action on `PUT /api/settings` and the clear button next
   to the token on /settings, both shipped in 4.1.0. A token is enforced only
   while the agent listens beyond loopback, and exposure without one is
