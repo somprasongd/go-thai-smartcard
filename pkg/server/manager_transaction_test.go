@@ -3,7 +3,6 @@ package server
 import (
 	"net"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
