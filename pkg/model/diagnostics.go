@@ -15,14 +15,34 @@ type Health struct {
 
 // Diagnostics is an allowlist for support reports; secrets and card data have no fields.
 type Diagnostics struct {
-	Version      string   `json:"version"`
-	OS           string   `json:"os"`
-	Architecture string   `json:"architecture"`
-	RunMode      string   `json:"run_mode"`
-	Endpoint     string   `json:"endpoint"`
-	ServiceState string   `json:"service_state,omitempty"`
-	Transports   []string `json:"transports"`
-	TLS          bool     `json:"tls"`
-	Health       Health   `json:"health"`
-	LogDirectory string   `json:"log_directory,omitempty"`
+	Version      string    `json:"version"`
+	OS           string    `json:"os"`
+	Architecture string    `json:"architecture"`
+	RunMode      string    `json:"run_mode"`
+	Endpoint     string    `json:"endpoint"`
+	ServiceState string    `json:"service_state,omitempty"`
+	Transports   []string  `json:"transports"`
+	TLS          bool      `json:"tls"`
+	Health       Health    `json:"health"`
+	Logging      *LogUsage `json:"logging,omitempty"`
+	LogDirectory string    `json:"log_directory,omitempty"`
+}
+
+// LogPolicy mirrors only non-secret retention values for support tooling.
+type LogPolicy struct {
+	Mode       string `json:"mode"`
+	MaxSizeMB  int    `json:"max_size_mb"`
+	MaxBackups int    `json:"max_backups"`
+	MaxAgeDays int    `json:"max_age_days"`
+}
+
+// LogUsage distinguishes the applied policy from changes awaiting a restart.
+type LogUsage struct {
+	Effective       LogPolicy `json:"effective"`
+	Configured      LogPolicy `json:"configured"`
+	RestartRequired bool      `json:"restart_required"`
+	FileLogging     bool      `json:"file_logging"`
+	UsageAvailable  bool      `json:"usage_available"`
+	Bytes           int64     `json:"bytes"`
+	Files           int       `json:"files"`
 }

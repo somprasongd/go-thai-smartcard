@@ -135,12 +135,13 @@ type settingsAPI struct {
 	diagnostics func() DiagnosticSnapshot
 }
 
-// servedConfig carries the settings the page edits. Logging remains a
-// startup-only file setting; no response ever carries the socket token.
+// servedConfig carries editable settings; logging applies only after restart.
+// No response ever carries the socket token.
 type servedConfig struct {
-	Server config.Server `json:"server"`
-	Card   config.Card   `json:"card"`
-	TLS    config.TLS    `json:"tls"`
+	Server  config.Server   `json:"server"`
+	Card    config.Card     `json:"card"`
+	TLS     config.TLS      `json:"tls"`
+	Logging *config.Logging `json:"logging,omitempty"`
 }
 
 // serveInfo answers /api/info. The bundled page asks for it on boot to learn
@@ -200,14 +201,15 @@ func (api *settingsAPI) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"config":    served(cfg),
-		"version":   version,
-		"token_set": cfg.Server.Token != "",
+		"config":                   served(cfg),
+		"version":                  version,
+		"token_set":                cfg.Server.Token != "",
+		"logging_restart_required": api.loggingRestartRequired(cfg.Logging),
 	})
 }
 
 type putSettings struct {
-	Config config.Config `json:"config"`
+	Config servedConfig `json:"config"`
 	// Version is the fingerprint GET served, echoed back. A mismatch is a 409.
 	Version string `json:"version"`
 	// RegenerateToken replaces the socket token and returns the new one once.
@@ -227,10 +229,10 @@ func (api *settingsAPI) put(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	next := body.Config
-	// Logging is an administrator/file setting applied on restart. A settings
-	// page or older client must not erase it by sending only server/card/TLS.
-	next.Logging = current.Logging
+	next := config.Config{Server: body.Config.Server, Card: body.Config.Card, TLS: body.Config.TLS, Logging: current.Logging}
+	if body.Config.Logging != nil {
+		next.Logging = *body.Config.Logging
+	}
 	// The token lives in the file, not in a GET response, so a save that
 	// echoes the served config back must not wipe it. It is merged here and
 	// replaced below only when the agent generates a new one.
@@ -297,9 +299,10 @@ func (api *settingsAPI) put(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := map[string]any{
-		"config":    served(next),
-		"version":   version,
-		"token_set": next.Server.Token != "",
+		"config":                   served(next),
+		"version":                  version,
+		"token_set":                next.Server.Token != "",
+		"logging_restart_required": api.loggingRestartRequired(next.Logging),
 	}
 	if generated != "" {
 		// Shown once, by the page or the tray; it is never sent again.
@@ -334,7 +337,7 @@ func (api *settingsAPI) read() (config.Config, string, error) {
 
 // served strips the token from a config for the wire.
 func served(cfg config.Config) servedConfig {
-	out := servedConfig{Server: cfg.Server, Card: cfg.Card, TLS: cfg.TLS}
+	out := servedConfig{Server: cfg.Server, Card: cfg.Card, TLS: cfg.TLS, Logging: &cfg.Logging}
 	out.Server.Token = ""
 	return out
 }
@@ -358,4 +361,16 @@ func (api *settingsAPI) serveHealth(w http.ResponseWriter, r *http.Request) {
 		h = api.status.Health()
 	}
 	writeJSON(w, http.StatusOK, h)
+}
+
+func (api *settingsAPI) loggingRestartRequired(next config.Logging) bool {
+	if api.diagnostics == nil {
+		return false
+	}
+	d := api.diagnostics()
+	if d.Logging == nil {
+		return false
+	}
+	active := d.Logging.Effective
+	return active.Mode != next.Mode || active.MaxSizeMB != next.MaxSizeMB || active.MaxBackups != next.MaxBackups || active.MaxAgeDays != next.MaxAgeDays
 }

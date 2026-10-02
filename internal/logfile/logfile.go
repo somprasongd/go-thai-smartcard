@@ -50,7 +50,7 @@ func Open(path string, opts Options) (*Writer, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
-	lock, err := atomicfile.OpenAppend(path + ".lock")
+	lock, err := atomicfile.OpenLock(path + ".lock")
 	if err != nil {
 		return nil, err
 	}

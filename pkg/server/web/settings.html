@@ -430,6 +430,18 @@
       <main>
         <div class="error" id="boot-error" hidden></div>
 
+        <section id="sec-logging">
+          <h2 data-i18n="log.title">บันทึกการทำงาน</h2>
+          <p class="note" data-i18n="log.help"></p>
+          <div class="row"><label for="log-mode" data-i18n="log.mode"></label><select id="log-mode"><option value="auto">auto</option><option value="file">file</option><option value="console">console</option></select></div>
+          <div class="row"><label for="log-size" data-i18n="log.size"></label><input id="log-size" type="number" min="1" max="1024" required></div>
+          <div class="row"><label for="log-backups" data-i18n="log.backups"></label><input id="log-backups" type="number" min="0" max="1000" required></div>
+          <div class="row"><label for="log-age" data-i18n="log.age"></label><input id="log-age" type="number" min="0" max="36500" required></div>
+          <p id="log-usage" class="note" role="status"></p>
+          <p id="log-restart" class="warning" hidden data-i18n="log.restart"></p>
+          <a href="/diagnostics" data-i18n="log.diagnostics"></a>
+        </section>
+
         <section id="sec-server">
           <h2>
             Server <small>[server]</small>
@@ -584,6 +596,17 @@
         // the file the fields end up in.
         var I18N = {
           th: {
+            "log.title":"บันทึกการทำงาน",
+            "log.help":"ค่าใหม่มีผลหลัง restart agent: auto บันทึกไฟล์เมื่อรันเป็น service; file บันทึกไฟล์เสมอ; console แสดงที่ console",
+            "log.mode":"โหมด",
+            "log.size":"ขนาดต่อไฟล์ (MiB)",
+            "log.backups":"จำนวนไฟล์สำรอง (0 = ไม่เก็บ)",
+            "log.age":"อายุไฟล์สำรอง (วัน; 0 = ไม่จำกัดอายุ)",
+            "log.restart":"บันทึกค่าแล้ว แต่ต้อง restart agent เพื่อใช้ค่า log ใหม่",
+            "log.diagnostics":"เปิดหน้าวิเคราะห์ปัญหา",
+            "log.console":"ขณะนี้ไม่มีการบันทึก log ลงไฟล์",
+            "log.unavailable":"ตรวจพื้นที่ log ไม่ได้",
+            "log.usage":"พื้นที่ log ที่ใช้อยู่: {mb} MiB / {n} ไฟล์",
             "nav.card": "อ่านบัตร",
             "nav.settings": "ตั้งค่า",
             "tip.server": "การแก้ค่า server จะย้าย listener ให้เอง หากเปิด port ใหม่ไม่ได้จะคงค่าเดิม",
@@ -632,6 +655,17 @@
             "err.load": "โหลดค่าไม่สำเร็จ: "
           },
           en: {
+            "log.title":"Application logs",
+            "log.help":"Changes apply after agent restart. auto writes files for services; file always writes files; console uses console output.",
+            "log.mode":"Mode",
+            "log.size":"Size per file (MiB)",
+            "log.backups":"Backup files (0 = none)",
+            "log.age":"Backup age (days; 0 = no age expiry)",
+            "log.restart":"Saved; restart the agent to apply the new logging policy",
+            "log.diagnostics":"Open diagnostics",
+            "log.console":"File logging is not currently active",
+            "log.unavailable":"Log usage is unavailable",
+            "log.usage":"Log space in use: {mb} MiB / {n} files",
             "nav.card": "Card reader",
             "nav.settings": "Settings",
             "tip.server": "Server changes move the listener without restarting the agent; if the new port cannot open, the old one is kept.",
@@ -807,6 +841,11 @@
         }
 
         function fill(config, tokenSet) {
+          var logging = config.logging || {mode:"auto",max_size_mb:10,max_backups:3,max_age_days:7};
+          $("log-mode").value=logging.mode;
+          $("log-size").value=logging.max_size_mb;
+          $("log-backups").value=logging.max_backups;
+          $("log-age").value=logging.max_age_days;
           var listen = config.server.listen || "127.0.0.1";
           $("expose").checked = listen === "0.0.0.0";
           $("expose-row").hidden = !listenIsStandard(listen);
@@ -855,6 +894,7 @@
               read_nhso: $("c-nhso").checked,
               reader: $("reader").value.trim()
             },
+            logging: {mode:$("log-mode").value,max_size_mb:Number($("log-size").value),max_backups:Number($("log-backups").value),max_age_days:Number($("log-age").value)},
             tls: {
               enabled: $("tls-enabled").checked,
               port: parseInt($("tls-port").value, 10) || 9899,
@@ -939,6 +979,15 @@
           }
         }
 
+        async function loadLogUsage() {
+          try {
+            var r=await fetch("/api/diagnostics");if(!r.ok)throw new Error("unavailable");
+            var d=await r.json(),log=d.logging;
+            if(!log){$("log-usage").textContent=t("log.unavailable");return;}
+            $("log-usage").textContent=!log.file_logging?t("log.console"):!log.usage_available?t("log.unavailable"):t("log.usage").replace("{mb}",(log.bytes/1048576).toFixed(2)).replace("{n}",log.files);
+          }catch(e){$("log-usage").textContent=t("log.unavailable");}
+        }
+
         async function load() {
           try {
             var res = await fetch("/api/settings");
@@ -949,6 +998,8 @@
             var data = await res.json();
             state.version = data.version;
             fill(data.config, data.token_set);
+            $("log-restart").hidden=!data.logging_restart_required;
+            loadLogUsage();
             loadReaders();
           } catch (e) {
             bootError(t("st.unreach") + e);
@@ -979,7 +1030,9 @@
             var data = await res.json();
             state.version = data.version;
             if (data.token) revealToken(data.token);
-            setStatus(t("st.saved"), "ok");
+            setStatus(t("st.saved") + (data.logging_restart_required ? " — " + t("log.restart") : ""), "ok");
+            $("log-restart").hidden=!data.logging_restart_required;
+            loadLogUsage();
             if (data.endpoint_url) {
               var target = new URL("/settings", data.endpoint_url);
               if (target.origin !== window.location.origin) {

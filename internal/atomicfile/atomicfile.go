@@ -58,7 +58,15 @@ func Write(path string, data []byte, mode os.FileMode) error {
 // OpenAppend keeps append-only logs private, including a restrictive Windows
 // DACL; chmod alone does not prevent other Windows users reading a file.
 func OpenAppend(path string) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	return openPrivate(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY)
+}
+
+// OpenLock grants read/write access required by Windows byte-range locking,
+// while retaining the same private ACL as log files.
+func OpenLock(path string) (*os.File, error) { return openPrivate(path, os.O_CREATE|os.O_RDWR) }
+
+func openPrivate(path string, flags int) (*os.File, error) {
+	f, err := os.OpenFile(path, flags, 0600)
 	if err != nil {
 		return nil, err
 	}

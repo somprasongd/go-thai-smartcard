@@ -35,9 +35,21 @@ func ReadFile(path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	h, err := windows.CreateFile(p, windows.GENERIC_READ, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
-	if err != nil {
-		return nil, err
+	// A replaced name can briefly refer to an old delete-pending handle even
+	// with share-delete enabled. Retry only Windows' transient open failures;
+	// persistent permission/missing-file errors still return within a bound.
+	var h windows.Handle
+	deadline := time.Now().Add(250 * time.Millisecond)
+	for {
+		h, err = windows.CreateFile(p, windows.GENERIC_READ, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
+		transient := errors.Is(err, windows.ERROR_ACCESS_DENIED) || errors.Is(err, windows.ERROR_SHARING_VIOLATION) || errors.Is(err, windows.ERROR_FILE_NOT_FOUND)
+		if err == nil {
+			break
+		}
+		if !transient || time.Now().After(deadline) {
+			return nil, err
+		}
+		time.Sleep(time.Millisecond)
 	}
 	f := os.NewFile(uintptr(h), path)
 	defer f.Close()

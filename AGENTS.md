@@ -94,7 +94,7 @@ file, or the whole module stops building there.
   verify port navigation and one-time token preservation directly.
 - Config tests (`pkg/config`) are table-driven and need no reader; the settings
   and auth tests in `pkg/server` use `httptest`, no reader either
-- Logging limits in `[logging]` apply on restart; the settings API preserves them. Managed auto mode writes beside the selected config; foreground auto mode stays on stderr.
+- Logging limits in `[logging]` apply on restart; the settings API edits them and preserves them when older clients omit logging. Managed auto mode writes beside the selected config; foreground auto mode stays on stderr.
 - **No reader is required.** `pkg/transport.FakeCard` replays a recorded trace,
   and `NewFakeTransport` injects it via `smc.NewSmartCardWith`
 - `TestReadFromRecordedTrace` skips itself until `testdata/trace-real.json`

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Edit log mode/retention in Settings, display disk usage and distinguish applied
+  limits from configuration waiting for restart; preserve older clients.
+
 - Add a local diagnostics page and tray Troubleshoot menu for support reports,
   clipboard copying and opening the active log directory without card data.
 

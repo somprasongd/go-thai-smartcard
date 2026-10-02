@@ -389,8 +389,10 @@ An oversized individual write is split across files within the same limits.
 Files are 0600 (private DACL on Windows); newly created directories are 0700.
 One process lock prevents concurrent agents rotating the same log.
 
-Logging is set in `config.toml` and applied on restart. `/settings` saves retain
-this administrator setting; the page does not edit it. `max_size_mb` accepts
+Logging is set in `config.toml` or the Application logs section of `/settings`
+and applies on restart. The page shows disk usage and a pending-restart notice;
+diagnostics distinguishes configured limits from the running process's limits.
+Older API clients that omit logging preserve the existing policy. `max_size_mb` accepts
 1–1024; `max_backups` accepts 0–1000 (0 keeps only the active file);
 `max_age_days` accepts 0–36500 (0 disables age expiry while count still applies).
 For a 5 MiB file and two backups, for example:
