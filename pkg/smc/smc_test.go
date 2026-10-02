@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -589,6 +590,78 @@ func TestGetResponseApduKeepsP2AndLe(t *testing.T) {
 				t.Errorf("GET RESPONSE = %s, want %s", got, tt.wantGet)
 			}
 		})
+	}
+}
+
+// cannedCard answers each Transmit with the next response from a fixed
+// script, so a test can model a card that misbehaves in one specific way —
+// which a trace cannot: strict replay ties every response to the command that
+// would have to be sent to reach it. Like capturingCard, it records the
+// commands it was handed so a test can assert on the sequence.
+type cannedCard struct {
+	rsp  [][]byte
+	cmds [][]byte
+}
+
+func (c *cannedCard) Status() (transport.Status, error) {
+	return transport.Status{}, nil
+}
+
+func (c *cannedCard) Transmit(cmd []byte) ([]byte, error) {
+	c.cmds = append(c.cmds, append([]byte(nil), cmd...))
+	if len(c.cmds) > len(c.rsp) {
+		return nil, fmt.Errorf("cannedCard: no scripted response for command %s", hex.EncodeToString(cmd))
+	}
+	return append([]byte(nil), c.rsp[len(c.cmds)-1]...), nil
+}
+
+func (c *cannedCard) Disconnect() error { return nil }
+
+// TestReadFailedCommandSkipsGetResponse pins the first response of a pair: a
+// field command answered with an error status must fail the field without a
+// GET RESPONSE being sent at it, and the next field must read normally.
+func TestReadFailedCommandSkipsGetResponse(t *testing.T) {
+	card := &cannedCard{rsp: [][]byte{
+		{0x6a, 0x82}, // the CID command fails: file not found
+		{0x61, 0x0f}, // the Thai name command: 15 bytes ready
+		append(append([]byte(nil), mustDecodeHex(payloadNameThai)...), 0x90, 0x00),
+	}}
+
+	reader := smc.NewPersonalReader(card, nil)
+	if cid := reader.ReadCID(); cid != "" {
+		t.Errorf("Cid = %q, want empty for a failed field command", cid)
+	}
+	if name := reader.ReadRawName(); name != "นาย#สมชาย##ใจดี" {
+		t.Errorf("the field after the failed one should still read, got %q", name)
+	}
+
+	if len(card.cmds) != 3 {
+		t.Fatalf("got %d exchanges, want the CID command, the Thai name command and one GET RESPONSE", len(card.cmds))
+	}
+	if !bytes.Equal(card.cmds[1], apdu.PersonalCMD.NameThai) {
+		t.Errorf("second command = %s, want the Thai name command: a GET RESPONSE was sent at the failed command", hex.EncodeToString(card.cmds[1]))
+	}
+}
+
+// TestReadFailingGetResponseFailsTheField covers the other half of the pair: a
+// GET RESPONSE that answers with an error status fails the field, rather than
+// coming back as empty or silently truncated data.
+func TestReadFailingGetResponseFailsTheField(t *testing.T) {
+	card := &cannedCard{rsp: [][]byte{
+		{0x61, 0x0d}, // the CID command: 13 bytes ready
+		{0x6a, 0x82}, // the GET RESPONSE fails
+	}}
+
+	reader := smc.NewPersonalReader(card, nil)
+	if cid := reader.ReadCID(); cid != "" {
+		t.Errorf("Cid = %q, want empty when GET RESPONSE fails", cid)
+	}
+
+	if len(card.cmds) != 2 {
+		t.Fatalf("got %d exchanges, want the CID command and its GET RESPONSE", len(card.cmds))
+	}
+	if !bytes.HasPrefix(card.cmds[1], mustDecodeHex(getResponsePrefix)) {
+		t.Errorf("second command = %s, want a GET RESPONSE", hex.EncodeToString(card.cmds[1]))
 	}
 }
 
