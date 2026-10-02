@@ -2,6 +2,7 @@
 package atomicfile
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -52,7 +53,10 @@ func Write(path string, data []byte, mode os.FileMode) error {
 		return err
 	}
 	defer p.Abort()
-	return p.Commit()
+	if err := p.Commit(); err != nil {
+		return fmt.Errorf("replace %s: %w", path, err)
+	}
+	return nil
 }
 
 // OpenAppend keeps append-only logs private, including a restrictive Windows

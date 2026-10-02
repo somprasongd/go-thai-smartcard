@@ -19,7 +19,10 @@ func replace(from, to string) error {
 	if err != nil {
 		return err
 	}
-	deadline := time.Now().Add(250 * time.Millisecond)
+	// Antivirus and indexing handles can outlive a short retry window on
+	// hosted Windows machines. Keep retries bounded without failing routine
+	// replacements during that transient contention.
+	deadline := time.Now().Add(2 * time.Second)
 	for {
 		err = windows.MoveFileEx(f, t, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
 		if (!errors.Is(err, windows.ERROR_SHARING_VIOLATION) && !errors.Is(err, windows.ERROR_ACCESS_DENIED)) || time.Now().After(deadline) {
