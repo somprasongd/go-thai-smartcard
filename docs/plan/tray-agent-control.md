@@ -18,6 +18,11 @@ bring the reader back.
 
 ## Relationship to decision 12 of the v3 plan
 
+Local address discovery is covered by the accepted
+[endpoint discovery plan](tray-endpoint-discovery.md). Service control must use
+that endpoint after a successful start/restart, not read the service config or
+assume port 9898. Discovery does not implement the service-control proposal here.
+
 Decision 12 says "the tray **never spawns** the agent". That stays true: the
 tray never runs a child agent process with its own config path and PC/SC
 context — that is what would create a second run mode. What this plan adds is

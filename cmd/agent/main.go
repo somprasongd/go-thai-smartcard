@@ -17,11 +17,10 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"reflect"
-	"sync"
 	"syscall"
 	"time"
 
+	"github.com/somprasongd/go-thai-smartcard/internal/discovery"
 	"github.com/somprasongd/go-thai-smartcard/pkg/config"
 	"github.com/somprasongd/go-thai-smartcard/pkg/model"
 	"github.com/somprasongd/go-thai-smartcard/pkg/server"
@@ -69,7 +68,9 @@ func main() {
 
 // runAgent is the whole agent: config, listener, read loop. It blocks until
 // ctx is done. The foreground run and the service wrapper both land here.
-func runAgent(ctx context.Context, configPath string) {
+func runAgent(ctx context.Context, configPath string) { runAgentMode(ctx, configPath, false) }
+
+func runAgentMode(ctx context.Context, configPath string, managed bool) {
 	// Resolve before anything: the listener's settings routes read and write
 	// this path, so an unresolved "" would silently leave /settings and
 	// /api/* unregistered and /settings would serve the bundled test page.
@@ -96,48 +97,41 @@ func runAgent(ctx context.Context, configPath string) {
 	// a settings change apply to the next card without a restart.
 	store := smc.NewOptionsStore(cardOptions(cfg.Card))
 
-	// A save from /settings or the tray comes back here: card options apply to
-	// the next insert, a server or TLS change restarts the listener.
-	var mu sync.Mutex
-	current := cfg
-	var mgr *server.Manager
-	// Declared first so the closure can hand itself to the next listener
-	// generation: a restarted listener keeps applying saves.
-	var applySave func(config.Config)
-	applySave = func(next config.Config) {
-		mu.Lock()
-		prev := current
-		current = next
-		mu.Unlock()
-
-		if !reflect.DeepEqual(next.Card, prev.Card) {
-			store.Set(cardOptions(next.Card))
-			if next.Card.Reader != prev.Card.Reader {
-				// The read loop drains this channel between poll windows; a
-				// dropped request is recoverable and the tray retries.
-				select {
-				case control <- smc.Control{Kind: smc.ControlSelectReader, Reader: next.Card.Reader}:
-				default:
-					log.Printf("dropping a reader control request, the read loop is busy")
-				}
-			}
-		}
-
-		if !reflect.DeepEqual(next.Server, prev.Server) || !reflect.DeepEqual(next.TLS, prev.TLS) {
-			// A token change lands here too, because the socket guard of the
-			// running listener holds the old one.
-			if err := mgr.Replace(serverCfg(next, configPath, broadcast, command, applySave)); err != nil {
-				log.Printf("could not restart the listener: %v; the old listener keeps serving", err)
-			} else {
-				log.Printf("listener restarted on %s:%d", next.Server.Listen, next.Server.Port)
-			}
-		}
+	instance, err := discovery.NewInstanceID()
+	if err != nil {
+		log.Fatalf("instance identity: %v", err)
 	}
-
-	mgr, err := server.Start(serverCfg(cfg, configPath, broadcast, command, applySave))
+	runtimeSettings := &settingsCoordinator{path: configPath, current: cfg, store: store, control: control, ready: make(chan struct{})}
+	runtimeSettings.openPublisher = func() (*discovery.Publisher, error) {
+		path := discovery.ServicePath()
+		if !managed {
+			var err error
+			path, err = discovery.UserPath()
+			if err != nil {
+				return nil, err
+			}
+		}
+		return discovery.Open(path, instance, managed)
+	}
+	runtimeSettings.serverConfig = func(next config.Config) server.ServerConfig {
+		result := serverCfg(next, configPath, broadcast, command, nil)
+		result.InstanceID = instance
+		result.ApplySettings = runtimeSettings.apply
+		return result
+	}
+	mgr, err := server.Start(runtimeSettings.serverConfig(cfg))
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
+	runtimeSettings.manager = mgr
+	runtimeSettings.publishStartup()
+	close(runtimeSettings.ready)
+	defer mgr.Close()
+	defer func() {
+		if runtimeSettings.publisher != nil {
+			runtimeSettings.publisher.Close()
+		}
+	}()
 
 	controller := &optionsController{
 		store:     store,

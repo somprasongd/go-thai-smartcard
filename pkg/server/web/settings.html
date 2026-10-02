@@ -75,6 +75,8 @@
       .warning { color: var(--warn); font-size: 13px; }
       .error { color: var(--danger); font-size: 13px; }
       .ok { color: var(--ok); font-size: 13px; }
+      #endpoint-moved { color: var(--warn); font-size: 13px; }
+      #endpoint-link { color: var(--fg); }
       code, .token {
         font-family: var(--mono);
         background: #0b0e13;
@@ -118,7 +120,7 @@
       <section>
         <h2>Server <small>[server]</small></h2>
         <p class="hint">
-          การแก้ค่า server จะรีสตาร์ท listener ให้เอง — pages ที่เปิดอยู่จะเชื่อมต่อใหม่เอง / a server change restarts the listener.
+          การแก้ค่า server จะย้าย listener ให้เอง หากเปิด port ใหม่ไม่ได้จะคงค่าเดิม / server changes apply without restarting the agent.
         </p>
         <div class="row">
           <label for="listen">listen</label>
@@ -215,6 +217,9 @@
           <button id="btn-save">บันทึก / save</button>
           <button class="secondary" id="btn-reload" hidden>โหลดใหม่ / reload</button>
           <span id="save-status"></span>
+		  <span id="endpoint-moved" hidden>คัดลอก token ก่อนย้ายหน้า / copy the token before moving:
+		    <a id="endpoint-link">เปิด Settings ใหม่ / open new Settings</a>
+		  </span>
         </div>
       </div>
     </main>
@@ -355,6 +360,17 @@
             state.version = data.version;
             if (data.token) revealToken(data.token);
             setStatus("บันทึกแล้ว — ค่า server ใหม่มีผลทันที, ค่า card ใช้กับบัตรใบถัดไป / saved", "ok");
+			if (data.endpoint_url) {
+			  var target = new URL("/settings", data.endpoint_url);
+			  if (target.origin !== window.location.origin) {
+			    if (!$("token-reveal").hidden) {
+			      $("endpoint-link").href = target.href;
+			      $("endpoint-moved").hidden = false;
+			    } else {
+			      window.location.assign(target.href);
+			    }
+			  }
+			}
           } catch (e) {
             setStatus("ติดต่อ agent ไม่ได้ / cannot reach the agent: " + e, "error");
           } finally {

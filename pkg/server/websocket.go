@@ -63,15 +63,34 @@ type subscriber struct {
 	mu sync.Mutex
 	// put registered clients.
 	clients map[*connection]bool
+	closed  bool
 }
 
-func (s *subscriber) register(c *connection) {
+func (s *subscriber) register(c *connection) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.closed {
+		_ = c.ws.Close()
+		return false
+	}
 	if s.clients == nil {
 		s.clients = make(map[*connection]bool)
 	}
 	s.clients[c] = true
+	return true
+}
+
+func (s *ws) closeConnections() {
+	s.mu.Lock()
+	s.closed = true
+	clients := make([]*connection, 0, len(s.clients))
+	for c := range s.clients {
+		clients = append(clients, c)
+	}
+	s.mu.Unlock()
+	for _, c := range clients {
+		_ = c.ws.Close()
+	}
 }
 
 func (s *subscriber) unregister(c *connection) {
@@ -113,7 +132,9 @@ func (s *ws) Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := &connection{ws: ws}
-	s.subscriber.register(c)
+	if !s.subscriber.register(c) {
+		return
+	}
 
 	defer ws.Close()
 	// ws.SetReadLimit(maxMessageSize)

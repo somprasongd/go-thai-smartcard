@@ -20,6 +20,13 @@ homepage: https://github.com/somprasongd/go-thai-smartcard
 license: MIT
 
 contents:
+  # Public endpoint metadata is separate from the private configuration.
+  - type: dir
+    dst: /var/lib/thai-smartcard
+    file_info:
+      owner: thai-smartcard
+      group: thai-smartcard
+      mode: 0755
   - src: ./bin/thai-smartcard-agent.linux-amd64
     dst: /usr/bin/thai-smartcard-agent
   - src: packaging/systemd/thai-smartcard-agent.service

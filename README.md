@@ -95,8 +95,12 @@ the agent reads and who may connect to it — the one place that changes them.
 What a save does:
 
 - `[card]` — applies on the next card insert, no restart.
-- `[server]` and `[tls]` — the listener restarts on the new values;
-  connected pages reconnect.
+- `[server]` and `[tls]` — changed ports are reserved before applying the save;
+  unchanged listeners are reused. A failed bind or endpoint publication keeps
+  the previous configuration and running listener. The agent process and card
+  read loop do not restart. Settings moves to the new URL after success; when
+  a one-time token is shown, copy it before using the link to the new page.
+  Reopen other browser tabs on an old port from the tray.
 - The file is rewritten from a template. **Comments added by hand are lost on
   the next save.** A hand edit takes effect after a restart.
 
@@ -624,8 +628,41 @@ read image / laser ID / NHSO switches are not in the menu — they are all one
 decision each with the token's one-time showing, which only exists on the
 [settings](#settings) page. It is a **thin client**
 of the agent's `/ws` — it never touches the config file and never starts the
-agent. When it cannot reach the agent it shows "agent is not running" with the
-command to start it for your platform, and keeps polling.
+agent. It discovers the running agent from public endpoint metadata and follows
+port changes every two seconds, even while its old socket is connected. The
+test and settings menu links follow the same URL. Unreachable agents,
+authentication refusals, and a disabled WebSocket transport have distinct messages.
+
+URL precedence is an explicit `--url`, a verified per-user endpoint, a verified
+service endpoint, then `http://127.0.0.1:9898` for older agents. For example:
+
+```sh
+thai-smartcard-tray --url http://127.0.0.1:9999
+```
+
+An explicit URL never follows discovery. The metadata contains only a local
+URL, process instance ID, schema version and generation; it contains no token,
+configuration or card data. The tray verifies the instance via `/api/info`.
+
+| Agent mode | Endpoint file |
+| :-- | :-- |
+| Linux service | `/var/lib/thai-smartcard/endpoint.json` |
+| macOS service | `/Library/Application Support/ThaiSmartcardEndpoint/endpoint.json` |
+| Windows service | `%ProgramData%\ThaiSmartcardEndpoint\endpoint.json` |
+| Foreground / dev | `<os.UserCacheDir()>/thai-smartcard/endpoint.json` |
+
+One publisher owns each slot through a process lock. Multiple foreground agents
+under one user need explicit tray URLs for the additional instances. If endpoint
+publication fails at startup, the agent continues with a warning and remains
+usable via an explicit URL. A port change through Settings is refused until the
+new endpoint can be published. Discovery is local only and does not bypass socket
+authentication: a network-exposed agent may still refuse the tray's unauthenticated
+socket. A listener bound only to a specific LAN IP has no discoverable loopback URL.
+
+Other browser tabs on the previous port cannot discover the new URL from the
+filesystem; reopen the test page from the tray. See the
+[endpoint discovery plan](docs/plan/tray-endpoint-discovery.md) for the save and
+rollback contract.
 
 The tray installer requires the agent's. The installer registers the tray to
 start at login; turn it off in the operating system's own list of login items —

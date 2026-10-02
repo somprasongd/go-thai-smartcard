@@ -52,7 +52,28 @@ type ServerConfig struct {
 	// after the response is written; the agent applies the card options and
 	// restarts the listener there. It may be nil.
 	OnChange func(config.Config)
+	// ApplySettings persists and applies one serialized transaction. When set,
+	// it owns the save instead of the legacy Save/OnChange path.
+	ApplySettings func(config.Config, string) (SettingsResult, error)
+	// InstanceID lets discovery reject a stale endpoint from another process.
+	InstanceID string
 }
+
+// SettingsResult delays retiring old connections until the response is flushed.
+type SettingsResult struct {
+	Version       string
+	EndpointURL   string
+	AfterResponse func()
+}
+
+// SettingsError preserves HTTP error classification across the apply callback.
+type SettingsError struct {
+	Status int
+	Err    error
+}
+
+func (e *SettingsError) Error() string { return e.Err.Error() }
+func (e *SettingsError) Unwrap() error { return e.Err }
 
 //go:embed web/index.html
 var indexPage []byte
@@ -79,17 +100,20 @@ func Serve(cfg ServerConfig) {
 // the socket guard, the settings routes behind their own guard, the bundled
 // pages, and the pump that fans every broadcast out to the transports. done
 // is closed when the generation stops, which ends the pump. The transports
-// themselves are never torn down: go-socket.io's Close is not safe to call
-// while Serve runs, and a generation lives until the process does.
+// connections are retired on done. The socket.io server object is retained:
+// closing its engine while a handshake enqueues a session can panic in the
+// third-party library, so retirement closes tracked clients instead.
 func newMux(cfg ServerConfig, done <-chan struct{}) *http.ServeMux {
 	guard := newSocketGuard(cfg.AllowedOrigins, cfg.Token, cfg.Listen)
 	settings := &settingsGuard{}
 	api := &settingsAPI{
-		path:       cfg.ConfigPath,
-		transports: cfg.Transports,
-		version:    cfg.Version,
-		tlsEnabled: cfg.TLS.Enabled,
-		onChange:   cfg.OnChange,
+		path:          cfg.ConfigPath,
+		transports:    cfg.Transports,
+		version:       cfg.Version,
+		tlsEnabled:    cfg.TLS.Enabled,
+		onChange:      cfg.OnChange,
+		applySettings: cfg.ApplySettings,
+		instanceID:    cfg.InstanceID,
 	}
 
 	var socketServer *socketIO
@@ -107,6 +131,17 @@ func newMux(cfg ServerConfig, done <-chan struct{}) *http.ServeMux {
 	var webSocket *ws
 	if hasTransport(cfg.Transports, config.TransportWS) {
 		webSocket = NewWS(cfg.Command)
+	}
+	if done != nil {
+		go func() {
+			<-done
+			if webSocket != nil {
+				webSocket.closeConnections()
+			}
+			if socketServer != nil {
+				socketServer.closeConnections()
+			}
+		}()
 	}
 
 	mux := http.NewServeMux()

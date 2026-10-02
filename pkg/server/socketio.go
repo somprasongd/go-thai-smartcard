@@ -2,8 +2,10 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
+	"sync"
 
 	socketio "github.com/googollee/go-socket.io"
 	"github.com/googollee/go-socket.io/engineio"
@@ -26,6 +28,9 @@ var allowOriginFunc = func(r *http.Request) bool {
 type socketIO struct {
 	*socketio.Server
 	command chan model.Command
+	mu      sync.Mutex
+	clients map[string]socketio.Conn
+	closed  bool
 }
 
 // NewSocketIO returns the socket.io transport. command may be nil, which
@@ -41,7 +46,7 @@ func NewSocketIO(command chan model.Command) *socketIO {
 			},
 		},
 	})
-	srv := &socketIO{Server: server, command: command}
+	srv := &socketIO{Server: server, command: command, clients: make(map[string]socketio.Conn)}
 	// The connection is unused: the agent has one set of options, so a
 	// command is not scoped to the client that sent it. A malformed frame is
 	// logged and dropped here, and the agent is never asked to answer it.
@@ -50,6 +55,12 @@ func NewSocketIO(command chan model.Command) *socketIO {
 	})
 
 	server.OnConnect("/", func(s socketio.Conn) error {
+		srv.mu.Lock()
+		defer srv.mu.Unlock()
+		if srv.closed {
+			return errors.New("listener retired")
+		}
+		srv.clients[s.ID()] = s
 		s.SetContext("")
 		log.Println("connected:", s.ID())
 		return nil
@@ -60,9 +71,25 @@ func NewSocketIO(command chan model.Command) *socketIO {
 	})
 
 	server.OnDisconnect("/", func(s socketio.Conn, reason string) {
+		srv.mu.Lock()
+		delete(srv.clients, s.ID())
+		srv.mu.Unlock()
 		log.Println("closed", reason)
 	})
 	return srv
+}
+
+func (s *socketIO) closeConnections() {
+	s.mu.Lock()
+	s.closed = true
+	clients := make([]socketio.Conn, 0, len(s.clients))
+	for _, c := range s.clients {
+		clients = append(clients, c)
+	}
+	s.mu.Unlock()
+	for _, c := range clients {
+		_ = c.Close()
+	}
 }
 
 func (s *socketIO) Broadcast(msg model.Message) {
