@@ -85,17 +85,28 @@ type TLS struct {
 	Hostnames []string `toml:"hostnames" json:"hostnames"`
 }
 
+// Logging bounds file history for services and explicit file logging.
+// Auto keeps foreground runs on stderr and managed services in a private file.
+type Logging struct {
+	Mode       string `toml:"mode" json:"mode"`
+	MaxSizeMB  int    `toml:"max_size_mb" json:"max_size_mb"`
+	MaxBackups int    `toml:"max_backups" json:"max_backups"`
+	MaxAgeDays int    `toml:"max_age_days" json:"max_age_days"`
+}
+
 // Config is the whole file.
 type Config struct {
-	Server Server `toml:"server" json:"server"`
-	Card   Card   `toml:"card" json:"card"`
-	TLS    TLS    `toml:"tls" json:"tls"`
+	Server  Server  `toml:"server" json:"server"`
+	Card    Card    `toml:"card" json:"card"`
+	TLS     TLS     `toml:"tls" json:"tls"`
+	Logging Logging `toml:"logging" json:"logging"`
 }
 
 // Default returns the configuration a fresh install runs with: loopback only,
 // WebSocket only, every origin allowed, face image and laser ID on, NHSO off.
 func Default() Config {
 	return Config{
+		Logging: Logging{Mode: "auto", MaxSizeMB: 10, MaxBackups: 3, MaxAgeDays: 7},
 		Server: Server{
 			Listen:         "127.0.0.1",
 			Port:           9898,
@@ -128,6 +139,23 @@ func Load(path string) (Config, error) {
 		return Config{}, err
 	}
 	return decode(raw, path)
+}
+
+// LoadVersion ties the stale-save token to the exact bytes the caller saw.
+func LoadVersion(path string) (Config, string, error) {
+	raw, err := atomicfile.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return Config{}, "", ErrNotFound
+	}
+	if err != nil {
+		return Config{}, "", err
+	}
+	cfg, err := decode(raw, path)
+	if err != nil {
+		return Config{}, "", err
+	}
+	sum := sha256.Sum256(raw)
+	return cfg, hex.EncodeToString(sum[:]), nil
 }
 
 func decode(raw []byte, path string) (Config, error) {
@@ -224,6 +252,23 @@ func validate(cfg Config) []problem {
 		p = append(p, problem{[]string{"tls", "key_file"}, "is empty while tls.enabled is true"})
 	}
 
+	switch cfg.Logging.Mode {
+	case "auto", "file", "console":
+	default:
+		p = append(p, problem{[]string{"logging", "mode"}, "must be auto, file or console"})
+	}
+	for _, limit := range []struct {
+		key             string
+		value, min, max int
+	}{
+		{"max_size_mb", cfg.Logging.MaxSizeMB, 1, 1024},
+		{"max_backups", cfg.Logging.MaxBackups, 0, 1000},
+		{"max_age_days", cfg.Logging.MaxAgeDays, 0, 36500},
+	} {
+		if limit.value < limit.min || limit.value > limit.max {
+			p = append(p, problem{[]string{"logging", limit.key}, fmt.Sprintf("%d is out of range (%d-%d)", limit.value, limit.min, limit.max)})
+		}
+	}
 	return p
 }
 
@@ -405,7 +450,12 @@ func render(w *bytes.Buffer, cfg Config) {
 	fmt.Fprintf(w, "mode = %q        # %q; \"auto\" (a local CA) comes later\n", cfg.TLS.Mode, tlsModeFiles)
 	fmt.Fprintf(w, "cert_file = %s\n", strconv.Quote(cfg.TLS.CertFile))
 	fmt.Fprintf(w, "key_file = %s\n", strconv.Quote(cfg.TLS.KeyFile))
-	fmt.Fprintf(w, "hostnames = [%s]\n", quoteList(cfg.TLS.Hostnames))
+	fmt.Fprintf(w, "hostnames = [%s]\n\n", quoteList(cfg.TLS.Hostnames))
+	fmt.Fprintln(w, "[logging]")
+	fmt.Fprintf(w, "mode = %q # auto: file for services, console in a terminal\n", cfg.Logging.Mode)
+	fmt.Fprintf(w, "max_size_mb = %d # MiB per file; active + max_backups files\n", cfg.Logging.MaxSizeMB)
+	fmt.Fprintf(w, "max_backups = %d # 0 keeps only the active file\n", cfg.Logging.MaxBackups)
+	fmt.Fprintf(w, "max_age_days = %d # 0 disables age expiry; count still applies\n", cfg.Logging.MaxAgeDays)
 }
 
 func quoteList(list []string) string {

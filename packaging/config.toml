@@ -22,3 +22,10 @@ mode = "files"            # "files"; "auto" comes later
 cert_file = ""
 key_file = ""
 hostnames = []
+
+
+[logging]
+mode = "auto"            # file for services; console for foreground runs
+max_size_mb = 10          # MiB; active + 3 backups = at most 40 MiB
+max_backups = 3
+max_age_days = 7          # expire backups; 0 disables age expiry

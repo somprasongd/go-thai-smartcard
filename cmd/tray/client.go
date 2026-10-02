@@ -16,6 +16,7 @@ import (
 
 type agentClient struct {
 	override    string
+	userPath    string
 	paths       []string
 	http        *http.Client
 	poll, retry time.Duration
@@ -23,11 +24,21 @@ type agentClient struct {
 
 func newAgentClient(override string) *agentClient {
 	paths := []string{}
+	userPath := ""
 	if path, err := discovery.UserPath(); err == nil {
 		paths = append(paths, path)
+		userPath = path
 	}
 	paths = append(paths, discovery.ServicePath())
-	return &agentClient{override: strings.TrimRight(override, "/"), paths: paths, http: &http.Client{Timeout: time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, poll: 2 * time.Second, retry: 5 * time.Second}
+	return &agentClient{userPath: userPath, override: strings.TrimRight(override, "/"), paths: paths, http: &http.Client{Timeout: time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, poll: 2 * time.Second, retry: 5 * time.Second}
+}
+
+func (c *agentClient) foregroundRunning(ctx context.Context) bool {
+	if c.userPath == "" {
+		return false
+	}
+	e, err := discovery.Read(c.userPath)
+	return err == nil && c.verified(ctx, e)
 }
 
 func (c *agentClient) verified(ctx context.Context, e discovery.Endpoint) bool {

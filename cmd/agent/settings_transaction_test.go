@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"github.com/somprasongd/go-thai-smartcard/pkg/model"
 	"github.com/somprasongd/go-thai-smartcard/pkg/server"
 	"github.com/somprasongd/go-thai-smartcard/pkg/smc"
+	"github.com/somprasongd/go-thai-smartcard/pkg/transport"
 )
 
 func vacantPort(t *testing.T) int {
@@ -43,7 +45,7 @@ func coordinatorFixture(t *testing.T) (*settingsCoordinator, string, chan model.
 	}
 	endpointPath := filepath.Join(dir, "runtime", "endpoint.json")
 	broadcast := make(chan model.Message)
-	c := &settingsCoordinator{path: path, current: cfg, store: smc.NewOptionsStore(cardOptions(cfg.Card)), control: make(chan smc.Control, 8)}
+	c := &settingsCoordinator{path: path, current: cfg, store: smc.NewOptionsStore(cardOptions(cfg.Card)), selection: smc.NewReaderStore(cfg.Card.Reader)}
 	c.openPublisher = func() (*discovery.Publisher, error) { return discovery.Open(endpointPath, "fixture", false) }
 	c.serverConfig = func(next config.Config) server.ServerConfig {
 		result := serverCfg(next, path, broadcast, nil, nil)
@@ -351,5 +353,47 @@ func TestSettingsAPIDistinguishesValidationConflictAndApplyFailure(t *testing.T)
 				t.Fatal("rollback error was hidden", string(raw))
 			}
 		})
+	}
+}
+
+func TestSettingsReaderSelectionSurvivesFullControlQueue(t *testing.T) {
+	c, _, _ := coordinatorFixture(t)
+	controls := make(chan smc.Control, 8)
+	for len(controls) < cap(controls) {
+		controls <- smc.Control{Kind: smc.ControlReportStatus}
+	}
+	next := c.current
+	next.Card.Reader = "second reader"
+	version, _ := config.Fingerprint(c.path)
+	result, err := c.apply(next, version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AfterResponse != nil {
+		result.AfterResponse()
+	}
+	if got := c.selection.Get(); got != next.Card.Reader {
+		t.Fatalf("persisted selection lost: %q", got)
+	}
+	loaded, _, err := config.LoadVersion(c.path)
+	if err != nil || loaded.Card.Reader != c.selection.Get() {
+		t.Fatal("disk/runtime selection differ")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	messages := make(chan model.Message, 32)
+	done := make(chan error, 1)
+	go func() {
+		done <- smc.NewSmartCardWith(transport.NewFakeTransport([]string{"second reader"}, nil)).StartDaemonWith(ctx, smc.DaemonConfig{Control: controls, Selection: c.selection, Broadcast: messages})
+	}()
+	defer func() { cancel(); <-done }()
+	select {
+	case msg := <-messages:
+		status, ok := msg.Payload.(model.Status)
+		if !ok || status.Selected != next.Card.Reader {
+			t.Fatal("daemon did not observe saved selection")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("daemon blocked behind full control queue")
 	}
 }

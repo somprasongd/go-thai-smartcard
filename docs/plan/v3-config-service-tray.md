@@ -37,7 +37,7 @@ management API, auto-update.
 | 9 | `server.allowed_origins` defaults to `["*"]` | Keeps the main use working out of the box: a web app on its own origin reading from the local agent. While it is `"*"` the settings page and the tray show a warning that any site the user visits can read the card |
 | 10 | The socket token is passed as `?token=` (browsers) or `Authorization: Bearer` (other clients), checked once before the upgrade (see [Socket token](#socket-token)) | One check for both transports, no unauthenticated state to manage |
 | 11 | `remote_control` is removed from `smc-options` and `smc-status` | It only reported whether `set-options`/`set-reader` were accepted; both are gone, so it would be a constant |
-| 12 | The agent is always a system service. Installers install and start it; the tray **never spawns** the agent. If it cannot reach the agent it says so and shows how to start it. `agent run` (foreground) is for development | A tray that can also spawn an agent creates a second run mode with its own config path, its own PC/SC permissions and a possible port clash, and doubles the test matrix. Ollama can spawn because it has no service mode on the desktop; this project must also serve kiosks and headless hosts |
+| 12 | The agent is always a system service. Installers install and start it; the tray **never spawns** the agent. On opening, the default tray asks the OS to start a confirmed stopped service once; it then polls endpoint readiness. Explicit URLs and live foreground agents suppress this automatic action (2026-10-02 extension). `agent run` (foreground) is for development | A tray that can also spawn an agent creates a second run mode with its own config path, its own PC/SC permissions and a possible port clash, and doubles the test matrix. Ollama can spawn because it has no service mode on the desktop; this project must also serve kiosks and headless hosts |
 | 13 | No `migrate` subcommand. The upgrade path is a changelog table mapping each `SMC_*` variable to its config key — including a row for `SMC_ALLOW_REMOTE_OPTIONS`, the one variable with no replacement, saying so rather than leaving a silent gap — plus a startup log that prints the equivalent TOML for any stale `SMC_*` it finds (see [Migration table](#migration-table)) | A service's environment lives in its unit file or plist, not in the shell an administrator would run `migrate` from, so the subcommand would not see the values in use. An administrator grepping a unit file against the table must find every variable accounted for |
 | 14 | A save from `/settings` or the tray refuses to overwrite a config file that changed on disk since it was **served**. The check is the file's fingerprint — the hash of its bytes — carried through the API: `GET /api/settings` returns it, `PUT /api/settings` echoes it back, and a mismatch is a `409` | Otherwise a hand edit made after the agent started is lost silently by the next save. The fingerprint rather than the mtime: mtime granularity depends on the filesystem, and nanoseconds since the epoch do not survive JavaScript's float64 numbers. See [Loading rules](#loading-rules) |
 | 15 | No "Start at login" toggle in the tray. The installer registers the tray at login and users turn it off in the OS's login items | The agent runs without the tray, so the toggle only affects the icon; it would cost three platform mechanisms and drift from the OS setting. See [Start at login](#start-at-login) |
@@ -182,6 +182,8 @@ names the agent actually reads (see
 - `ws` registers `/ws` (gorilla/websocket).
 - `socketio` registers `/socket.io/` (go-socket.io v1.6.2, which speaks the
   socket.io v2 protocol, so clients use the 2.x client as the README shows).
+  A local v1.6.2 fork fixes Engine.IO shutdown during handshake/listener
+  retirement; see `third_party/go-socket.io/PATCHES.md`.
 - An empty list is a config error.
 - A disabled transport is never constructed: no `/socket.io/` handler, no
   engine.io server, no goroutines.
@@ -324,15 +326,18 @@ thai-smartcard-agent run          # foreground
 The installer for each platform installs the service and starts it
 (`.deb`/`.rpm` post-install, the macOS `.pkg`, the Windows installer). The tray
 installer depends on the agent's, so installing the tray alone is not possible.
-The tray never starts the agent itself. When it cannot reach `/api` it shows
-"agent is not running" with the command to start it for that platform, and
-keeps polling. `agent run` in a terminal remains for development.
+The tray never spawns an agent process. It now asks the service manager to start
+a confirmed stopped service once when opened, then polls the endpoint. Explicit
+URLs and verified foreground agents suppress automatic startup. Unknown or
+transitioning states are left alone; no automatic macOS password fallback runs.
+See [the lifecycle and language extension](tray-lifecycle-language.md). `agent run` in a terminal remains for development.
 
 ### Tray
 
 - Menu: reader and card state, Open test page, Open settings, Expose to network,
   read image / laser ID / NHSO toggles, Quit. Quit closes the tray for the
-  current session only; the agent keeps running.
+  current session only; the agent keeps running. The 2026-10-02 extension adds
+  a separate confirmed Stop agent and quit action and system-language menus.
 - "Expose to network" is a checkable toggle only while a token exists
   (`token_set`); before that, choosing it opens `/settings`, where the token is
   generated and shown once (decision 16). Turning exposure **off** is always a
@@ -354,7 +359,7 @@ off in the operating system's own list of login items.
 | Platform | What the installer registers | Where a user turns it off |
 | :------- | :--------------------------- | :------------------------ |
 | Windows | a value under `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run` pointing at the tray — machine-wide, deliberately not `HKCU` (see below). A service cannot show a tray icon, so a login entry is the only way to get one | Settings > Apps > Startup, or Task Manager > Startup — these write a per-user `StartupApproved\Run` override, so each user can still turn the machine-wide entry off for themselves |
-| macOS | a login item or LaunchAgent for the tray's `.app` (`SMAppService` on recent macOS; to be checked against the minimum macOS version supported) | System Settings > General > Login Items |
+| macOS | a machine-wide LaunchAgent in `/Library/LaunchAgents/com.thaismartcard.tray.plist` with RunAtLoad and no KeepAlive | System Settings > General > Login Items |
 | Linux | `/etc/xdg/autostart/thai-smartcard-tray.desktop`, installed by the package | the desktop's startup applications settings, which write a per-user override in `~/.config/autostart/` |
 
 On Windows the entry is machine-wide on purpose. The installer runs elevated,

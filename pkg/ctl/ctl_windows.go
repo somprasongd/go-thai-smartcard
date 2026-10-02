@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 )
@@ -20,21 +21,27 @@ type scmanager struct{}
 // New returns the Windows control mechanism.
 func New() Manager { return scmanager{} }
 
-func openService() (*mgr.Service, func(), error) {
-	m, err := mgr.Connect()
+func openService(access uint32) (*mgr.Service, func(), error) {
+	h, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
 	if err != nil {
 		return nil, nil, fmt.Errorf("connect to the service manager: %w", err)
 	}
-	s, err := m.OpenService(serviceName)
+	name, err := windows.UTF16PtrFromString(serviceName)
 	if err != nil {
-		m.Disconnect()
-		return nil, nil, fmt.Errorf("open %s: %w (installed with the installer? the default ACL only lets administrators control it)", serviceName, err)
+		windows.CloseServiceHandle(h)
+		return nil, nil, err
 	}
-	return s, func() { m.Disconnect() }, nil
+	sh, err := windows.OpenService(h, name, access)
+	if err != nil {
+		windows.CloseServiceHandle(h)
+		return nil, nil, fmt.Errorf("open %s: %w", serviceName, err)
+	}
+	s := &mgr.Service{Name: serviceName, Handle: sh}
+	return s, func() { s.Close(); windows.CloseServiceHandle(h) }, nil
 }
 
 func (scmanager) State() (State, error) {
-	s, done, err := openService()
+	s, done, err := openService(windows.SERVICE_QUERY_STATUS)
 	if err != nil {
 		return StateUnknown, err
 	}
@@ -53,7 +60,7 @@ func (scmanager) State() (State, error) {
 }
 
 func (scmanager) Start() error {
-	s, done, err := openService()
+	s, done, err := openService(windows.SERVICE_START)
 	if err != nil {
 		return err
 	}
@@ -101,7 +108,7 @@ func stopOnce(s *mgr.Service) error {
 }
 
 func (scmanager) Stop() error {
-	s, done, err := openService()
+	s, done, err := openService(windows.SERVICE_QUERY_STATUS | windows.SERVICE_STOP)
 	if err != nil {
 		return err
 	}
@@ -110,7 +117,7 @@ func (scmanager) Stop() error {
 }
 
 func (scmanager) Restart() error {
-	s, done, err := openService()
+	s, done, err := openService(windows.SERVICE_QUERY_STATUS | windows.SERVICE_STOP | windows.SERVICE_START)
 	if err != nil {
 		return err
 	}

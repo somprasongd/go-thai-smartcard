@@ -47,5 +47,7 @@ package-rpm:
 # The tray needs cgo and builds natively per OS (fyne-io/systray), so it is
 # left out of the cross-compiling build-* targets. On Windows add
 # -ldflags "-H=windowsgui" so no console opens.
+# A direct go build may leave a binary named tray at the repository root.
+.PHONY: tray
 tray:
 	CGO_ENABLED=1 go build -o ./bin/thai-smartcard-tray ./cmd/tray

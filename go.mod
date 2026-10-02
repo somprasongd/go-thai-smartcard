@@ -18,3 +18,6 @@ require (
 	github.com/gofrs/uuid v4.0.0+incompatible // indirect
 	github.com/gomodule/redigo v1.8.4 // indirect
 )
+
+// Local Engine.IO shutdown fix; see third_party/go-socket.io/PATCHES.md.
+replace github.com/googollee/go-socket.io => ./third_party/go-socket.io

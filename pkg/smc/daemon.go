@@ -53,6 +53,8 @@ type DaemonConfig struct {
 	// name that is not attached falls back to watching everything on the
 	// first resolve, exactly like a select request naming a missing reader.
 	Reader string
+	// Selection overrides Reader and is checked between bounded transport waits.
+	Selection *ReaderStore
 }
 
 // errNoCard is the answer to a read request when nothing is inserted.
@@ -71,10 +73,13 @@ var errNoCard = errors.New("no card is inserted")
 // leave two calls writing the same reader state. Making the wait bounded is
 // what makes the loop steerable at all.
 type daemon struct {
-	card      *SmartCard
-	store     *OptionsStore
-	broadcast chan model.Message
-	control   <-chan Control
+	card            *SmartCard
+	store           *OptionsStore
+	broadcast       chan model.Message
+	control         <-chan Control
+	ctx             context.Context
+	readerSelection *ReaderStore
+	requested       string
 
 	readers  []string
 	selected string
@@ -104,13 +109,20 @@ func (s *SmartCard) StartDaemonWith(ctx context.Context, cfg DaemonConfig) error
 		store = NewOptionsStore(*defaultOptions())
 	}
 
+	reader := cfg.Reader
+	if cfg.Selection != nil {
+		reader = cfg.Selection.Get()
+	}
 	d := &daemon{
-		card:      s,
-		store:     store,
-		broadcast: cfg.Broadcast,
-		control:   cfg.Control,
-		selected:  cfg.Reader,
-		state:     model.StateWaiting,
+		card:            s,
+		store:           store,
+		broadcast:       cfg.Broadcast,
+		control:         cfg.Control,
+		selected:        reader,
+		requested:       reader,
+		readerSelection: cfg.Selection,
+		ctx:             ctx,
+		state:           model.StateWaiting,
 	}
 	return d.run(ctx)
 }
@@ -389,9 +401,14 @@ func (d *daemon) busyHold(ctx context.Context, reader string) busyWait {
 // Only safe from the loop itself and only when no transport call is in flight,
 // which is exactly what the bounded wait guarantees.
 func (d *daemon) drainControl() {
+	d.syncSelection()
 	for {
 		select {
-		case cmd := <-d.control:
+		case cmd, ok := <-d.control:
+			if !ok {
+				d.control = nil
+				return
+			}
 			d.applyControl(cmd)
 		default:
 			return
@@ -423,6 +440,7 @@ func (d *daemon) applyControl(cmd Control) {
 // awaitReaders waits until at least one reader is attached.
 func (d *daemon) awaitReaders(ctx context.Context) error {
 	for {
+		d.syncSelection()
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -435,7 +453,11 @@ func (d *daemon) awaitReaders(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case cmd := <-d.control:
+		case cmd, ok := <-d.control:
+			if !ok {
+				d.control = nil
+				continue
+			}
 			// A refresh while nothing is attached is a reasonable thing to
 			// ask for, so answer it rather than making the client wait.
 			if cmd.Kind == ControlRefreshReaders || cmd.Kind == ControlSelectReader {
@@ -558,7 +580,14 @@ func (d *daemon) publish(msg model.Message) {
 	if d.broadcast == nil {
 		return
 	}
-	d.broadcast <- msg
+	var done <-chan struct{}
+	if d.ctx != nil {
+		done = d.ctx.Done()
+	}
+	select {
+	case d.broadcast <- msg:
+	case <-done:
+	}
 }
 
 func sameStrings(a, b []string) bool {
@@ -580,4 +609,15 @@ func containsString(list []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func (d *daemon) syncSelection() {
+	if d.readerSelection == nil {
+		return
+	}
+	requested := d.readerSelection.Get()
+	if requested != d.requested {
+		d.requested = requested
+		d.applyControl(Control{Kind: ControlSelectReader, Reader: requested})
+	}
 }

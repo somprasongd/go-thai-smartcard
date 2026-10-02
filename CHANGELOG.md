@@ -7,7 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Separate agent readiness from card status in the tray, with a colored status
+  dot and the discovered endpoint/port in its tooltip. Replace the three service
+  commands with Restart and Pause/Resume; Pause stops the shared service.
+
+- Start a confirmed stopped agent service once when the default tray opens;
+  skip running/unknown services, explicit URLs and verified foreground agents.
+- Add a confirmed "Stop agent and quit" action alongside tray-only Quit.
+  macOS uses an in-app native dialog; Enter and Escape cancel by default.
+- Select one tray UI language from the user's system preference: Thai for Thai,
+  English for every other language, including status text and tooltips.
+
+- Bounded service logs with configurable file size, backup count and age in
+  `[logging]`. Defaults keep the active file plus three 10 MiB backups and
+  expire backups after seven days; daily rotation and idle cleanup also cover
+  quiet agents. Foreground runs keep stderr unless file mode is selected.
+
+
+### Fixed
+
+- Always rebuild `make tray` even when a binary named `tray` exists at the
+  repository root.
+
+- Persist reader selection independently of the command queue and retain it
+  when the card daemon retries; reopen PC/SC after startup or broker failure.
+- Wait for card-session cleanup before closing the transport on shutdown.
+- Retire socket.io accept loops and incomplete handshakes safely when settings
+  replace listeners (with a documented local Engine.IO patch).
+- Read settings and their optimistic-lock version from one file snapshot.
+- Serialize tray service-menu updates, use only granted Windows service rights
+  and release both SCM handles; allow the macOS manual-install fallback.
+- Preserve saved privacy and separate interface/data language preferences,
+  fix ID checksums ending in 1, clear enlarged portraits with card data, and
+  preserve "all readers" when refreshing the settings dropdown.
+- Record only after card insertion, use the card ATR's GET RESPONSE variant,
+  release sessions on capture failures, and save traces privately (0600).
+- Sign the staged macOS application and agent that the installer packages,
+  and declare PC/SC runtime dependencies in Linux packages.
+- Keep live service checks read-only and opt-in so unit tests cannot stop an
+  installed agent.
+
 ### Changed
+
+- Managed services now keep bounded private application log files beside their
+  config; macOS registrations discard raw launchd output instead of creating
+  unbounded stderr captures. Foreground auto mode keeps console logging.
 
 - The interface language moved to a ไทย/EN toggle in both pages' app bar, and
   both pages follow it — /settings now speaks one language instead of

@@ -18,7 +18,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/somprasongd/go-thai-smartcard/internal/discovery"
 	"github.com/somprasongd/go-thai-smartcard/pkg/config"
@@ -86,7 +85,20 @@ func runAgentMode(ctx context.Context, configPath string, managed bool) {
 	if configPath == "" {
 		configPath = config.DefaultPath()
 	}
-	cfg := loadConfig(configPath)
+	cfg, notice, err := loadConfig(configPath)
+	if err != nil {
+		reportStartupFailure(configPath, managed, err)
+		os.Exit(1)
+	}
+	stopLogging, err := startLogging(configPath, cfg.Logging, managed)
+	if err != nil {
+		reportStartupFailure(configPath, managed, err)
+		os.Exit(1)
+	}
+	defer stopLogging()
+	if notice != "" {
+		log.Print(notice)
+	}
 
 	for _, warning := range config.EnvWarnings(os.LookupEnv) {
 		log.Printf("WARNING: %s", warning)
@@ -105,12 +117,13 @@ func runAgentMode(ctx context.Context, configPath string, managed bool) {
 	// The daemon re-reads this store on every card insert, which is what lets
 	// a settings change apply to the next card without a restart.
 	store := smc.NewOptionsStore(cardOptions(cfg.Card))
+	selection := smc.NewReaderStore(cfg.Card.Reader)
 
 	instance, err := discovery.NewInstanceID()
 	if err != nil {
 		log.Fatalf("instance identity: %v", err)
 	}
-	runtimeSettings := &settingsCoordinator{path: configPath, current: cfg, store: store, control: control, ready: make(chan struct{})}
+	runtimeSettings := &settingsCoordinator{path: configPath, current: cfg, store: store, selection: selection, ready: make(chan struct{})}
 	runtimeSettings.openPublisher = func() (*discovery.Publisher, error) {
 		path := discovery.ServicePath()
 		if !managed {
@@ -151,50 +164,13 @@ func runAgentMode(ctx context.Context, configPath string, managed bool) {
 		store:     store,
 		broadcast: broadcast,
 		control:   control,
+		ctx:       ctx,
 	}
 
-	go controller.run(ctx, command)
-
-	smcReader := smc.NewSmartCard()
-	defer func() {
-		if err := smcReader.Close(); err != nil {
-			log.Printf("Error closing smart card transport: %v", err)
-		}
-	}()
-
-	go func() {
-		for {
-			err := smcReader.StartDaemonWith(ctx, smc.DaemonConfig{
-				Broadcast: broadcast,
-				Options:   store,
-				Control:   control,
-				Reader:    cfg.Card.Reader,
-			})
-			if ctx.Err() != nil {
-				return
-			}
-			if err == nil {
-				// The loop is not supposed to return on its own. Back off
-				// rather than spin, in case that ever changes.
-				log.Println("Daemon returned without an error, wait 2 seconds")
-				time.Sleep(2 * time.Second)
-				continue
-			}
-
-			log.Printf("Error occurred in daemon process (%v), wait 2 seconds to retry or press Ctrl+C to exit.", err.Error())
-
-			broadcast <- model.Message{
-				Event: "smc-error",
-				Payload: map[string]string{
-					"message": fmt.Sprintf("Error occurred in daemon process, %v.", err.Error()),
-				},
-			}
-
-			time.Sleep(2 * time.Second)
-		}
-	}()
-
-	<-ctx.Done()
+	controllerDone := make(chan struct{})
+	go func() { defer close(controllerDone); controller.run(ctx, command) }()
+	defer func() { <-controllerDone }()
+	runCardDaemon(ctx, smc.DaemonConfig{Broadcast: broadcast, Options: store, Control: control, Selection: selection}, smc.NewTransport, cardRetryInterval)
 	log.Println("Received shutdown signal, exiting.")
 }
 
@@ -227,25 +203,23 @@ func cardOptions(card config.Card) smc.Options {
 // and stops the agent on a file it cannot use. The strict loader is the point:
 // a service that starts on a typoed config while the operator believes the
 // typoed value applied is worse than one that does not start.
-func loadConfig(path string) config.Config {
+func loadConfig(path string) (config.Config, string, error) {
 	if path == "" {
 		path = config.DefaultPath()
 	}
 	cfg, err := config.Load(path)
 	switch {
 	case err == nil:
-		return cfg
+		return cfg, "", nil
 	case errors.Is(err, config.ErrNotFound):
 		cfg = config.Default()
 		if werr := config.Write(path, cfg); werr != nil {
-			log.Printf("no config file at %s and none could be written (%v); running on the defaults", path, werr)
+			return cfg, fmt.Sprintf("no config file at %s and none could be written (%v); running on the defaults", path, werr), nil
 		} else {
-			log.Printf("no config file at %s, wrote the defaults; hand edits need a restart", path)
+			return cfg, fmt.Sprintf("no config file at %s, wrote the defaults; hand edits need a restart", path), nil
 		}
-		return cfg
 	default:
-		log.Fatalf("%v", err)
-		return config.Config{}
+		return config.Config{}, "", err
 	}
 }
 
@@ -259,6 +233,7 @@ func loadConfig(path string) config.Config {
 // socket is read-only: options and the reader change through /settings or the
 // tray, never over the socket.
 type optionsController struct {
+	ctx       context.Context
 	store     *smc.OptionsStore
 	broadcast chan model.Message
 	// control reaches the read loop, which is the only thing that knows which
@@ -332,5 +307,12 @@ func (c *optionsController) send(msg model.Message) {
 	if c.broadcast == nil {
 		return
 	}
-	c.broadcast <- msg
+	var done <-chan struct{}
+	if c.ctx != nil {
+		done = c.ctx.Done()
+	}
+	select {
+	case c.broadcast <- msg:
+	case <-done:
+	}
 }

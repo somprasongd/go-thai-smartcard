@@ -13,6 +13,7 @@ it as a library if you would rather build your own.
 - [Settings](#settings)
 - [Connect a client](#connect-a-client)
 - [Configuration](#configuration)
+- [Logs and disk retention](#logs-and-disk-retention)
 - [Use as a library](#use-as-a-library)
 - [Architecture](#architecture)
 - [Reader requirements](#reader-requirements)
@@ -304,6 +305,12 @@ mode = "files"
 cert_file = ""            # both required when enabled
 key_file = ""
 hostnames = []
+
+[logging]
+mode = "auto"            # services use files; foreground uses stderr
+max_size_mb = 10          # MiB per file
+max_backups = 3
+max_age_days = 7
 ```
 
 The loading rules worth knowing:
@@ -320,6 +327,68 @@ The loading rules worth knowing:
   are lost on the next save.
 - A stale `SMC_*` environment variable is not read; the agent logs a warning
   with the TOML that replaces it, for pasting into the file.
+
+### Logs and disk retention
+
+The agent's default `[logging] mode = "auto"` uses private rotating files when
+running as a service, and stderr when running in a terminal. `mode = "file"`
+uses files in either launch mode; `mode = "console"` delegates retention to
+whoever captures stderr (for example journald or a container runtime).
+
+Files are beside the selected config: `<config directory>/logs/agent.log`.
+With the standard service config locations, that is:
+
+| Platform | Log directory |
+| --- | --- |
+| Linux | `/etc/thai-smartcard/logs/` |
+| macOS | `/Library/Application Support/ThaiSmartcard/logs/` |
+| Windows | `%ProgramData%\ThaiSmartcard\logs\` |
+| Development with `--config ./config.dev.toml` and file mode | `./logs/` (Git ignored) |
+
+Default limits are 10 **MiB** per file, at most three backups and a maximum
+backup age of seven days. The active file plus backups use at most 40 MiB of
+log content. Count and age both apply, so busy agents may retain less than
+seven days. Files also rotate at a UTC day change; maintenance checks each
+minute even while no new events arrive. Age is measured from the backup's
+last log write. Oversized existing backups are removed when limits shrink.
+An oversized individual write is split across files within the same limits.
+Files are 0600 (private DACL on Windows); newly created directories are 0700.
+One process lock prevents concurrent agents rotating the same log.
+
+Logging is set in `config.toml` and applied on restart. `/settings` saves retain
+this administrator setting; the page does not edit it. `max_size_mb` accepts
+1–1024; `max_backups` accepts 0–1000 (0 keeps only the active file);
+`max_age_days` accepts 0–36500 (0 disables age expiry while count still applies).
+For a 5 MiB file and two backups, for example:
+
+```toml
+[logging]
+mode = "auto"
+max_size_mb = 5
+max_backups = 2
+max_age_days = 3
+```
+
+That limits the main log content to 15 MiB. A service that cannot load its
+config records the failure in a separate `startup.log`, capped at 1 MiB with
+no backups, then exits with an error. File I/O failure cannot be made durable
+on an unwritable/full filesystem; startup fails and stderr is the fallback.
+No card trace is created by any logging mode.
+
+On macOS, new service registrations and package upgrades send launchd's raw
+stdout/stderr to `/dev/null`, so there is no second growing `.err.log` next to
+the rotating application log. An existing manual registration needs reinstalling
+with the new binary (`service uninstall`, `service install`, `service start`).
+Old `/var/log/thai-smartcard-agent.err.log` and `.out.log` files are outside this
+policy; after confirming the old registration has stopped using them, remove
+those files separately if no longer needed. A package upgrade changes the
+registration but preserves those historical files.
+
+To clear current application logs manually, stop the service, remove the files
+in its `logs` directory, and start it again; the agent recreates its files.
+Archived `agent.log.*.bak` files may be removed while the service is running.
+Do not delete the active log or `.lock` file during a run. Rotation and expiry
+are automatic; no scheduled deletion command is required.
 
 ### TLS
 
@@ -520,8 +589,9 @@ position, so an intentional APDU change means re-recording the trace.
 ## Run as a service
 
 The agent is a system service on every platform (Windows Service, systemd,
-launchd); a tray app, where one is installed, is only a viewer and never starts
-the agent. The `.deb`/`.rpm` do all of this for you — they install the service,
+launchd); a tray app, where one is installed, controls the installed service through
+the OS service manager and never spawns an agent process. The `.deb`/`.rpm` do
+all of this for you — they install the service,
 start it, and ship the polkit rule and the default config — and are built by
 the packaging workflow from a release tag. By hand:
 
@@ -541,8 +611,8 @@ thai-smartcard-agent service uninstall  # remove the registration; config.toml s
 
 On macOS and Linux the state-changing ones need `sudo`; on Windows run them
 from an **Administrator** terminal. Stopping the agent deliberately leaves the
-tray app alone, and quitting the tray never stops the agent — it is a service,
-not the tray's child.
+tray app alone. Plain **Quit tray** keeps the service running; the separate
+**Stop agent and quit…** menu offers a confirmed stop followed by closing the tray.
 
 - **Linux** — the packaged unit (`.deb`/`.rpm`) sets `After=pcscd.service`,
   which `service install` cannot express; prefer the package. The service is
@@ -631,8 +701,8 @@ and shortcuts to the test and settings pages. Exposure, the token, and the
 read image / laser ID / NHSO switches are not in the menu — they are all one
 decision each with the token's one-time showing, which only exists on the
 [settings](#settings) page. It is a **thin client**
-of the agent's `/ws` — it never touches the config file and never starts the
-agent. It discovers the running agent from public endpoint metadata and follows
+of the agent's `/ws` — it never touches the config file or spawns an agent
+process. It discovers the running agent from public endpoint metadata and follows
 port changes every two seconds, even while its old socket is connected. The
 test and settings menu links follow the same URL. Unreachable agents,
 authentication refusals, and a disabled WebSocket transport have distinct messages.
@@ -644,13 +714,26 @@ service endpoint, then `http://127.0.0.1:9898` for older agents. For example:
 thai-smartcard-tray --url http://127.0.0.1:9999
 ```
 
+When opened without `--url`, the tray checks the installed service once and
+starts it only if its state is **stopped**. A running or transitioning service
+is left to the OS; the tray connects when its endpoint becomes ready. A verified
+foreground/dev agent also suppresses automatic service startup. Opening an
+explicit `--url` never automatically starts a local service. Automatic startup
+never asks for an administrator password on macOS; manual service actions retain
+the password fallback. An intentional Stop is not undone by background polling.
+
+Menu labels, status messages and tooltips use the logged-in user's primary UI
+language: Thai for `th`, English for all other languages. The language is selected
+when the tray opens. This is independent of the browser page's language and card
+data language. See [tray lifecycle and language](docs/plan/tray-lifecycle-language.md).
+
 An explicit URL never follows discovery. The metadata contains only a local
 URL, process instance ID, schema version and generation; it contains no token,
 configuration or card data. The tray verifies the instance via `/api/info`.
 
-### Start / stop / restart from the tray
+### Restart / pause / resume from the tray
 
-The **Agent** submenu starts, stops and restarts the agent's system service on
+The **Agent service** submenu controls the agent's system service on
 every OS, without a terminal and without elevating the tray itself. Each OS
 authorises it through its own mechanism — the tray never spawns an agent
 process of its own; the service manager owns the single installed run:
@@ -661,8 +744,17 @@ process of its own; the service manager owns the single installed run:
 | Windows | the installer grants **Interactive Users** start/stop on this one service (`sc sdset`); the tray calls the Service Control Manager directly |
 | macOS | the `.pkg` installs a root helper (`com.thaismartcard.control`) that listens on a **local unix socket restricted to group `admin`** and forwards to the service; a manual install without the helper falls back to an administrator-password dialog per action |
 
-Stopping the agent stops card reading until it is started again, so **Stop
-asks for confirmation**; Start and Restart do not (Restart is what a
+The first tray row shows agent readiness independently of the reader/card row:
+green means the card WebSocket is connected; amber means the service is running
+but not connected, or authentication/WebSocket settings prevent receiving data;
+red means the service is stopped; gray means it is unavailable and the service
+state cannot be determined. Text accompanies every color. Hover over the status
+row to see the discovered URL and port. A connected foreground agent takes
+precedence over the installed service's status.
+
+The Agent service submenu has **Restart** and **Pause / Resume**. Pause stops
+the OS service and card reading for all clients, so it asks for confirmation;
+Resume starts the service again. Restart does not ask for confirmation (it is what a
 hand-edited `config.toml` needs — saves from
 [settings](#settings) apply live). Where the mechanism is missing — no
 polkit agent on a headless Linux, a manual Windows install without the
@@ -700,8 +792,16 @@ The tray installer requires the agent's. The installer registers the tray to
 start at login; turn it off in the operating system's own list of login items —
 Windows: Settings > Apps > Startup (or Task Manager > Startup), macOS: System
 Settings > General > Login Items, Linux: your desktop's startup applications
-settings. Quitting the tray closes it for the current session only; the agent
-keeps running.
+settings. **Quit tray** closes the icon for this session and keeps the shared
+agent available to other clients. **Stop agent and quit…** asks for confirmation,
+stops the service, and closes the tray only after a stopped state is confirmed;
+an error keeps the tray open. Reopening the default tray starts a stopped service.
+
+The service is registered to start at boot (Windows automatic service, macOS
+LaunchDaemon with RunAtLoad, Linux enabled systemd unit); the tray starts at user
+login. There is no required startup order or fixed delay: the OS owns one named
+service and the tray follows endpoint readiness. A tray is not available before
+an interactive login. Closing the tray does not unregister either startup entry.
 
 On GNOME the tray needs the AppIndicator extension;
 without it the tray sends a notification pointing at `/settings` instead of

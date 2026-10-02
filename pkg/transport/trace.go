@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/somprasongd/go-thai-smartcard/internal/atomicfile"
 )
 
 // Exchange is a single command/response APDU pair, stored as hex so that a
@@ -44,7 +46,7 @@ func LoadTrace(path string) (*Trace, error) {
 // Save writes the trace to disk, creating parent directories as needed.
 func (t *Trace) Save(path string) error {
 	if dir := filepath.Dir(path); dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("create trace dir: %w", err)
 		}
 	}
@@ -53,7 +55,7 @@ func (t *Trace) Save(path string) error {
 		return fmt.Errorf("encode trace: %w", err)
 	}
 	b = append(b, '\n')
-	if err := os.WriteFile(path, b, 0o644); err != nil {
+	if err := atomicfile.Write(path, b, 0o600); err != nil {
 		return fmt.Errorf("write trace: %w", err)
 	}
 	return nil
@@ -71,7 +73,7 @@ func (t *Trace) ATR() ([]byte, error) {
 // RecordingCard wraps a Card and appends every successful exchange to a Trace.
 //
 // Use it to capture ground truth from a real card: run the reader through the
-// same code path a real session takes, then commit the resulting trace.
+// same code path a real session takes, keep the resulting trace private and outside Git.
 type RecordingCard struct {
 	Card
 	trace *Trace

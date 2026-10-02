@@ -504,3 +504,27 @@ func mustURL(t *testing.T, raw string) *neturl.URL {
 	}
 	return u
 }
+
+func TestSettingsSavePreservesFileLoggingPolicy(t *testing.T) {
+	srv, path := newSettingsServer(t, "[logging]\nmode='file'\nmax_size_mb=2\nmax_backups=1\nmax_age_days=4\n")
+	current, version, err := config.LoadVersion(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The bundled page and older clients send server/card/TLS only.
+	raw, _ := json.Marshal(map[string]any{"config": served(current), "version": version})
+	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/api/settings", bytes.NewReader(raw))
+	req.Header.Set(settingsHeader, "1")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("save returned %d", res.StatusCode)
+	}
+	next, err := config.Load(path)
+	if err != nil || next.Logging != current.Logging {
+		t.Fatal("settings erased the logging policy", err)
+	}
+}

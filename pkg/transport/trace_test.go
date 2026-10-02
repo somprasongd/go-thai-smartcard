@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/somprasongd/go-thai-smartcard/pkg/transport"
@@ -211,5 +212,35 @@ func TestFakeTransportHonoursCancelledContext(t *testing.T) {
 	}
 	if !tr.Closed() {
 		t.Error("transport should report as closed")
+	}
+}
+
+func TestTraceSaveUsesPrivatePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows privacy is enforced by ACL, not mode bits")
+	}
+	path := filepath.Join(t.TempDir(), "private", "trace.json")
+	trace := &transport.Trace{Name: "synthetic", Atr: "3b67"}
+	if err := trace.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range []string{filepath.Dir(path), path} {
+		info, err := os.Stat(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm()&0077 != 0 {
+			t.Fatalf("%s readable by other users", file)
+		}
+	}
+	if err := os.Chmod(path, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := trace.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	info, _ := os.Stat(path)
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("replacement permissions: %o", info.Mode().Perm())
 	}
 }

@@ -637,3 +637,47 @@ func TestDaemonReadsACardOnceTheHolderReleasesIt(t *testing.T) {
 		return ok && status.State == model.StateCardPresent
 	})
 }
+
+func TestDaemonObservesDurableReaderSelection(t *testing.T) {
+	tr := newScriptedTransport(time.Millisecond, "first", "second")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	selected := smc.NewReaderStore("first")
+	out := make(chan model.Message, 32)
+	done := make(chan error, 1)
+	go func() {
+		done <- smc.NewSmartCardWith(tr).StartDaemonWith(ctx, smc.DaemonConfig{Selection: selected, Broadcast: out})
+	}()
+	selected.Set("second")
+	deadline := time.After(time.Second)
+	for {
+		select {
+		case msg := <-out:
+			if msg.Event == "smc-status" {
+				data := msg.Payload.(model.Status)
+				if data.Selected == "second" {
+					cancel()
+					<-done
+					return
+				}
+			}
+		case <-deadline:
+			t.Fatal("durable reader selection not observed")
+		}
+	}
+}
+
+func TestDaemonCancellationUnblocksBroadcast(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	out := make(chan model.Message)
+	done := make(chan error, 1)
+	go func() {
+		done <- smc.NewSmartCardWith(newScriptedTransport(time.Millisecond, "reader")).StartDaemonWith(ctx, smc.DaemonConfig{Broadcast: out})
+	}()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("broadcast blocked shutdown")
+	}
+}
