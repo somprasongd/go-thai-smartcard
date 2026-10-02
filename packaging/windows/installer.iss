@@ -22,7 +22,7 @@ AppPublisher=somprasongd
 DefaultDirName={autopf}\ThaiSmartcard
 DefaultGroupName={#AppName}
 UninstallDisplayIcon={app}\{#TrayExeName}
-OutputDir=..
+OutputDir=..\..
 OutputBaseFilename=thai-smartcard-setup-{#AppVersion}
 Compression=lzma
 SolidCompression=yes
@@ -34,8 +34,8 @@ WizardStyle=modern
 Name: "traylogin"; Description: "เริ่ม tray ตอนล็อกอิน (ทุกผู้ใช้) / Start the tray at login (all users)"; GroupDescription: "Tray:"; Flags: checkedonce
 
 [Files]
-Source: "..\bin\thai-smartcard-agent.windows-amd64.exe"; DestDir: "{app}"; DestName: "{#AppExeName}"; Flags: ignoreversion
-Source: "..\bin\thai-smartcard-tray.exe"; DestDir: "{app}"; DestName: "{#TrayExeName}"; Flags: ignoreversion
+Source: "..\..\bin\thai-smartcard-agent.windows-amd64.exe"; DestDir: "{app}"; DestName: "{#AppExeName}"; Flags: ignoreversion
+Source: "..\..\bin\thai-smartcard-tray.exe"; DestDir: "{app}"; DestName: "{#TrayExeName}"; Flags: ignoreversion
 
 [Run]
 ; The installer installs and starts the agent service (decision 12).
