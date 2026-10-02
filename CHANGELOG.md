@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The Windows uninstaller tried to `net stop` a tray service that does not
+  exist; it now force-closes the tray process.
+
+### Changed
+
+- `service status` prints a readable state (`running` / `stopped`) instead of
+  the underlying library's raw number.
+
 ## [4.0.1] - 2026-10-02
 
 A tray-only UI change: the icon stands alone in the macOS menu bar, and the
