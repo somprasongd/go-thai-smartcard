@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The address parser dropped the soi from every address that carried both a
+  moo and a soi: it looked for both labels in the moo's slot, and the soi then
+  leaked into the street. The card gives the soi a slot of its own; slots are
+  now identified by their label rather than by their position, and the trailing
+  padding of the raw field no longer reaches the parsed values
+  ([#7](https://github.com/somprasongd/go-thai-smartcard/issues/7)).
 - `/settings` and `/api/*` were not served when the agent was started without
   `--config`: the resolved config path never reached the listener, so the
   routes were not registered and `/settings` fell through to the bundled test
