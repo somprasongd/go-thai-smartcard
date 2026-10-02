@@ -34,7 +34,7 @@ commands; `build-wasm` targets `cmd/agent`.
 - `pkg/apdu` — command APDU constants
 - `pkg/model` — response types and raw-field parsers
 - `pkg/server` — socket.io, WebSocket and the bundled pages (`pkg/server/web`, embedded)
-- `pkg/util` — `GetResponseCommand` and the small byte helpers (hex decode, base64)
+- `pkg/util` — `GetResponseCommand` and `Base64Encode`
 - `packaging/` — the nfpm config, systemd unit, polkit rule and install scripts the packages ship
 - `docs/plan/` — written plans for larger changes, kept as the record of what was decided
 - `testdata/` — trace files, **gitignored**

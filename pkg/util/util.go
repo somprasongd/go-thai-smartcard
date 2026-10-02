@@ -1,18 +1,6 @@
 package util
 
-import (
-	"encoding/base64"
-	"encoding/hex"
-)
-
-func DecodeHex(input []byte) ([]byte, error) {
-	db := make([]byte, hex.DecodedLen(len(input)))
-	_, err := hex.Decode(db, input)
-	if err != nil {
-		return nil, err
-	}
-	return db, nil
-}
+import "encoding/base64"
 
 func Base64Encode(input []byte) []byte {
 	eb := make([]byte, base64.StdEncoding.EncodedLen(len(input)))

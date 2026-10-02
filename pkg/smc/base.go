@@ -30,6 +30,16 @@ var getResponseDefaultPrefix = []byte{0x00, 0xc0, 0x00, 0x00}
 // rather than the last byte of the command, matching the Java implementation.
 const laserGetResponseLen = 0x10
 
+// statusMoreData is SW1 of 61 xx, the card reporting that xx bytes are ready
+// for GET RESPONSE. It is the only first response a field command may carry:
+// the card answered 61 xx on all 41 first responses of the session captured
+// with cmd/record, and never anything else.
+const statusMoreData = 0x61
+
+// statusCommandOK is SW1 of 90 00, the status word that ends every successful
+// GET RESPONSE.
+const statusCommandOK = 0x90
+
 // reader holds a connected card together with the GET RESPONSE variant
 // selected for it. Every applet reader in this package embeds it.
 type reader struct {
@@ -58,7 +68,11 @@ func (r *reader) readData(cmd []byte) (string, error) {
 	if len(cmd) == 0 {
 		return "", errors.New("readData: empty apdu")
 	}
-	return r.read(cmd, cmd[len(cmd)-1], false, false)
+	payload, err := r.payload(cmd, cmd[len(cmd)-1])
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(payload)), nil
 }
 
 // readDataThai reads a TIS-620 encoded field and converts it to UTF-8.
@@ -66,7 +80,11 @@ func (r *reader) readDataThai(cmd []byte) (string, error) {
 	if len(cmd) == 0 {
 		return "", errors.New("readDataThai: empty apdu")
 	}
-	return r.read(cmd, cmd[len(cmd)-1], true, false)
+	payload, err := r.payload(cmd, cmd[len(cmd)-1])
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(tis620.ToUTF8(payload))), nil
 }
 
 // readLaserData reads the laser code, which has its own GET RESPONSE length
@@ -75,38 +93,71 @@ func (r *reader) readLaserData(cmd []byte) (string, error) {
 	if len(cmd) == 0 {
 		return "", errors.New("readLaserData: empty apdu")
 	}
-	return r.read(cmd, laserGetResponseLen, false, true)
-}
-
-// read performs the two step exchange the applet uses: request the field, then
-// fetch the payload with GET RESPONSE.
-func (r *reader) read(cmd []byte, getResponseLen byte, isThai, isLaser bool) (string, error) {
-	if err := r.status(); err != nil {
+	payload, err := r.payload(cmd, laserGetResponseLen)
+	if err != nil {
 		return "", err
 	}
-	if _, err := r.card.Transmit(cmd); err != nil {
-		return "", err
+	return strings.TrimSpace(string(bytes.Trim(payload, "\x00"))), nil
+}
+
+// payload performs the two step exchange the applet uses — request the field,
+// then fetch it with GET RESPONSE — and returns the bytes the card sent, minus
+// the status word.
+//
+// The status words are the only thing it interprets, and strictly: the field
+// command must answer 61 xx — the card reporting xx bytes ready for GET
+// RESPONSE — and the GET RESPONSE must end in 90 00. A field command answered
+// with anything else fails the field instead of being ignored and getting a
+// GET RESPONSE sent at it, which used to surface the failure as a parse error
+// on whatever the card said next, if it surfaced at all.
+//
+// The payload bytes are still interpreted by nobody here. The text readers
+// above trim what a human would call padding, which is right for a fixed
+// width text field and wrong for anything binary: a 0x20 is an ordinary data
+// byte in a JPEG, and trimming it misaligns every byte that follows. A payload
+// that happens to be all whitespace would even come back empty, which the face
+// image reader takes as end of image.
+func (r *reader) payload(cmd []byte, getResponseLen byte) ([]byte, error) {
+	if err := r.status(); err != nil {
+		return nil, err
+	}
+
+	first, err := r.card.Transmit(cmd)
+	if err != nil {
+		return nil, err
+	}
+	sw, ok := trailingStatusWord(first)
+	if !ok {
+		return nil, fmt.Errorf("read: field command response too short (%d bytes, want a status word)", len(first))
+	}
+	if sw[0] != statusMoreData {
+		return nil, fmt.Errorf("read: unexpected status % x from the field command, want 61 xx", sw)
 	}
 
 	rsp, err := r.card.Transmit(r.getResponseAPDU(getResponseLen))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	// A successful response always carries SW1/SW2. A shorter one is a
 	// protocol violation, not an empty field, and used to panic here.
-	if len(rsp) < statusWordLength {
-		return "", fmt.Errorf("read: response too short (%d bytes, want at least %d)", len(rsp), statusWordLength)
+	sw, ok = trailingStatusWord(rsp)
+	if !ok {
+		return nil, fmt.Errorf("read: response too short (%d bytes, want at least %d)", len(rsp), statusWordLength)
 	}
-	payload := rsp[:len(rsp)-statusWordLength]
+	if sw[0] != statusCommandOK || sw[1] != 0x00 {
+		return nil, fmt.Errorf("read: unexpected status % x from GET RESPONSE, want 90 00", sw)
+	}
+	return rsp[:len(rsp)-statusWordLength], nil
+}
 
-	if isThai {
-		payload = tis620.ToUTF8(payload)
+// trailingStatusWord returns the final SW1/SW2 of a response, or false when
+// the response is too short to carry one.
+func trailingStatusWord(rsp []byte) ([]byte, bool) {
+	if len(rsp) < statusWordLength {
+		return nil, false
 	}
-	if isLaser {
-		payload = bytes.Trim(payload, "\x00")
-	}
-	return strings.TrimSpace(string(payload)), nil
+	return rsp[len(rsp)-statusWordLength:], true
 }
 
 // getResponseAPDU builds 00 C0 00 <p2> <le> into a fresh slice. Copying rather

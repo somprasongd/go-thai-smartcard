@@ -1,7 +1,7 @@
 package smc
 
 import (
-	"encoding/hex"
+	"bytes"
 	"fmt"
 	"log"
 
@@ -101,27 +101,35 @@ func (r *PersonalReader) ReadAddress() string {
 	return model.NewAddressFromRaw(raw).Address
 }
 
+// jpegEOI is the end-of-image marker the portrait terminates with.
+//
+// The card pads the last chunk out to the chunk width, so the payload runs
+// past the end of the image: the recorded trace returns 5100 bytes for a
+// 4960 byte portrait, the remaining 140 being 0x20. Cutting at the marker
+// removes that padding without having to guess which byte the card pads with
+// — the laser code, for one, is padded with NUL rather than spaces — and it
+// also ends the image early on a card that used fewer chunks than were asked
+// for.
+var jpegEOI = []byte{0xff, 0xd9}
+
 // ReadFaceImage reads the portrait in chunks and returns it as base64.
 func (r *PersonalReader) ReadFaceImage() string {
-	image := ""
+	var image []byte
 	for _, v := range apdu.PersonalCMD.FaceImage {
-		raw, err := r.readData(v)
+		chunk, err := r.payload(v, v[len(v)-1])
 		if err != nil {
 			log.Println("Error Read Face Image:", err)
 			return ""
 		}
-		if len(raw) == 0 {
+		if len(chunk) == 0 {
 			break
 		}
-		image += hex.EncodeToString([]byte(raw))
+		image = append(image, chunk...)
 	}
-
-	db, err := util.DecodeHex([]byte(image))
-	if err != nil {
-		log.Printf("failed to decode hex: %s", err)
-		return ""
+	if end := bytes.Index(image, jpegEOI); end >= 0 {
+		image = image[:end+len(jpegEOI)]
 	}
-	return string(util.Base64Encode(db))
+	return string(util.Base64Encode(image))
 }
 
 // readField reads one field and logs, rather than propagating, the error: a

@@ -1,9 +1,12 @@
 package smc_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,11 +23,14 @@ import (
 // returns and what the library decodes. Every value is made up: nothing here
 // comes from a real card, and no real card data belongs in the repository.
 const (
-	payloadNameThai   = "b9d2c223cac1aad2c22323e3a8b4d5"       // นาย#สมชาย##ใจดี
-	payloadNameEng    = "4d5223534f4d4348414923234a4149444545" // MR#SOMCHAI##JAIDEE
-	payloadIssuer     = "a1c3c1a1d2c3bbc5cdb4bbc3d0aad2aab9"   // กรมการปลอดประชาชน
-	payloadAddress    = "3132332f343523cbc1d9e8b7d5e8203423b6b9b9cad5cbc5d2a720313223b5d3bac5a4c5cda7b5d2cbc5d1a723cdd3e0c0cda4c5cda7b5d2cbc5d1a723a8d1a7cbc7d1b4a1c3d8a7e0b7bec1cbd2b9a4c3"
-	payloadLaser      = "4C363030313530303030303030303030303030303031383230303135353130303030"
+	payloadNameThai = "b9d2c223cac1aad2c22323e3a8b4d5"       // นาย#สมชาย##ใจดี
+	payloadNameEng  = "4d5223534f4d4348414923234a4149444545" // MR#SOMCHAI##JAIDEE
+	payloadIssuer   = "a1c3c1a1d2c3bbc5cdb4bbc3d0aad2aab9"   // กรมการปลอดประชาชน
+	payloadAddress  = "3132332f343523cbc1d9e8b7d5e8203423b6b9b9cad5cbc5d2a720313223b5d3bac5a4c5cda7b5d2cbc5d1a723cdd3e0c0cda4c5cda7b5d2cbc5d1a723a8d1a7cbc7d1b4a1c3d8a7e0b7bec1cbd2b9a4c3"
+	// payloadLaser is 0x10 bytes: two letters, ten digits and four NULs of
+	// padding, the shape the real card sends for the laser GET RESPONSE and
+	// readLaserData trims.
+	payloadLaser      = "41423132333435363738393000000000"                             // AB1234567890 + NUL padding
 	payloadNhsoMain   = "333020bad2b7"                                                 // 30 บาท
 	payloadNhsoSub    = "bbc3d0a1d1b9cad1a7a4c1"                                       // ประกันสังคม
 	payloadNhsoMainH  = "e2c3a7bec2d2bad2c5cad4c3d4c3d1a1c9ec"                         // โรงพยาบาลสิริรักษ์
@@ -87,16 +93,20 @@ func (b *traceBuilder) selectApplet(cmd []byte) {
 // readField records a command and the GET RESPONSE that fetches its payload.
 func (b *traceBuilder) readField(cmd []byte, payloadHex string) {
 	payload := mustDecodeHex(payloadHex)
-	// 6C xx means the applet has xx bytes ready for GET RESPONSE.
-	b.exchange(cmd, []byte{0x6c, byte(len(payload))})
+	// 61 xx is the card reporting that xx bytes are ready for GET RESPONSE.
+	// That is what a real card answers — the capture holds 41 first responses
+	// and every one of them is 61 xx; no 6C ever appears as a status word.
+	b.exchange(cmd, []byte{0x61, byte(len(payload))})
 	b.exchange(getResponse(cmd), append(append([]byte(nil), payload...), 0x90, 0x00))
 }
 
 // readLaser records the laser exchange, which uses length 0x10 rather than the
-// last byte of the command.
+// last byte of the command. The payload is what the card sends back for that
+// length: exactly 0x10 bytes, so the first response reports 61 10 as the
+// capture shows.
 func (b *traceBuilder) readLaser(cmd []byte, payloadHex string) {
 	payload := mustDecodeHex(payloadHex)
-	b.exchange(cmd, []byte{0x6c, byte(len(payload))})
+	b.exchange(cmd, []byte{0x61, byte(len(payload))})
 	b.exchange(mustDecodeHex(getResponsePrefix+"10"), append(append([]byte(nil), payload...), 0x90, 0x00))
 }
 
@@ -281,6 +291,97 @@ func TestReadPersonalWithFaceImage(t *testing.T) {
 	}
 }
 
+// imageChunksWhitespace carries a portrait that puts whitespace exactly where
+// the old text read path trimmed it: one chunk ends on a 0x20, the next starts
+// on one, and the one after is nothing but 0x20. The image ends at FFD9, which
+// is followed by the padding the card adds to fill the chunk, and then by a
+// chunk the card never really sent.
+//
+// Under strings.TrimSpace the trailing byte of the first chunk and the leading
+// byte of the second are eaten, which misaligns everything after them, and the
+// all-space chunk comes back empty, which ReadFaceImage takes as the end of the
+// image. The result no longer decodes.
+var imageChunksWhitespace = []string{
+	"ffd8aabb",   // start of image
+	"ccdd20",     // ends on a space that is data
+	"2020ee",     // starts on a space that is data
+	"202020",     // entirely spaces, and still inside the image
+	"1122ffd9",   // end of image
+	"20202020",   // padding the card adds to fill out the chunk
+	"9999999999", // past the end of the image
+}
+
+// imageWhitespace is the portrait those chunks carry: everything up to and
+// including FFD9, with the padding and the chunk past it left out.
+const imageWhitespace = "ffd8aabbccdd202020ee2020201122ffd9"
+
+// faceImageTrace emits a personal read whose face image chunks are the given
+// ones. Any chunk beyond the list returns a single 00, standing in for a card
+// that has already finished sending and pads the remaining chunks.
+func faceImageTrace(chunks ...string) *transport.Trace {
+	b := newTraceBuilder()
+	b.selectApplet(apdu.PersonalCMD.Select)
+	b.readField(apdu.PersonalCMD.Cid, payloadCID)
+	b.readField(apdu.PersonalCMD.NameThai, payloadNameThai)
+	b.readField(apdu.PersonalCMD.NameEng, payloadNameEng)
+	b.readField(apdu.PersonalCMD.Dob, payloadDob)
+	b.readField(apdu.PersonalCMD.Gender, payloadGender)
+	b.readField(apdu.PersonalCMD.CardIssuer, payloadIssuer)
+	b.readField(apdu.PersonalCMD.IssueDate, payloadIssueDate)
+	b.readField(apdu.PersonalCMD.ExpireDate, payloadExpireDate)
+	b.readField(apdu.PersonalCMD.Address, payloadAddress)
+	for i, cmd := range apdu.PersonalCMD.FaceImage {
+		chunk := "00"
+		if i < len(chunks) {
+			chunk = chunks[i]
+		}
+		b.readField(cmd, chunk)
+	}
+	return b.trace
+}
+
+// TestReadFaceImageKeepsWhitespaceBytes is the regression test for the portrait
+// losing bytes: every 0x20 that is part of the image has to survive, and only
+// the padding after the end of image may be dropped.
+func TestReadFaceImageKeepsWhitespaceBytes(t *testing.T) {
+	reader, _ := newTestReader(t, faceImageTrace(imageChunksWhitespace...))
+
+	data, err := reader.Read(nil, &smc.Options{ShowFaceImage: true})
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	got, err := base64.StdEncoding.DecodeString(data.Personal.FaceImage)
+	if err != nil {
+		t.Fatalf("FaceImage is not valid base64: %v", err)
+	}
+	want := mustDecodeHex(imageWhitespace)
+	if !bytes.Equal(got, want) {
+		t.Errorf("FaceImage = %x\n want  %x", got, want)
+	}
+}
+
+// TestReadFaceImageStopsAtEndOfImage covers a card that sends fewer chunks than
+// the library asks for. The image ends partway through, and the chunk after it
+// carries data as well as padding: neither may reach the result. A read that
+// merely trimmed trailing whitespace would swallow the padding, keep the data
+// and carry on, so the two are told apart by that byte.
+func TestReadFaceImageStopsAtEndOfImage(t *testing.T) {
+	reader, _ := newTestReader(t, faceImageTrace("ffd8aabb", "ccddffd9", "ee20"))
+
+	data, err := reader.Read(nil, &smc.Options{ShowFaceImage: true})
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	got, err := base64.StdEncoding.DecodeString(data.Personal.FaceImage)
+	if err != nil {
+		t.Fatalf("FaceImage is not valid base64: %v", err)
+	}
+	want := mustDecodeHex("ffd8aabbccddffd9")
+	if !bytes.Equal(got, want) {
+		t.Errorf("FaceImage = %x, want %x", got, want)
+	}
+}
+
 func TestReadLaser(t *testing.T) {
 	reader, _ := newTestReader(t, laserTrace())
 
@@ -291,7 +392,7 @@ func TestReadLaser(t *testing.T) {
 	if data.Card == nil {
 		t.Fatal("Card should be present when ShowLaserData is on")
 	}
-	if data.Card.LaserId != "L600150000000000000001820015510000" {
+	if data.Card.LaserId != "AB1234567890" {
 		t.Errorf("LaserId = %q", data.Card.LaserId)
 	}
 	if data.Nhso != nil {
@@ -361,9 +462,9 @@ func TestReadDefaultOptions(t *testing.T) {
 func TestReadShortResponseIsSurvivable(t *testing.T) {
 	b := newTraceBuilder()
 	b.selectApplet(apdu.PersonalCMD.Select)
-	// 6C says a payload is ready, but GET RESPONSE returns a single byte:
+	// 61 says a payload is ready, but GET RESPONSE returns a single byte:
 	// shorter than the two byte status word.
-	b.exchange(apdu.PersonalCMD.Cid, []byte{0x6c, 0x0d})
+	b.exchange(apdu.PersonalCMD.Cid, []byte{0x61, 0x0d})
 	b.exchange(getResponse(apdu.PersonalCMD.Cid), []byte{0x00})
 	b.readField(apdu.PersonalCMD.NameThai, payloadNameThai)
 	b.readField(apdu.PersonalCMD.NameEng, payloadNameEng)
@@ -423,8 +524,8 @@ func (c *capturingCard) Transmit(cmd []byte) ([]byte, error) {
 		// Even exchanges are GET RESPONSE: a two byte payload plus 9000.
 		return []byte{0x41, 0x42, 0x90, 0x00}, nil
 	}
-	// Odd exchanges are the field command: 6C 02 means two bytes are ready.
-	return []byte{0x6c, 0x02}, nil
+	// Odd exchanges are the field command: 61 02 means two bytes are ready.
+	return []byte{0x61, 0x02}, nil
 }
 
 func (c *capturingCard) Disconnect() error { return nil }
@@ -489,6 +590,78 @@ func TestGetResponseApduKeepsP2AndLe(t *testing.T) {
 				t.Errorf("GET RESPONSE = %s, want %s", got, tt.wantGet)
 			}
 		})
+	}
+}
+
+// cannedCard answers each Transmit with the next response from a fixed
+// script, so a test can model a card that misbehaves in one specific way —
+// which a trace cannot: strict replay ties every response to the command that
+// would have to be sent to reach it. Like capturingCard, it records the
+// commands it was handed so a test can assert on the sequence.
+type cannedCard struct {
+	rsp  [][]byte
+	cmds [][]byte
+}
+
+func (c *cannedCard) Status() (transport.Status, error) {
+	return transport.Status{}, nil
+}
+
+func (c *cannedCard) Transmit(cmd []byte) ([]byte, error) {
+	c.cmds = append(c.cmds, append([]byte(nil), cmd...))
+	if len(c.cmds) > len(c.rsp) {
+		return nil, fmt.Errorf("cannedCard: no scripted response for command %s", hex.EncodeToString(cmd))
+	}
+	return append([]byte(nil), c.rsp[len(c.cmds)-1]...), nil
+}
+
+func (c *cannedCard) Disconnect() error { return nil }
+
+// TestReadFailedCommandSkipsGetResponse pins the first response of a pair: a
+// field command answered with an error status must fail the field without a
+// GET RESPONSE being sent at it, and the next field must read normally.
+func TestReadFailedCommandSkipsGetResponse(t *testing.T) {
+	card := &cannedCard{rsp: [][]byte{
+		{0x6a, 0x82}, // the CID command fails: file not found
+		{0x61, 0x0f}, // the Thai name command: 15 bytes ready
+		append(append([]byte(nil), mustDecodeHex(payloadNameThai)...), 0x90, 0x00),
+	}}
+
+	reader := smc.NewPersonalReader(card, nil)
+	if cid := reader.ReadCID(); cid != "" {
+		t.Errorf("Cid = %q, want empty for a failed field command", cid)
+	}
+	if name := reader.ReadRawName(); name != "นาย#สมชาย##ใจดี" {
+		t.Errorf("the field after the failed one should still read, got %q", name)
+	}
+
+	if len(card.cmds) != 3 {
+		t.Fatalf("got %d exchanges, want the CID command, the Thai name command and one GET RESPONSE", len(card.cmds))
+	}
+	if !bytes.Equal(card.cmds[1], apdu.PersonalCMD.NameThai) {
+		t.Errorf("second command = %s, want the Thai name command: a GET RESPONSE was sent at the failed command", hex.EncodeToString(card.cmds[1]))
+	}
+}
+
+// TestReadFailingGetResponseFailsTheField covers the other half of the pair: a
+// GET RESPONSE that answers with an error status fails the field, rather than
+// coming back as empty or silently truncated data.
+func TestReadFailingGetResponseFailsTheField(t *testing.T) {
+	card := &cannedCard{rsp: [][]byte{
+		{0x61, 0x0d}, // the CID command: 13 bytes ready
+		{0x6a, 0x82}, // the GET RESPONSE fails
+	}}
+
+	reader := smc.NewPersonalReader(card, nil)
+	if cid := reader.ReadCID(); cid != "" {
+		t.Errorf("Cid = %q, want empty when GET RESPONSE fails", cid)
+	}
+
+	if len(card.cmds) != 2 {
+		t.Fatalf("got %d exchanges, want the CID command and its GET RESPONSE", len(card.cmds))
+	}
+	if !bytes.HasPrefix(card.cmds[1], mustDecodeHex(getResponsePrefix)) {
+		t.Errorf("second command = %s, want a GET RESPONSE", hex.EncodeToString(card.cmds[1]))
 	}
 }
 
@@ -596,9 +769,47 @@ func traceHasApplet(trace *transport.Trace, selectCmd []byte) bool {
 	return false
 }
 
+// isThaiID reports whether s is 13 ASCII digits, the fixed width the CID
+// command asks for. A read that lost or shifted a byte fails here instead of
+// returning a shorter number that still looks plausible.
+func isThaiID(s string) bool {
+	return len(s) == 13 && asciiDigits(s)
+}
+
+// isLaserId reports whether s is two uppercase letters and ten digits, the
+// shape the recorded card sends inside its 0x10 byte GET RESPONSE once the NUL
+// padding is trimmed.
+func isLaserId(s string) bool {
+	if len(s) != 12 {
+		return false
+	}
+	for i := 0; i < 2; i++ {
+		if s[i] < 'A' || s[i] > 'Z' {
+			return false
+		}
+	}
+	return asciiDigits(s[2:])
+}
+
+// asciiDigits reports whether s is nothing but ASCII digits.
+func asciiDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // TestReadFromRecordedTrace runs against a trace captured from a real card once
 // one exists. It asserts structure rather than exact values, because the data
-// is somebody's identity.
+// is somebody's identity — with two shape exceptions: the CID is pinned to 13
+// digits and the laser code to two letters and ten digits, so a card (or a
+// read) that truncates or misaligns a fixed width field fails here instead of
+// handing back quietly wrong data.
 func TestReadFromRecordedTrace(t *testing.T) {
 	if _, err := os.Stat(recordedTracePath); err != nil {
 		t.Skipf("no recorded trace yet; capture one with: go run ./cmd/record -out %s", recordedTracePath)
@@ -625,6 +836,8 @@ func TestReadFromRecordedTrace(t *testing.T) {
 	}
 	if data.Personal.Cid == "" {
 		t.Error("Cid is empty")
+	} else if !isThaiID(data.Personal.Cid) {
+		t.Errorf("Cid = %q, want 13 digits", data.Personal.Cid)
 	}
 	if data.Personal.Name.FirstName == "" {
 		t.Error("first name is empty")
@@ -632,8 +845,20 @@ func TestReadFromRecordedTrace(t *testing.T) {
 	if data.Personal.Address.Province == "" {
 		t.Error("province is empty")
 	}
+	// Decode the portrait rather than only checking that it is non-empty: a
+	// portrait that lost a byte is still a non-empty string. The recorded card
+	// pads the last chunk with 0x20, so a read that is merely too eager about
+	// trimming shows up as a missing EOI marker here.
 	if data.Personal.FaceImage == "" {
 		t.Error("face image is empty")
+	} else if raw, err := base64.StdEncoding.DecodeString(data.Personal.FaceImage); err != nil {
+		t.Errorf("face image is not valid base64: %v", err)
+	} else if len(raw) < 2 {
+		t.Errorf("face image is %d bytes, too short to be a JPEG", len(raw))
+	} else if !bytes.HasPrefix(raw, []byte{0xff, 0xd8}) {
+		t.Errorf("face image starts with % x, want the JPEG SOI marker ff d8", raw[:2])
+	} else if !bytes.HasSuffix(raw, []byte{0xff, 0xd9}) {
+		t.Errorf("face image ends with % x, want the JPEG EOI marker ff d9", raw[len(raw)-2:])
 	}
 
 	if withLaser {
@@ -642,6 +867,8 @@ func TestReadFromRecordedTrace(t *testing.T) {
 		}
 		if data.Card.LaserId == "" {
 			t.Error("laser id is empty")
+		} else if !isLaserId(data.Card.LaserId) {
+			t.Errorf("LaserId = %q, want two letters and ten digits", data.Card.LaserId)
 		}
 	} else if data.Card != nil {
 		t.Error("Card should be nil when the trace has no laser exchanges")
