@@ -14,9 +14,11 @@ package main
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os/exec"
 	"runtime"
 	"sync"
@@ -55,6 +57,7 @@ type tray struct {
 	mAgentToggle  *systray.MenuItem
 	mAgentStatus  *systray.MenuItem
 	connection    string
+	lastReadAt    string
 	observedState ctl.State
 	serviceErr    error
 	mAgentRestart *systray.MenuItem
@@ -235,6 +238,7 @@ func (t *tray) autoStart(ctx context.Context, client *agentClient) {
 // change callback a tray could subscribe to.
 func (t *tray) pollService(ctx context.Context) {
 	t.refreshServiceState()
+	t.refreshHealth(ctx)
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -243,6 +247,7 @@ func (t *tray) pollService(ctx context.Context) {
 			return
 		case <-ticker.C:
 			t.refreshServiceState()
+			t.refreshHealth(ctx)
 		}
 	}
 }
@@ -346,8 +351,26 @@ func (t *tray) applyStatus(status map[string]any) {
 		}
 		line += " — " + watching
 	}
+	health, _ := status["health"].(string)
+	switch health {
+	case "no-reader":
+		line = t.lang.text("ไม่พบเครื่องอ่านบัตร", "No card reader")
+	case "reader-busy":
+		line = t.lang.text("เครื่องอ่านถูกใช้งาน กำลังลองใหม่", "Reader busy; retrying")
+	case "read-failed":
+		line = t.lang.text("อ่านบัตรไม่สำเร็จ", "Card read failed")
+	case "pcsc-unavailable":
+		line = t.lang.text("บริการ PC/SC ไม่พร้อม", "PC/SC unavailable")
+	}
+	if stamp, ok := status["last_read_at"].(string); ok {
+		t.lastReadAt = stamp
+	}
+	tooltip := line
+	if t.lastReadAt != "" {
+		tooltip += " — " + t.lang.text("อ่านสำเร็จล่าสุด: ", "Last successful read: ") + t.lastReadAt
+	}
 	t.mStatus.SetTitle(line)
-	t.mStatus.SetTooltip(line)
+	t.mStatus.SetTooltip(tooltip)
 }
 
 func (t *tray) setUp() {
@@ -388,4 +411,32 @@ func openBrowser(url string) {
 	if err := cmd.Start(); err != nil {
 		log.Printf("open %s: %v", url, err)
 	}
+}
+
+// Poll only public operational metadata; no card data or config is fetched.
+func (t *tray) refreshHealth(ctx context.Context) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, t.baseURL()+"/api/health", nil)
+	if err != nil {
+		return
+	}
+	client := &http.Client{Timeout: time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return
+	}
+	var h struct {
+		State      string `json:"state"`
+		Readers    []any  `json:"readers"`
+		Selected   string `json:"selected"`
+		CardState  string `json:"card_state"`
+		LastReadAt string `json:"last_read_at"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&h) != nil {
+		return
+	}
+	t.applyStatus(map[string]any{"health": h.State, "state": h.CardState, "readers": h.Readers, "selected": h.Selected, "last_read_at": h.LastReadAt})
 }

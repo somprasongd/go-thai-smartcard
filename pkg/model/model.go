@@ -61,6 +61,7 @@ type Status struct {
 	Readers  []string `json:"readers"`
 	Selected string   `json:"selected"`
 	State    string   `json:"state"`
+	Health   string   `json:"health,omitempty"`
 }
 
 type FormatedDate string

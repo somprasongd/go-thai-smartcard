@@ -158,6 +158,7 @@ func newMux(cfg ServerConfig, done <-chan struct{}) *http.ServeMux {
 	if cfg.ConfigPath != "" {
 		mux.Handle("/api/info", settings.wrap(http.HandlerFunc(api.serveInfo)))
 		mux.Handle("/api/settings", settings.wrap(http.HandlerFunc(api.serveSettings)))
+		mux.Handle("/api/health", settings.wrap(http.HandlerFunc(api.serveHealth)))
 		mux.Handle("/api/readers", settings.wrap(http.HandlerFunc(api.serveReaders)))
 		mux.Handle("/settings", settings.wrap(servePage(settingsPage)))
 	}

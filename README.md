@@ -168,6 +168,15 @@ and `set-reader` are answered with an `smc-error` naming the unknown action,
 and the `remote_control` field is gone — a client that read it as "allowed"
 should assume the answer is always "no".
 
+### Reader health
+
+`GET /api/health` uses the same loopback/Host/Origin/proxy-header guard as settings.
+It reports `starting`, `ready`, `no-reader`, `reader-busy`, `read-failed` or
+`pcsc-unavailable`, reader names, current card state and timestamps of the last
+successful read/error. It contains no card payload, token or raw error text.
+The tray's green agent dot means connected; its separate reader row displays
+hardware health and the last successful read in the tooltip.
+
 ### Command results
 
 Commands may include an optional `request_id` (at most 128 bytes). Such requests

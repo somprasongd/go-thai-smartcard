@@ -345,3 +345,16 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 		log.Printf("write response: %v", err)
 	}
 }
+
+func (api *settingsAPI) serveHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	h := HealthSnapshot{State: "starting", Readers: []string{}}
+	if api.status != nil {
+		h = api.status.Health()
+	}
+	writeJSON(w, http.StatusOK, h)
+}

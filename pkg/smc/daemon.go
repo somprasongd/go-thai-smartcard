@@ -88,6 +88,7 @@ type daemon struct {
 	readers  []string
 	selected string
 	state    string
+	health   string
 
 	// pendingRead is a read request that arrived with no card in the reader.
 	// It is answered with an error rather than dropped, so the client that
@@ -128,6 +129,7 @@ func (s *SmartCard) StartDaemonWith(ctx context.Context, cfg DaemonConfig) error
 		readerSelection: cfg.Selection,
 		ctx:             ctx,
 		state:           model.StateWaiting,
+		health:          "starting",
 	}
 	return d.run(ctx)
 }
@@ -323,6 +325,8 @@ func (d *daemon) read(ctx context.Context, reader string) bool {
 	for errors.Is(err, transport.ErrCardBusy) {
 		if !notified {
 			notified = true
+			d.health = "reader-busy"
+			d.broadcastStatus()
 			d.publishError(fmt.Sprintf("%s; retrying while the card stays inserted", err))
 		}
 		switch d.busyHold(ctx, reader) {
@@ -352,8 +356,10 @@ func (d *daemon) read(ctx context.Context, reader string) bool {
 	}
 
 	if err != nil {
+		d.health = "read-failed"
 		d.publishError(err.Error())
 	} else if data != nil {
+		d.health = "ready"
 		data.Reader = reader
 		d.publish(model.Message{Event: "smc-data", Payload: data})
 	}
@@ -506,7 +512,20 @@ func (d *daemon) awaitReaders(ctx context.Context) error {
 func (d *daemon) resolveReaders() bool {
 	list, err := d.card.transport.ListReaders()
 	if err != nil || len(list) == 0 {
+		health := "no-reader"
+		if err != nil {
+			health = "pcsc-unavailable"
+		}
+		changed := len(d.readers) > 0 || d.health != health
+		d.readers = nil
+		d.health = health
+		if changed {
+			d.broadcastStatus()
+		}
 		return false
+	}
+	if d.health == "starting" || d.health == "no-reader" || d.health == "pcsc-unavailable" {
+		d.health = "ready"
 	}
 
 	changed := !sameStrings(list, d.readers)
@@ -577,6 +596,9 @@ func (d *daemon) setState(state string) {
 		return
 	}
 	d.state = state
+	if state == model.StateWaiting && (d.health == "reader-busy" || d.health == "read-failed") {
+		d.health = "ready"
+	}
 	switch state {
 	case model.StateWaiting:
 		log.Println("Waiting for a Card Inserted")
@@ -593,6 +615,7 @@ func (d *daemon) broadcastStatus() {
 		Readers:  append([]string(nil), d.readers...),
 		Selected: d.selected,
 		State:    d.state,
+		Health:   d.health,
 	}
 	d.publish(model.Message{Event: "smc-status", Payload: payload})
 }
