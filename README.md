@@ -90,8 +90,7 @@ way.
 
 <http://localhost:9898/settings> is a self-contained page (plain HTML, no CDN,
 so it works on a hospital network that cannot reach the internet) for everything
-the agent reads and who may connect to it. The tray app, where one is
-installed, calls the same API.
+the agent reads and who may connect to it — the one place that changes them.
 
 What a save does:
 
