@@ -168,6 +168,17 @@ and `set-reader` are answered with an `smc-error` naming the unknown action,
 and the `remote_control` field is gone — a client that read it as "allowed"
 should assume the answer is always "no".
 
+### Troubleshooting
+
+Open **Troubleshoot → Open diagnostics** from the tray, or `/diagnostics`.
+The page and `/api/diagnostics` use the settings guard. Reports contain version,
+OS/architecture, foreground/service mode, endpoint, transports, TLS, reader
+health and active log directory; they exclude configuration, tokens, card data
+and log contents. **Copy diagnostics** in the tray also adds the OS service
+state. On Linux copying uses wl-copy, xclip or xsel; the page offers a manual
+copy fallback if clipboard access is unavailable. **Open log folder** opens
+only an existing absolute directory reported by the running agent.
+
 ### Reader health
 
 `GET /api/health` uses the same loopback/Host/Origin/proxy-header guard as settings.

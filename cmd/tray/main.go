@@ -50,28 +50,32 @@ func main() {
 // showing only exists on the settings page, so the menu carries no switch
 // for them either.
 type tray struct {
-	mStatus       *systray.MenuItem
-	mTest         *systray.MenuItem
-	mConfig       *systray.MenuItem
-	mAgent        *systray.MenuItem
-	mAgentToggle  *systray.MenuItem
-	mAgentStatus  *systray.MenuItem
-	connection    string
-	lastReadAt    string
-	observedState ctl.State
-	serviceErr    error
-	mAgentRestart *systray.MenuItem
-	mQuit         *systray.MenuItem
-	mStopQuit     *systray.MenuItem
-	lang          language
-	serviceOps    sync.Mutex
-	manualControl bool
-	manager       ctl.Manager
-	serviceUI     sync.Mutex
-	serviceState  func() (ctl.State, error)
-	mu            sync.RWMutex
-	url           string
-	notifyOnce    sync.Once
+	mStatus          *systray.MenuItem
+	mTest            *systray.MenuItem
+	mTroubleshoot    *systray.MenuItem
+	mDiagnostics     *systray.MenuItem
+	mCopyDiagnostics *systray.MenuItem
+	mOpenLogs        *systray.MenuItem
+	mConfig          *systray.MenuItem
+	mAgent           *systray.MenuItem
+	mAgentToggle     *systray.MenuItem
+	mAgentStatus     *systray.MenuItem
+	connection       string
+	lastReadAt       string
+	observedState    ctl.State
+	serviceErr       error
+	mAgentRestart    *systray.MenuItem
+	mQuit            *systray.MenuItem
+	mStopQuit        *systray.MenuItem
+	lang             language
+	serviceOps       sync.Mutex
+	manualControl    bool
+	manager          ctl.Manager
+	serviceUI        sync.Mutex
+	serviceState     func() (ctl.State, error)
+	mu               sync.RWMutex
+	url              string
+	notifyOnce       sync.Once
 }
 
 func onReady() {
@@ -95,6 +99,11 @@ func onReady() {
 	systray.AddSeparator()
 	t.mTest = systray.AddMenuItem(l.text("เปิดหน้าทดสอบ", "Open test page"), l.text("เปิดหน้าทดสอบการอ่านบัตร", "Open the agent's test page"))
 	t.mConfig = systray.AddMenuItem(l.text("ตั้งค่า", "Settings"), l.text("เปิดหน้าตั้งค่า", "Open settings"))
+
+	t.mTroubleshoot = systray.AddMenuItem(l.text("แก้ไขปัญหา", "Troubleshoot"), l.text("ตรวจสถานะและบันทึกการทำงาน", "Inspect operational diagnostics"))
+	t.mDiagnostics = t.mTroubleshoot.AddSubMenuItem(l.text("เปิดหน้าวิเคราะห์ปัญหา", "Open diagnostics"), "")
+	t.mCopyDiagnostics = t.mTroubleshoot.AddSubMenuItem(l.text("คัดลอกข้อมูลวิเคราะห์", "Copy diagnostics"), "")
+	t.mOpenLogs = t.mTroubleshoot.AddSubMenuItem(l.text("เปิดโฟลเดอร์ log", "Open log folder"), "")
 
 	// Restart and Pause/Resume go through the OS service manager (pkg/ctl); the
 	// tray never spawns an agent of its own (decision 12). The items are
@@ -127,6 +136,13 @@ func onReady() {
 			openBrowser(t.baseURL())
 		case <-t.mConfig.ClickedCh:
 			openBrowser(t.baseURL() + "/settings")
+
+		case <-t.mDiagnostics.ClickedCh:
+			openBrowser(t.baseURL() + "/diagnostics?lang=" + t.lang.text("th", "en"))
+		case <-t.mCopyDiagnostics.ClickedCh:
+			go t.troubleshoot("copy")
+		case <-t.mOpenLogs.ClickedCh:
+			go t.troubleshoot("logs")
 		case <-t.mAgentToggle.ClickedCh:
 			go t.serviceAction("toggle")
 		case <-t.mAgentRestart.ClickedCh:

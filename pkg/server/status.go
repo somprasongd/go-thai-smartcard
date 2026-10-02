@@ -19,12 +19,13 @@ import (
 // One cache is shared by every listener generation, so a settings save that
 // restarts the listener does not blank it.
 type StatusCache struct {
-	mu          sync.Mutex
-	status      model.Status
-	have        bool
-	health      string
-	lastReadAt  time.Time
-	lastErrorAt time.Time
+	mu            sync.Mutex
+	status        model.Status
+	have          bool
+	health        string
+	lastReadAt    time.Time
+	lastErrorAt   time.Time
+	lastErrorCode string
 }
 
 // Record decodes one broadcast message, keeping only smc-status. The payload
@@ -40,6 +41,10 @@ func (c *StatusCache) Record(msg model.Message) {
 		return
 	case "smc-error":
 		c.lastErrorAt = time.Now().UTC()
+		c.lastErrorCode = "operation-failed"
+		if degradedHealth(c.health) {
+			c.lastErrorCode = c.health
+		}
 		return
 	case "smc-health":
 		raw, _ := json.Marshal(msg.Payload)
@@ -48,6 +53,10 @@ func (c *StatusCache) Record(msg model.Message) {
 		}
 		if json.Unmarshal(raw, &h) == nil {
 			c.health = knownHealth(h.State)
+			if degradedHealth(c.health) {
+				c.lastErrorAt = time.Now().UTC()
+				c.lastErrorCode = c.health
+			}
 			if c.health == "pcsc-unavailable" {
 				c.status.Readers = nil
 			}
@@ -67,6 +76,9 @@ func (c *StatusCache) Record(msg model.Message) {
 	}
 	c.status = st
 	c.health = knownHealth(st.Health)
+	if degradedHealth(c.health) {
+		c.lastErrorCode = c.health
+	}
 	if st.Health == "" {
 		if len(st.Readers) == 0 {
 			c.health = "no-reader"
@@ -85,14 +97,7 @@ func (c *StatusCache) Snapshot() (model.Status, bool) {
 }
 
 // HealthSnapshot is operational metadata only; it never contains a card payload.
-type HealthSnapshot struct {
-	State       string     `json:"state"`
-	Readers     []string   `json:"readers"`
-	Selected    string     `json:"selected"`
-	CardState   string     `json:"card_state"`
-	LastReadAt  *time.Time `json:"last_read_at,omitempty"`
-	LastErrorAt *time.Time `json:"last_error_at,omitempty"`
-}
+type HealthSnapshot = model.Health
 
 func knownHealth(state string) string {
 	switch state {
@@ -104,7 +109,7 @@ func knownHealth(state string) string {
 func (c *StatusCache) Health() HealthSnapshot {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	h := HealthSnapshot{State: knownHealth(c.health), Readers: append([]string{}, c.status.Readers...), Selected: c.status.Selected, CardState: c.status.State}
+	h := HealthSnapshot{LastErrorCode: c.lastErrorCode, State: knownHealth(c.health), Readers: append([]string{}, c.status.Readers...), Selected: c.status.Selected, CardState: c.status.State}
 	if !c.lastReadAt.IsZero() {
 		v := c.lastReadAt
 		h.LastReadAt = &v
@@ -114,4 +119,12 @@ func (c *StatusCache) Health() HealthSnapshot {
 		h.LastErrorAt = &v
 	}
 	return h
+}
+
+func degradedHealth(state string) bool {
+	switch state {
+	case "reader-busy", "read-failed", "pcsc-unavailable":
+		return true
+	}
+	return false
 }

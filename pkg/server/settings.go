@@ -131,7 +131,8 @@ type settingsAPI struct {
 	instanceID    string
 	// status is the broadcast-pump cache behind /api/readers. It may be nil,
 	// which leaves the endpoint answering an empty list.
-	status *StatusCache
+	status      *StatusCache
+	diagnostics func() DiagnosticSnapshot
 }
 
 // servedConfig carries the settings the page edits. Logging remains a

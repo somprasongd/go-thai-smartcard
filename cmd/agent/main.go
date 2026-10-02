@@ -144,6 +144,7 @@ func runAgentMode(ctx context.Context, configPath string, managed bool) {
 		result := serverCfg(next, configPath, broadcast, command, nil)
 		result.InstanceID = instance
 		result.Status = statusCache
+		result.Diagnostics = func() server.DiagnosticSnapshot { return diagnosticSnapshot(configPath, managed, cfg.Logging) }
 		result.ApplySettings = runtimeSettings.apply
 		return result
 	}

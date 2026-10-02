@@ -25,7 +25,7 @@ func TestHealthKeepsOperationalMetadataOnly(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &h); err != nil {
 		t.Fatal(err)
 	}
-	if h.State != "reader-busy" || h.LastReadAt == nil || h.LastErrorAt == nil {
+	if h.State != "reader-busy" || h.LastReadAt == nil || h.LastErrorAt == nil || h.LastErrorCode != "reader-busy" {
 		t.Fatalf("%+v", h)
 	}
 	c.Record(model.Message{Event: "smc-health", Payload: map[string]string{"state": "pcsc-unavailable"}})
@@ -42,5 +42,23 @@ func TestHealthUsesLoopbackGuard(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("remote health status %d", w.Code)
+	}
+}
+
+func TestDiagnosticsNeverIncludesConfigOrCard(t *testing.T) {
+	c := &StatusCache{}
+	c.Record(model.Message{Event: "smc-data", Payload: map[string]string{"id": "SYNTHETIC_SECRET"}})
+	api := &settingsAPI{version: "test", status: c, transports: []string{"ws"}, diagnostics: func() DiagnosticSnapshot { return DiagnosticSnapshot{RunMode: "foreground"} }}
+	w := httptest.NewRecorder()
+	api.serveDiagnostics(w, httptest.NewRequest(http.MethodGet, "http://localhost/api/diagnostics", nil))
+	if strings.Contains(w.Body.String(), "SECRET") || strings.Contains(w.Body.String(), "token") {
+		t.Fatal("diagnostics leak")
+	}
+	var d DiagnosticSnapshot
+	if err := json.Unmarshal(w.Body.Bytes(), &d); err != nil {
+		t.Fatal(err)
+	}
+	if d.Version != "test" || d.RunMode != "foreground" || d.Endpoint != "http://localhost" {
+		t.Fatalf("%+v", d)
 	}
 }
