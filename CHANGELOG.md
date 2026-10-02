@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-10-02
+
+A tray-only UI change: the icon stands alone in the macOS menu bar, and the
+read image / laser ID / NHSO switches moved out of the menu — what the agent
+reads is configuration with one source of truth, changed in `/settings`.
+
 ### Changed
 
 - The tray icon stands alone in the menu bar on macOS — the "Thai Smartcard"
@@ -413,7 +419,8 @@ First release.
   and a fix for waiting on readers in macOS.
 - PM2 and systemd run instructions in the README.
 
-[unreleased]: https://github.com/somprasongd/go-thai-smartcard/compare/v4.0.0...HEAD
+[unreleased]: https://github.com/somprasongd/go-thai-smartcard/compare/v4.0.1...HEAD
+[4.0.1]: https://github.com/somprasongd/go-thai-smartcard/compare/v4.0.0...v4.0.1
 [4.0.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v3.0.1...v4.0.0
 [3.0.1]: https://github.com/somprasongd/go-thai-smartcard/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v2.0.1...v3.0.0
