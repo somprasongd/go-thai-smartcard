@@ -26,6 +26,11 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # pkg/transport/pcsc is a cgo binding; the runner needs the headers
+      # pkg-config points at (the README's own Linux requirement).
+      - name: Install libpcsclite-dev
+        run: sudo apt-get update && sudo apt-get install -y libpcsclite-dev pkg-config
+
       - name: Build the agent
         run: go build -o ./bin/thai-smartcard-agent.linux-amd64 ./cmd/agent
 
