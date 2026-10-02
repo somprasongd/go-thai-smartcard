@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A clear action for the socket token on /settings. A token had no way out of
+  the config file: saves echo the served config back and the agent merges the
+  file's own token into every one of them, so the value stayed forever once
+  generated, even for an agent that had gone back to loopback and will never
+  ask for it. Clearing is refused while the agent listens beyond loopback,
+  where a config without a token is one the strict loader refuses anyway.
+
 ## [4.0.2] - 2026-10-02
 
 ### Fixed

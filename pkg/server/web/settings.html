@@ -157,6 +157,7 @@
           <span>สถานะ / status:</span>
           <span id="token-state" class="note"></span>
           <button class="secondary" id="btn-token">สร้าง token</button>
+          <button class="secondary" id="btn-token-clear" hidden>ลบ token / clear</button>
         </div>
         <div id="token-reveal" hidden>
           <p class="warning">คัดลอกตอนนี้ — จะไม่แสดงอีก / copy it now, it will not be shown again:</p>
@@ -300,12 +301,14 @@
         function showTokenSet() {
           $("token-state").textContent = "ตั้งไว้แล้ว / set";
           $("btn-token").textContent = "สร้าง token ใหม่ / regenerate";
+          $("btn-token-clear").hidden = false;
           state.tokenSet = true;
         }
 
         function showTokenMissing() {
           $("token-state").textContent = "ยังไม่มี / not set";
           $("btn-token").textContent = "สร้าง token / generate";
+          $("btn-token-clear").hidden = true;
           state.tokenSet = false;
         }
 
@@ -354,6 +357,7 @@
             var data = await res.json();
             state.version = data.version;
             if (data.token) revealToken(data.token);
+            else data.token_set ? showTokenSet() : showTokenMissing();
             setStatus("บันทึกแล้ว — ค่า server ใหม่มีผลทันที, ค่า card ใช้กับบัตรใบถัดไป / saved", "ok");
           } catch (e) {
             setStatus("ติดต่อ agent ไม่ได้ / cannot reach the agent: " + e, "error");
@@ -373,6 +377,12 @@
             return;
           }
           save({ regenerate_token: true });
+        });
+        $("btn-token-clear").addEventListener("click", function () {
+          if (!window.confirm("ลบ token? client ที่ใช้ token นี้จะต่อไม่ได้ทันที / clear the token? clients using it can no longer connect")) {
+            return;
+          }
+          save({ clear_token: true });
         });
         $("btn-copy").addEventListener("click", function () {
           navigator.clipboard.writeText($("token-value").textContent).then(
