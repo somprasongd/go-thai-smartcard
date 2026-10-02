@@ -238,6 +238,32 @@
         border-radius: 6px;
       }
 
+      /* Sidebar collapse: the hide button sits at the sidebar's top-right,
+         and once it is hidden the same icon appears in the app bar to bring
+         it back. The choice is a preference like the view. */
+      .side-top {
+        display: flex;
+        justify-content: flex-end;
+        padding: 6px 10px 0;
+      }
+
+      .side-open {
+        display: none;
+        margin-right: 2px;
+      }
+
+      html.side-hidden .side-open {
+        display: inline-grid;
+      }
+
+      html.side-hidden .sidebar {
+        display: none !important;
+      }
+
+      html.side-hidden .shell {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
       /* ------------------------------ shell ------------------------------ */
       .shell {
         display: grid;
@@ -1140,6 +1166,11 @@
           display: contents;
         }
 
+        .sidebar > .side-top {
+          order: -2;
+          padding: 4px 12px 0;
+        }
+
         .sidebar > .nav {
           order: -1;
           background: var(--surface);
@@ -1168,6 +1199,18 @@
 
     <body>
     <header class="appbar">
+      <button
+        class="iconbtn side-open"
+        id="btn-side-show"
+        type="button"
+        aria-label="แสดงเมนูข้าง / Show sidebar"
+        title="แสดงเมนูข้าง / Show sidebar"
+      >
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+          <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" />
+          <path d="M6.25 2.75v10.5" />
+        </svg>
+      </button>
       <a class="brand" href="/">
         <span class="brand-mark">SMC</span>
         <span class="brand-name" data-i18n="app.title">ตัวอ่านบัตรประชาชน</span>
@@ -1222,6 +1265,21 @@
 
     <div class="shell">
       <aside class="sidebar">
+        <div class="side-top">
+          <button
+            class="iconbtn"
+            id="btn-side-hide"
+            type="button"
+            aria-label="ซ่อนเมนูข้าง / Hide sidebar"
+            title="ซ่อนเมนูข้าง / Hide sidebar"
+          >
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+              <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" />
+              <path d="M6.25 2.75v10.5" />
+            </svg>
+          </button>
+        </div>
+
         <nav class="nav" aria-label="หน้าหลัก">
           <a class="nav-item is-active" href="/" aria-current="page">
             <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
@@ -1766,7 +1824,8 @@
           log: true,
           mask: false,
           maskphoto: false,
-          autoclear: 0
+          autoclear: 0,
+          sideHidden: false
         };
 
         // mask hides digits of the ID number, maskphoto blurs the portrait.
@@ -3007,6 +3066,19 @@
             render();
           });
 
+          // Sidebar collapse is a shell preference, so it is saved with the
+          // rest and both pages follow it.
+          $("btn-side-hide").addEventListener("click", function () {
+            store.ui.sideHidden = true;
+            savePrefs();
+            document.documentElement.classList.add("side-hidden");
+          });
+          $("btn-side-show").addEventListener("click", function () {
+            store.ui.sideHidden = false;
+            savePrefs();
+            document.documentElement.classList.remove("side-hidden");
+          });
+
           $("lightbox").addEventListener("click", function () {
             $("lightbox").hidden = true;
             $("lightbox-img").removeAttribute("src");
@@ -3025,6 +3097,7 @@
           // On a first visit the toggles have to follow the mode, otherwise the
           // panel claims "masks the ID number" while the box is unticked.
           if (!hadStoredPrefs) applyPrivacyPreset(store.ui.privacy);
+          document.documentElement.classList.toggle("side-hidden", !!store.ui.sideHidden);
           syncControls();
           applyI18n();
           wireControls();

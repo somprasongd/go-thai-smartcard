@@ -27,7 +27,7 @@ async function scenario(response, status = 200, alreadyRevealed = false) {
   const context = {
     document: {
       getElementById: element,
-      documentElement: { setAttribute: () => {} },
+      documentElement: { setAttribute: () => {}, classList: { toggle: () => {}, add: () => {}, remove: () => {} } },
       querySelectorAll: () => [],
       // loadReaders builds <option>s for the reader dropdown.
       createElement: tag => ({ tag, value: '', textContent: '' })
@@ -84,7 +84,7 @@ async function scenario(response, status = 200, alreadyRevealed = false) {
     const context = {
       document: {
         getElementById: element,
-        documentElement: { setAttribute: () => {} },
+        documentElement: { setAttribute: () => {}, classList: { toggle: () => {}, add: () => {}, remove: () => {} } },
         querySelectorAll: () => [],
         createElement: tag => ({ tag, value: '', textContent: '' })
       }, URL,

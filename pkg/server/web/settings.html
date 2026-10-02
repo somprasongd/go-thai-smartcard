@@ -114,6 +114,19 @@
         border-color: var(--line);
       }
 
+      /* Sidebar collapse: the hide button sits at the sidebar's top-right,
+         and once it is hidden the same icon appears in the app bar to bring
+         it back. The choice is a preference shared with the card page. */
+      .side-top {
+        display: flex;
+        justify-content: flex-end;
+        padding: 6px 10px 0;
+      }
+      .side-open { display: none; margin-right: 2px; }
+      html.side-hidden .side-open { display: inline-grid; }
+      html.side-hidden .sidebar { display: none !important; }
+      html.side-hidden .shell { grid-template-columns: minmax(0, 1fr); }
+
       /* ------------------------------ shell ------------------------------ */
       .shell {
         display: grid;
@@ -318,6 +331,11 @@
         .shell { grid-template-columns: minmax(0, 1fr); }
         /* Same unpacking as the card page: nav above, then content. */
         .sidebar { display: contents; }
+        .sidebar > .side-top {
+          order: -2;
+          padding: 4px 12px 0;
+        }
+
         .sidebar > .nav {
           order: -1;
           background: var(--surface);
@@ -334,6 +352,18 @@
   </head>
       <body>
     <header class="appbar">
+      <button
+        class="iconbtn side-open"
+        id="btn-side-show"
+        type="button"
+        aria-label="แสดงเมนูข้าง / Show sidebar"
+        title="แสดงเมนูข้าง / Show sidebar"
+      >
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+          <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" />
+          <path d="M6.25 2.75v10.5" />
+        </svg>
+      </button>
       <a class="brand" href="/">
         <span class="brand-mark">SMC</span>
         <span class="brand-name">Thai ID Card Agent</span>
@@ -362,6 +392,21 @@
 
     <div class="shell">
       <aside class="sidebar">
+        <div class="side-top">
+          <button
+            class="iconbtn"
+            id="btn-side-hide"
+            type="button"
+            aria-label="ซ่อนเมนูข้าง / Hide sidebar"
+            title="ซ่อนเมนูข้าง / Hide sidebar"
+          >
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+          <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" />
+          <path d="M6.25 2.75v10.5" />
+        </svg>
+          </button>
+        </div>
+
         <nav class="nav" aria-label="หน้าหลัก">
           <a class="nav-item" href="/">
             <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
@@ -671,6 +716,33 @@
           }
         }
 
+        // The sidebar collapse is a shell preference shared with the card
+        // page: read and write only the one field, like the language.
+        var shellHidden = false;
+
+        function detectShell() {
+          try {
+            var raw = localStorage.getItem("smc.prefs");
+            if (raw) {
+              var saved = JSON.parse(raw);
+              shellHidden = !!(saved && saved.sideHidden);
+            }
+          } catch (e) { /* default is visible */ }
+          document.documentElement.classList.toggle("side-hidden", shellHidden);
+        }
+
+        function setShellHidden(hidden) {
+          shellHidden = hidden;
+          document.documentElement.classList.toggle("side-hidden", shellHidden);
+          try {
+            var prefs = {};
+            var raw = localStorage.getItem("smc.prefs");
+            if (raw) prefs = JSON.parse(raw) || {};
+            prefs.sideHidden = shellHidden;
+            localStorage.setItem("smc.prefs", JSON.stringify(prefs));
+          } catch (e) { /* nothing to do */ }
+        }
+
         function applyLang() {
           document.documentElement.setAttribute("lang", uiLang);
           Array.prototype.forEach.call(document.querySelectorAll("[data-i18n]"), function (n) {
@@ -947,6 +1019,9 @@
         $("listen").addEventListener("input", syncTokenSection);
         $("btn-reader-refresh").addEventListener("click", loadReaders);
 
+        $("btn-side-hide").addEventListener("click", function () { setShellHidden(true); });
+        $("btn-side-show").addEventListener("click", function () { setShellHidden(false); });
+
         $("seg-uilang").addEventListener("click", function (e) {
           var b = e.target.closest("button");
           if (!b) return;
@@ -957,6 +1032,7 @@
         });
 
         uiLang = detectLang();
+        detectShell();
         applyLang();
         load();
       })();

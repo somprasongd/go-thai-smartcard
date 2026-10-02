@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   interface. A preference saved by an older build migrates — "both" becomes
   a Thai interface with the card still showing both names; th and en stay
   as they were.
+- Both pages' shell carries a sidebar toggle: a small button at the
+  sidebar's top right hides it — the same icon then appears at the app bar's
+  left edge to bring it back — and the choice persists with the rest of the
+  preferences, across both pages.
 - The laser ID is displayed the way the card prints it — `AA0-0000000-00` —
   in the card page's data block and the table view. The payload keeps the raw
   value.
