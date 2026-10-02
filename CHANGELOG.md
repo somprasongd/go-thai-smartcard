@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The kiosk preset clears the screen the moment the card leaves the reader,
+  instead of holding it for five seconds. The wait read as a lag because
+  nothing on screen announced it, and on a screen anyone can walk up to, the
+  person the data belongs to has already gone. The Auto-clear select still
+  offers 5/10/30/60 seconds for operators who want a grace period.
+
 ### Removed
 
 - The "expose to network" toggle in the tray menu. Exposure and the socket
