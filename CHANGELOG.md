@@ -468,7 +468,8 @@ First release.
   and a fix for waiting on readers in macOS.
 - PM2 and systemd run instructions in the README.
 
-[unreleased]: https://github.com/somprasongd/go-thai-smartcard/compare/v4.0.1...HEAD
+[unreleased]: https://github.com/somprasongd/go-thai-smartcard/compare/v4.0.2...HEAD
+[4.0.2]: https://github.com/somprasongd/go-thai-smartcard/compare/v4.0.1...v4.0.2
 [4.0.1]: https://github.com/somprasongd/go-thai-smartcard/compare/v4.0.0...v4.0.1
 [4.0.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v3.0.1...v4.0.0
 [3.0.1]: https://github.com/somprasongd/go-thai-smartcard/compare/v3.0.0...v3.0.1
