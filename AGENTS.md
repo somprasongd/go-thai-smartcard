@@ -35,6 +35,7 @@ commands; `build-wasm` targets `cmd/agent`.
 - `pkg/transport/pcsc` — the PC/SC backend (`//go:build !js`)
 - `pkg/apdu` — command APDU constants
 - `pkg/model` — response types and raw-field parsers
+- `pkg/ctl` — the tray's start/stop/restart of the agent service: systemctl (Linux, polkit-authorised), the Windows SCM (ACL-authorised), and the macOS control-helper socket
 - `pkg/server` — socket.io, WebSocket and the bundled pages (`pkg/server/web`, embedded)
 - `pkg/util` — `GetResponseCommand` and `Base64Encode`
 - `packaging/` — the nfpm config, systemd unit, polkit rule and install scripts the packages ship

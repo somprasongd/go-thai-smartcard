@@ -1,0 +1,11 @@
+// Let an active local session start, stop and restart the agent without a
+// password. Scoped to this unit only: any other unit still needs the
+// system's normal authorisation (docs/plan/tray-agent-control.md).
+
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") == "thai-smartcard-agent.service" &&
+        subject.local && subject.active) {
+        return polkit.Result.YES;
+    }
+});

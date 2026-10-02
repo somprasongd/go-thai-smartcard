@@ -11,6 +11,34 @@ set -e
 /usr/local/bin/thai-smartcard-agent service install || true
 /usr/local/bin/thai-smartcard-agent service start || true
 
+# The tray's control helper: a root LaunchDaemon that accepts start/stop/
+# restart requests from the tray over a local unix socket restricted to the
+# admin group (docs/plan/tray-agent-control.md).
+cat > /Library/LaunchDaemons/com.thaismartcard.control.plist <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.thaismartcard.control</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/thai-smartcard-agent</string>
+        <string>control-helper</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+</dict>
+</plist>
+PLIST
+chown root:wheel /Library/LaunchDaemons/com.thaismartcard.control.plist
+chmod 644 /Library/LaunchDaemons/com.thaismartcard.control.plist
+launchctl bootstrap system /Library/LaunchDaemons/com.thaismartcard.control.plist 2>/dev/null \
+    || launchctl load -w /Library/LaunchDaemons/com.thaismartcard.control.plist 2>/dev/null \
+    || true
+
 APP=/Applications/ThaiSmartcardTray.app
 
 # The tray runs at login for every user. A LaunchAgent in /Library applies to

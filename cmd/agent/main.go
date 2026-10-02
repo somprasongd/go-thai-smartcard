@@ -36,6 +36,15 @@ func main() {
 		return
 	}
 
+	// macOS only: the tray's privileged helper (LaunchDaemon), documented in
+	// docs/plan/tray-agent-control.md. Never run by hand.
+	if len(os.Args) > 1 && os.Args[1] == "control-helper" {
+		if err := runControlHelper(); err != nil {
+			log.Fatalf("control-helper: %v", err)
+		}
+		return
+	}
+
 	// `agent run` is the spelled-out form of a bare invocation, so
 	// `run --config x` parses the same as `--config x`.
 	args := os.Args[1:]

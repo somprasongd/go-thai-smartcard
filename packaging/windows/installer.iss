@@ -41,6 +41,9 @@ Source: "..\..\bin\thai-smartcard-tray.exe"; DestDir: "{app}"; DestName: "{#Tray
 ; The installer installs and starts the agent service (decision 12).
 Filename: "{app}\{#AppExeName}"; Parameters: "service install"; Flags: runhidden
 Filename: "{app}\{#AppExeName}"; Parameters: "service start"; Flags: runhidden
+; Grant Interactive Users start/stop on this one service, so the tray can
+; control it without elevation (docs/plan/tray-agent-control.md).
+Filename: "sc.exe"; Parameters: "sdset thai-smartcard-agent ""D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;LCRPWP;;;IU)"""; Flags: runhidden
 Filename: "{app}\{#TrayExeName}"; Description: "เปิด tray / Launch the tray now"; Flags: nowait postinstall skipifsilent
 
 [Registry]

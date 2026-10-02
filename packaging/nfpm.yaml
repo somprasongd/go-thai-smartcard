@@ -33,6 +33,10 @@ contents:
     dst: /lib/systemd/system/thai-smartcard-agent.service
   - src: packaging/polkit/50-thai-smartcard.pcscd.rules
     dst: /etc/polkit-1/rules.d/50-thai-smartcard.pcscd.rules
+  # Lets an active local session start/stop/restart the service from the tray
+  # (docs/plan/tray-agent-control.md).
+  - src: packaging/polkit/49-thai-smartcard.agent.rules
+    dst: /etc/polkit-1/rules.d/49-thai-smartcard.agent.rules
   # The config directory is owned by the service user: the agent is the only
   # writer of the config file (decision 3), and a first run writes the
   # defaults there when no config came with the package.

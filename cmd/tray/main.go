@@ -1,8 +1,11 @@
 // Command tray is the Thai Smartcard tray app: a thin client of the agent.
-// It shows the reader and card state from the /ws broadcast and opens the
-// test and settings pages; it never touches the config file and never spawns
-// the agent (decision 12) — when it cannot reach the agent it says so with
-// the command to start it and keeps polling.
+// It shows the reader and card state from the /ws broadcast, opens the test
+// and settings pages, and can start, stop and restart the agent's system
+// service (docs/plan/tray-agent-control.md). It never touches the config
+// file and never spawns an agent process of its own (decision 12) — the
+// control actions ask the OS service manager, which is what owns the single
+// installed run; when it cannot reach the agent it says so and keeps
+// polling.
 //
 // The tray needs cgo (fyne-io/systray), which is why it is its own binary and
 // not a flag of the agent: the agent stays cross-compilable.
@@ -17,8 +20,10 @@ import (
 	"os/exec"
 	"runtime"
 	"sync"
+	"time"
 
 	"fyne.io/systray"
+	"github.com/somprasongd/go-thai-smartcard/pkg/ctl"
 	"github.com/somprasongd/go-thai-smartcard/pkg/model"
 )
 
@@ -43,13 +48,17 @@ func main() {
 // showing only exists on the settings page, so the menu carries no switch
 // for them either.
 type tray struct {
-	mStatus    *systray.MenuItem
-	mTest      *systray.MenuItem
-	mConfig    *systray.MenuItem
-	mQuit      *systray.MenuItem
-	mu         sync.RWMutex
-	url        string
-	notifyOnce sync.Once
+	mStatus       *systray.MenuItem
+	mTest         *systray.MenuItem
+	mConfig       *systray.MenuItem
+	mAgent        *systray.MenuItem
+	mAgentStart   *systray.MenuItem
+	mAgentStop    *systray.MenuItem
+	mAgentRestart *systray.MenuItem
+	mQuit         *systray.MenuItem
+	mu            sync.RWMutex
+	url           string
+	notifyOnce    sync.Once
 }
 
 func onReady() {
@@ -71,6 +80,15 @@ func onReady() {
 	systray.AddSeparator()
 	t.mTest = systray.AddMenuItem("เปิดหน้าทดสอบ / Open test page", "Open the agent's test page")
 	t.mConfig = systray.AddMenuItem("ตั้งค่า / Settings", "Open /settings")
+
+	// Start/stop/restart go through the OS service manager (pkg/ctl); the
+	// tray never spawns an agent of its own (decision 12). The items are
+	// enabled or disabled against the service's real state by pollService.
+	t.mAgent = systray.AddMenuItem("Agent", "Control the agent service")
+	t.mAgentStart = t.mAgent.AddSubMenuItem("เริ่ม agent / Start agent", "Start the agent service")
+	t.mAgentStop = t.mAgent.AddSubMenuItem("หยุด agent… / Stop agent…", "Stop the agent service — the reader will not work until started again")
+	t.mAgentRestart = t.mAgent.AddSubMenuItem("รีสตาร์ท agent / Restart agent", "Restart the agent service — what a hand-edited config.toml needs")
+
 	systray.AddSeparator()
 	// Quit closes the tray for this session only; the agent keeps running.
 	t.mQuit = systray.AddMenuItem("ออกจาก tray / Quit", "Close the tray; the agent keeps running")
@@ -78,6 +96,7 @@ func onReady() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	client := newAgentClient(*agentURL)
+	go t.pollService(ctx)
 	go client.run(ctx, t.setEndpoint, t.connectionState, func(msg model.Message) {
 		if msg.Event == "smc-status" {
 			if status, ok := msg.Payload.(map[string]any); ok {
@@ -92,10 +111,87 @@ func onReady() {
 			openBrowser(t.baseURL())
 		case <-t.mConfig.ClickedCh:
 			openBrowser(t.baseURL() + "/settings")
+		case <-t.mAgentStart.ClickedCh:
+			go t.serviceAction("start")
+		case <-t.mAgentStop.ClickedCh:
+			go t.serviceAction("stop")
+		case <-t.mAgentRestart.ClickedCh:
+			go t.serviceAction("restart")
 		case <-t.mQuit.ClickedCh:
 			systray.Quit()
 			return
 		}
+	}
+}
+
+// serviceAction runs one control action after any confirmation Stop needs,
+// then refreshes the menu. It runs on its own goroutine: a systemctl restart
+// or an osascript prompt waiting for a password can take seconds, and the
+// menu loop must not freeze behind it.
+func (t *tray) serviceAction(action string) {
+	if action == "stop" && !confirm(
+		"Thai Smartcard",
+		"หยุด agent แล้วจะอ่านบัตรไม่ได้จนกว่าจะเริ่มใหม่ — Stop the agent? The reader will not work until started again.",
+	) {
+		return
+	}
+	m := ctl.New()
+	var err error
+	switch action {
+	case "start":
+		err = m.Start()
+	case "stop":
+		err = m.Stop()
+	case "restart":
+		err = m.Restart()
+	}
+	if err != nil {
+		log.Printf("agent %s: %v", action, err)
+	}
+	t.refreshServiceState()
+}
+
+// pollService keeps the Agent submenu enabled or disabled against the
+// service's real state. It polls because the OS service managers offer no
+// change callback a tray could subscribe to.
+func (t *tray) pollService(ctx context.Context) {
+	t.refreshServiceState()
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			t.refreshServiceState()
+		}
+	}
+}
+
+func (t *tray) refreshServiceState() {
+	state, err := ctl.New().State()
+	if err != nil {
+		// No working control mechanism: no systemd, no polkit agent, the
+		// helper not installed and the operator cancelled the prompt. Keep
+		// the items disabled and let the tooltip say why, exactly like the
+		// terminal hint does.
+		t.mAgentStart.Disable()
+		t.mAgentStop.Disable()
+		t.mAgentRestart.Disable()
+		t.mAgent.SetTooltip("ควบคุม service ไม่ได้ — " + err.Error())
+		return
+	}
+	t.mAgentStart.Enable()
+	t.mAgentStop.Enable()
+	t.mAgentRestart.Enable()
+	switch state {
+	case ctl.StateRunning:
+		t.mAgentStart.Disable()
+		t.mAgent.SetTooltip("agent กำลังทำงาน / running")
+	case ctl.StateStopped:
+		t.mAgentStop.Disable()
+		t.mAgentRestart.Disable()
+		t.mAgent.SetTooltip("agent หยุดอยู่ / stopped")
 	}
 }
 
@@ -158,8 +254,8 @@ func (t *tray) setUp() {
 	t.mStatus.SetTitle("เชื่อมต่อ agent แล้ว / connected")
 }
 
-// setDown says the agent is not running, with the way to start it on this
-// platform. The tray never starts the agent itself (decision 12).
+// setDown says the agent is not reachable, with the terminal way to start it
+// for this platform as a fallback next to the Agent menu's Start item.
 func (t *tray) setDown() {
 	hint := startHint()
 	line := "ติดต่อ agent ไม่ได้ — " + hint

@@ -648,6 +648,34 @@ An explicit URL never follows discovery. The metadata contains only a local
 URL, process instance ID, schema version and generation; it contains no token,
 configuration or card data. The tray verifies the instance via `/api/info`.
 
+### Start / stop / restart from the tray
+
+The **Agent** submenu starts, stops and restarts the agent's system service on
+every OS, without a terminal and without elevating the tray itself. Each OS
+authorises it through its own mechanism — the tray never spawns an agent
+process of its own; the service manager owns the single installed run:
+
+| OS | How the tray is authorised |
+| :- | :------------------------- |
+| Linux | a polkit rule shipped by the `.deb`/`.rpm` lets an **active local session** manage this one unit; the tray runs `systemctl` |
+| Windows | the installer grants **Interactive Users** start/stop on this one service (`sc sdset`); the tray calls the Service Control Manager directly |
+| macOS | the `.pkg` installs a root helper (`com.thaismartcard.control`) that listens on a **local unix socket restricted to group `admin`** and forwards to the service; a manual install without the helper falls back to an administrator-password dialog per action |
+
+Stopping the agent stops card reading until it is started again, so **Stop
+asks for confirmation**; Start and Restart do not (Restart is what a
+hand-edited `config.toml` needs — saves from
+[settings](#settings) apply live). Where the mechanism is missing — no
+polkit agent on a headless Linux, a manual Windows install without the
+installer's ACL — the menu items disable themselves and the tooltip says why;
+the terminal commands below always work.
+
+To let more than administrators control the agent on macOS (for example a
+dedicated kiosk account that is not an admin), widen the helper socket's group:
+
+```sh
+sudo chgrp staff /var/run/thai-smartcard-control.sock
+```
+
 | Agent mode | Endpoint file |
 | :-- | :-- |
 | Linux service | `/var/lib/thai-smartcard/endpoint.json` |
