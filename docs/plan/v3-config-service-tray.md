@@ -665,8 +665,10 @@ sharing-violation troubleshooting note.
 After the live reader test the user tightened the wire contract once more:
 the `smc-options` broadcast and `get-options` are removed outright — config is
 the single source of truth, read through `/api/settings`; the bundled page's
-applet display went with it. Ships as **v4.0.0** (a protocol action removal is
-MAJOR by the versioning policy).
+applet display went with it. Released as **v4.0.0** (a protocol action removal
+is MAJOR by the versioning policy), CI green, all six packages attached — the
+wire contract is now: in `get-status`/`refresh-readers`/`read-now`, out
+`smc-status`/`smc-data`/`smc-inserted`/`smc-removed`/`smc-error`.
 
 Pending, on real hardware/accounts only:
 
