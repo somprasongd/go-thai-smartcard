@@ -17,7 +17,7 @@ image) to clients over socket.io and WebSockets.
   manages the system service (`service.go`, hidden behind `!js`)
 - Library demo: `go run ./cmd/example`
 
-Go 1.18+ per `go.mod`. `make dev`, `make example`, the `build-*` targets and
+Go 1.27+ per `go.mod`. `make dev`, `make example`, the `build-*` targets and
 `make check` (the whole local gate, including the wasm build) wrap the same
 commands; `build-wasm` targets `cmd/agent`.
 
