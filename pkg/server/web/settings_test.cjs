@@ -58,7 +58,8 @@ async function scenario(response, status = 200, alreadyRevealed = false) {
 
   // The two standard listens render the Ollama-style expose checkbox and the
   // checkbox maps back onto those values; a custom bind keeps the text field.
-  async function listenScenario(listen, setExpose) {
+  // The token section follows exposure: hidden on loopback, shown beyond it.
+  async function listenScenario(listen, setExpose, typeListen) {
     const elements = new Map();
     const element = id => {
       if (!elements.has(id)) elements.set(id, {
@@ -78,24 +79,45 @@ async function scenario(response, status = 200, alreadyRevealed = false) {
     };
     vm.runInNewContext(script, context);
     await settle();
-    const rows = { expose: !element('expose-row').hidden, text: !element('listen-row').hidden };
-    if (setExpose !== undefined) element('expose').checked = setExpose;
+    const rows = {
+      expose: !element('expose-row').hidden,
+      text: !element('listen-row').hidden,
+      token: !element('token-section').hidden
+    };
+    let tokenAfterExpose = null;
+    if (setExpose !== undefined) {
+      element('expose').checked = setExpose;
+      element('expose').listeners.change();
+      tokenAfterExpose = !element('token-section').hidden;
+    }
+    let tokenAfterType = null;
+    if (typeListen !== undefined) {
+      element('listen').value = typeListen;
+      element('listen').listeners.input();
+      tokenAfterType = !element('token-section').hidden;
+    }
     element('btn-save').listeners.click();
     await settle();
-    return { rows, listen: sent[0] };
+    return { rows, tokenAfterExpose, tokenAfterType, listen: sent[0] };
   }
 
   let probe = await listenScenario('127.0.0.1');
-  assert.deepEqual(probe.rows, { expose: true, text: false });
+  assert.deepEqual(probe.rows, { expose: true, text: false, token: false });
   assert.equal(probe.listen, '127.0.0.1');
   probe = await listenScenario('127.0.0.1', true);
   assert.equal(probe.listen, '0.0.0.0');
+  assert.equal(probe.tokenAfterExpose, true);
   probe = await listenScenario('0.0.0.0');
-  assert.deepEqual(probe.rows, { expose: true, text: false });
+  assert.deepEqual(probe.rows, { expose: true, text: false, token: true });
   assert.equal(probe.listen, '0.0.0.0');
   probe = await listenScenario('0.0.0.0', false);
   assert.equal(probe.listen, '127.0.0.1');
+  assert.equal(probe.tokenAfterExpose, false);
   probe = await listenScenario('192.168.1.10');
-  assert.deepEqual(probe.rows, { expose: false, text: true });
+  assert.deepEqual(probe.rows, { expose: false, text: true, token: true });
   assert.equal(probe.listen, '192.168.1.10');
+  probe = await listenScenario('192.168.1.10', undefined, 'localhost');
+  assert.equal(probe.tokenAfterType, false);
+  probe = await listenScenario('localhost', undefined, '0.0.0.0');
+  assert.equal(probe.tokenAfterType, true);
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -161,7 +161,9 @@
         </div>
       </section>
 
-      <section>
+      <!-- A loopback token is inert: the guard enforces it only beyond
+           loopback, so the whole section hides until exposure is on. -->
+      <section id="token-section" hidden>
         <h2>Socket token <small>[server] token</small></h2>
         <p class="hint">
           ต้องมีเมื่อเปิดให้เครือข่ายภายนอกเข้าถึง / required when the agent listens beyond localhost.
@@ -268,6 +270,27 @@
           return listen === "127.0.0.1" || listen === "0.0.0.0";
         }
 
+        // Mirrors config.IsLoopbackListen for the common values. The server
+        // decides enforcement; this only drives whether the token section is
+        // worth showing on an agent that is not exposed.
+        function listenIsLoopback(listen) {
+          return (
+            listen === "localhost" ||
+            listen === "::1" ||
+            /^127(?:\.\d{1,3}){3}$/.test(listen)
+          );
+        }
+
+        function effectiveListen() {
+          return $("listen-row").hidden
+            ? ($("expose").checked ? "0.0.0.0" : "127.0.0.1")
+            : $("listen").value.trim();
+        }
+
+        function syncTokenSection() {
+          $("token-section").hidden = listenIsLoopback(effectiveListen());
+        }
+
         function fill(config, tokenSet) {
           var listen = config.server.listen || "127.0.0.1";
           $("expose").checked = listen === "0.0.0.0";
@@ -288,6 +311,7 @@
           $("tls-key").value = config.tls.key_file;
           tokenSet ? showTokenSet() : showTokenMissing();
           syncWarnings();
+          syncTokenSection();
         }
 
         function collect() {
@@ -425,6 +449,8 @@
           );
         });
         $("origins").addEventListener("input", syncWarnings);
+        $("expose").addEventListener("change", syncTokenSection);
+        $("listen").addEventListener("input", syncTokenSection);
 
         load();
       })();
