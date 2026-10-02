@@ -2413,6 +2413,12 @@
             renderStatePill();
             syncReaderUI();
           }
+          // The first transport to come up has to repaint the empty state:
+          // boot rendered "cannot reach the agent" while nothing was connected,
+          // and nothing repaints again until a card event arrives, so the panel
+          // would sit at noconn under a green pill. With data on screen there
+          // is nothing to repaint — and no re-flash of the card either.
+          if (ok && !store.data) render();
           if (!ok && !store.conn.ever) render();
         }
 
