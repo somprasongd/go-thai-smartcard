@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Both bundled pages were redesigned around the document they serve: an ink
+  desk with a single gold rule carries the pages, the card data renders as the
+  paper card itself — crest band, gold hairlines, guilloche — and seal red is
+  the only action colour. The empty state draws the reader slot with a card
+  waiting above it instead of an icon; Thai-first system type replaces the
+  generic stack; panel eyebrows, all-caps labels and the dark-dashboard card
+  chrome are gone. No behaviour changes: every control, state and page script
+  test is the same.
+
 ### Added
 
 - An "Expose to network" checkbox on /settings in place of the raw `listen`

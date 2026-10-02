@@ -9,56 +9,103 @@
     />
     <title>SMC — Settings</title>
     <style>
+      /* ---------------------------------------------------------------------
+         Design system: "โต๊ะรับรอง" — a lacquered ink desk with official
+         documents on it. The agent's own red (the card's crest red) is the
+         only loud colour and it means action or state; gold is reserved for
+         the identity hairlines; everything else is quiet ink and paper.
+         Thai-first system type, mono only for actual numbers and keys.
+         --------------------------------------------------------------------- */
       :root {
-        --bg: #0e1116;
-        --bg-elev: #161b23;
-        --line: #2a323e;
-        --fg: #e6e9ef;
-        --fg-dim: #98a2b3;
-        --accent: #c8102e;
-        --ok: #22c55e;
-        --warn: #f59e0b;
-        --danger: #ef4444;
-        --radius: 12px;
-        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans Thai",
-          "Leelawadee UI", "Sarabun", Roboto, sans-serif;
+        --desk: #1b2130;
+        --desk-elev: #232b3d;
+        --desk-deep: #131826;
+        --line: #333d55;
+        --line-soft: #2a3348;
+        --fg: #edece5;
+        --fg-dim: #a4acbe;
+        --fg-faint: #6f7889;
+        --seal: #d0243f;
+        --seal-deep: #a3122a;
+        --gold: #b08d4f;
+        --ok: #2f9e63;
+        --warn: #d08700;
+        --danger: #e05252;
+        --paper: #f8f5ee;
+        --paper-ink: #2a2417;
+        --radius: 10px;
+        --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        --sans: "Sukhumvit Set", -apple-system, BlinkMacSystemFont, "Segoe UI",
+          "Noto Sans Thai", "Leelawadee UI", Sarabun, Roboto, sans-serif;
       }
       * { box-sizing: border-box; }
       [hidden] { display: none !important; }
       html, body { margin: 0; padding: 0; }
       body {
-        background: var(--bg);
+        background:
+          radial-gradient(1100px 480px at 18% -8%, rgba(176, 141, 79, 0.07), transparent 62%),
+          var(--desk);
         color: var(--fg);
         font-family: var(--sans);
         font-size: 15px;
-        line-height: 1.5;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
       }
+      :focus-visible {
+        outline: 2px solid var(--gold);
+        outline-offset: 2px;
+        border-radius: 4px;
+      }
+
       header {
         display: flex;
-        align-items: center;
+        align-items: baseline;
         gap: 12px;
-        padding: 12px 20px;
-        background: var(--bg-elev);
-        border-bottom: 1px solid var(--line);
+        padding: 13px 20px;
+        background: var(--desk-deep);
+        border-bottom: 1px solid rgba(176, 141, 79, 0.55);
       }
-      header .brand { font-weight: 700; letter-spacing: 0.04em; }
+      header .brand { font-weight: 700; letter-spacing: 0.02em; }
+      header .brand::before {
+        content: "";
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--seal-deep);
+        box-shadow: 0 0 0 2px var(--desk-deep), 0 0 0 3px var(--gold);
+        margin-right: 8px;
+        vertical-align: 1px;
+      }
+      header strong { font-weight: 600; }
       header a { color: var(--fg-dim); text-decoration: none; }
-      header a:hover { color: var(--fg); }
-      main { max-width: 720px; margin: 0 auto; padding: 20px; display: grid; gap: 16px; }
+      header a:hover { color: var(--fg); text-decoration: underline; text-underline-offset: 3px; }
+
+      main { max-width: 720px; margin: 0 auto; padding: 22px 20px 40px; display: grid; gap: 18px; }
+
+      /* Sections are ruled form groups, not interchangeable cards: a gold
+         rule at the head edge ties them to the brand line, and the heading
+         names the TOML table the fields write to. */
       section {
-        background: var(--bg-elev);
-        border: 1px solid var(--line);
+        background: var(--desk-elev);
+        border: 1px solid var(--line-soft);
+        border-top: 2px solid rgba(176, 141, 79, 0.75);
         border-radius: var(--radius);
-        padding: 16px 18px;
+        padding: 16px 18px 18px;
       }
-      h2 { margin: 0 0 4px; font-size: 16px; }
-      h2 small { color: var(--fg-dim); font-weight: 400; margin-left: 8px; }
+      h2 { margin: 0 0 4px; font-size: 16px; font-weight: 650; }
+      h2 small {
+        color: var(--fg-faint);
+        font-weight: 450;
+        font-family: var(--mono);
+        font-size: 12px;
+        margin-left: 8px;
+      }
       .hint { color: var(--fg-dim); font-size: 13px; margin: 2px 0 10px; }
-      .row { display: flex; align-items: center; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
-      .row label { min-width: 150px; color: var(--fg-dim); }
+      .row { display: flex; align-items: center; gap: 10px; margin: 10px 0; flex-wrap: wrap; }
+      .row > label, .row label[for] { min-width: 150px; color: var(--fg-dim); }
       input[type="text"], input[type="number"], input[type="password"], textarea {
-        background: #0b0e13;
+        background: var(--desk-deep);
         color: var(--fg);
         border: 1px solid var(--line);
         border-radius: 8px;
@@ -68,44 +115,71 @@
       }
       input[type="text"] { width: 220px; }
       input[type="number"] { width: 110px; }
-      textarea { width: 100%; resize: vertical; }
-      .checks { display: grid; gap: 6px; }
+      textarea { width: 100%; resize: vertical; line-height: 1.6; }
+      input:focus, textarea:focus {
+        outline: none;
+        border-color: var(--seal);
+        box-shadow: 0 0 0 3px rgba(208, 36, 63, 0.18);
+      }
+      .checks { display: grid; gap: 7px; }
       .checks label { display: flex; gap: 8px; align-items: baseline; }
+      input[type="checkbox"] { accent-color: var(--seal); width: 15px; height: 15px; }
       .note { color: var(--fg-dim); font-size: 13px; }
       .warning { color: var(--warn); font-size: 13px; }
       .error { color: var(--danger); font-size: 13px; }
       .ok { color: var(--ok); font-size: 13px; }
-      #endpoint-moved { color: var(--warn); font-size: 13px; }
-      #endpoint-link { color: var(--fg); }
       code, .token {
         font-family: var(--mono);
-        background: #0b0e13;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 6px 10px;
+        font-size: 13px;
+        background: var(--paper);
+        color: var(--paper-ink);
+        border-radius: 6px;
+        padding: 5px 9px;
         word-break: break-all;
       }
+      code { padding: 2px 6px; }
+
       button {
-        background: var(--accent);
+        background: var(--seal);
         color: #fff;
         border: 0;
         border-radius: 8px;
         padding: 8px 16px;
         font-size: 14px;
+        font-family: var(--sans);
+        font-weight: 600;
         cursor: pointer;
       }
-      button.secondary { background: #232b36; color: var(--fg); }
-      button:disabled { opacity: 0.5; cursor: default; }
+      button:hover { background: var(--seal-deep); }
+      button.secondary {
+        background: var(--desk-deep);
+        color: var(--fg);
+        border: 1px solid var(--line);
+        font-weight: 500;
+      }
+      button.secondary:hover { background: var(--desk); border-color: var(--fg-faint); }
+      button:disabled { opacity: 0.45; cursor: default; }
+      button:disabled:hover { background: var(--seal); }
+      button.secondary:disabled:hover { background: var(--desk-deep); }
+
+      #endpoint-moved { color: var(--warn); font-size: 13px; }
+      #endpoint-link { color: var(--fg); font-weight: 600; text-underline-offset: 3px; }
+
       .savebar {
         display: grid;
         gap: 8px;
-        background: var(--bg-elev);
-        border: 1px solid var(--line);
+        background: var(--desk-elev);
+        border: 1px solid var(--line-soft);
+        border-left: 3px solid var(--gold);
         border-radius: var(--radius);
         padding: 16px 18px;
       }
       .savebar .actions { display: flex; gap: 10px; align-items: center; }
-    </style>
+
+      @media (prefers-reduced-motion: reduce) {
+        * { transition: none !important; animation: none !important; }
+      }
+      </style>
   </head>
   <body>
     <header>
