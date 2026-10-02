@@ -15,4 +15,5 @@
 
 # stray build outputs at the repo root
 /agent
+/example
 /tray
