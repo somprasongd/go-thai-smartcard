@@ -105,3 +105,36 @@ Windows/Linux tray/ctl cross-compilation passed again. The current native binary
 was rebuilt in `bin/thai-smartcard-tray`. The test also exposed a Makefile target
 being skipped by a root-level `tray` binary; marking the tray target phony fixed
 it and `make tray` now runs its build. Temporary UI harness files were removed.
+
+## Live launchd start/stop check after commit
+
+2026-10-02, implementation commit `82c14cb`: the machine had no installed
+`thai-smartcard-agent` system service or control-helper socket, and noninteractive
+sudo required an administrator password. A temporary **user LaunchAgent** named
+`thai-smartcard-agent-lifecycle-test-20261002` was therefore registered through
+kardianos/service's `UserService` option, using the current agent binary, the
+same RunAtLoad/KeepAlive template and a private temporary config on port 9901.
+This is a real launchd service check, distinct from the earlier fake-manager UI
+check and from a root-owned system-service acceptance test.
+
+Observed results:
+
+- Install reported stopped; Start made `/api/info` ready and opened exactly one
+  listener (PID 12291).
+- `ctl.EnsureRunning` on the running service retained that PID; no duplicate
+  process appeared.
+- Stop removed the listener and made HTTP unavailable; status reported stopped.
+- `ctl.EnsureRunning` after Stop started a new process (PID 14339), restoring
+  HTTP readiness. A second EnsureRunning retained the new PID.
+- A card read initially waited while both agents shared the physical reader.
+  Temporarily stopping the original foreground agent allowed `read-now` over
+  WebSocket to succeed: a 13-digit ID and nonempty face image were validated
+  without printing or saving personal data.
+- The temporary service was stopped, uninstalled and its LaunchAgent registration
+  checked absent; port 9901 was closed. The original foreground command and
+  `config.dev.toml` were restored, with one listener on 9900 (new PID 20349).
+
+Root-owned LaunchDaemon/control-helper permissions, tray control of that system
+service and reboot/login autostart were not established by this user-service
+check. Those require installation with administrator rights and native boot/login
+acceptance. No trace or card payload was committed.
