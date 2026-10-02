@@ -643,7 +643,12 @@ Inno resolves `Source:` relative to the `.iss`), second run failed on a
 guessed nfpm release URL, fixed across PRs #12 and #13 and re-tagged per the
 undo path above; the final run is green and the release carries
 `thai-smartcard-agent_3.0.0_amd64.deb`, `thai-smartcard-agent-3.0.0.x86_64.rpm`,
-`thai-smartcard-setup-3.0.0.exe` and `thai-smartcard-agent-3.0.0.pkg`.
+`thai-smartcard-setup-3.0.0.exe` and `thai-smartcard-agent-3.0.0.pkg` — and,
+after a follow-up (PR #14) that added the missing Linux tray build to the
+linux job (appindicator/GTK headers on the runner), also
+`thai-smartcard-tray_3.0.0_amd64.deb` and
+`thai-smartcard-tray-3.0.0.x86_64.rpm`: all six assets of phase 4 are on the
+release.
 
 Pending, on real hardware/accounts only:
 
