@@ -20,6 +20,17 @@ var ErrNoReaders = errors.New("not available readers")
 // reader problem, such as the reader being unplugged.
 const readerRetryInterval = 2 * time.Second
 
+// connectRetries and connectRetryDelay bound the retry of a Connect that lost
+// an exclusive-access race: a fast re-insert right after this very transport
+// released the previous session, or another process that seizes inserted
+// cards (on macOS, CryptoTokenKit's smart card service does that to PKI
+// cards). One to a few seconds is enough for the former and sometimes wins
+// the latter; beyond that the read fails and the operator sees why.
+const (
+	connectRetries    = 4
+	connectRetryDelay = time.Second
+)
+
 // Options selects which parts of the card to read.
 type Options struct {
 	ShowFaceImage bool
@@ -205,7 +216,16 @@ func (s *SmartCard) readers(readerName *string) ([]string, error) {
 func (s *SmartCard) readCard(reader string, opts Options) (card transport.Card, data *model.Data, err error) {
 	log.Printf("Connecting to card with %s", reader)
 
-	card, err = s.transport.Connect(reader)
+	// A sharing violation is transient, so the connect is retried with a
+	// short backoff before the read is given up.
+	for attempt := 0; ; attempt++ {
+		card, err = s.transport.Connect(reader)
+		if err == nil || !errors.Is(err, transport.ErrCardBusy) || attempt >= connectRetries {
+			break
+		}
+		log.Printf("connect lost the exclusive-access race (%v), retry %d/%d", err, attempt+1, connectRetries)
+		time.Sleep(connectRetryDelay)
+	}
 	if err != nil {
 		log.Printf("connecting card error %s", err.Error())
 		return card, nil, err

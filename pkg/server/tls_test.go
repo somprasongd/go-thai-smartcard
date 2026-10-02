@@ -233,7 +233,9 @@ func TestTLSReloadsChangedCertificate(t *testing.T) {
 
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if got := servedSerial(t, mgr.TLSAddr()); got != first {
+		// servedSerial hands back a fresh *big.Int per parse, so the serials
+		// are compared by value, never by pointer.
+		if got := servedSerial(t, mgr.TLSAddr()); got.Cmp(first) != 0 {
 			return // reloaded
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -276,8 +278,9 @@ func TestTLSKeepsServingWhenAReloadFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 3; i++ {
-		if got := servedSerial(t, mgr.TLSAddr()); got != first {
-			t.Fatalf("handshake %d served a new certificate after a failed reload", i)
+		got := servedSerial(t, mgr.TLSAddr())
+		if got.Cmp(first) != 0 {
+			t.Fatalf("handshake %d served a new certificate after a failed reload: first=%s got=%s", i, first, got)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
