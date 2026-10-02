@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-10-02
+
+Removing a protocol action is a breaking change (the versioning policy calls
+it MAJOR): **the `smc-options` broadcast and the `get-options` action are
+gone.** What the agent reads is configuration with one source of truth —
+`config.toml`, read through `GET /api/settings` — and the card sockets no
+longer carry a derived copy of it. A client that showed the reading options
+reads `/api/settings` instead. The remaining control actions are `get-status`,
+`refresh-readers` and `read-now`.
+
 ### Removed
 
 - **Breaking:** the `smc-options` broadcast and the `get-options` action. What
@@ -394,7 +404,8 @@ First release.
   and a fix for waiting on readers in macOS.
 - PM2 and systemd run instructions in the README.
 
-[unreleased]: https://github.com/somprasongd/go-thai-smartcard/compare/v3.0.1...HEAD
+[unreleased]: https://github.com/somprasongd/go-thai-smartcard/compare/v4.0.0...HEAD
+[4.0.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v3.0.1...v4.0.0
 [3.0.1]: https://github.com/somprasongd/go-thai-smartcard/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v2.0.1...v3.0.0
 [2.0.1]: https://github.com/somprasongd/go-thai-smartcard/compare/v2.0.0...v2.0.1
