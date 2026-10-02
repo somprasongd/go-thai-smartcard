@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-10-02
+
 ### Fixed
 
 - `/settings` and `/api/*` were not served when the agent was started without
@@ -375,7 +377,8 @@ First release.
   and a fix for waiting on readers in macOS.
 - PM2 and systemd run instructions in the README.
 
-[unreleased]: https://github.com/somprasongd/go-thai-smartcard/compare/v3.0.0...HEAD
+[unreleased]: https://github.com/somprasongd/go-thai-smartcard/compare/v3.0.1...HEAD
+[3.0.1]: https://github.com/somprasongd/go-thai-smartcard/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v2.0.1...v3.0.0
 [2.0.1]: https://github.com/somprasongd/go-thai-smartcard/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v1.3.1...v2.0.0
