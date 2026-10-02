@@ -40,7 +40,8 @@ func main() {
 
 // tray is the menu and the state behind it. Everything the menu shows comes
 // from the agent over the network: the card state from the /ws broadcast, the
-// options and the token from /api/settings.
+// expose state and token from /api/settings. What the agent reads is config
+// with one source of truth, so the menu carries no switches for it.
 type tray struct {
 	client *http.Client
 
@@ -53,15 +54,14 @@ type tray struct {
 	mTest   *systray.MenuItem
 	mConfig *systray.MenuItem
 	mExpose *systray.MenuItem
-	mFace   *systray.MenuItem
-	mLaser  *systray.MenuItem
-	mNhso   *systray.MenuItem
 	mQuit   *systray.MenuItem
 }
 
 func onReady() {
 	systray.SetIcon(iconBytes)
-	systray.SetTitle("Thai Smartcard")
+	// No SetTitle: the menu bar shows the icon alone, which is the macOS
+	// convention. (Windows and the Linux appindicator never displayed a title
+	// anyway.) Hovering names the app.
 	systray.SetTooltip("Thai Smartcard Agent")
 
 	t := &tray{client: &http.Client{Timeout: 5 * time.Second}}
@@ -75,10 +75,6 @@ func onReady() {
 	// Decision 16: a checkable toggle only while a token exists; before that
 	// it opens /settings, where the token ceremony happens.
 	t.mExpose = systray.AddMenuItemCheckbox("เปิดให้เครือข่ายเข้าถึง / Expose to network", "Serve the agent beyond localhost", false)
-	systray.AddSeparator()
-	t.mFace = systray.AddMenuItemCheckbox("อ่านรูปหน้า / Read face image", "read_face_image", false)
-	t.mLaser = systray.AddMenuItemCheckbox("อ่านเลขหลังบัตร / Read laser ID", "read_laser_id", false)
-	t.mNhso = systray.AddMenuItemCheckbox("อ่านสิทธิการรักษา / Read NHSO", "read_nhso", false)
 	systray.AddSeparator()
 	// Quit closes the tray for this session only; the agent keeps running.
 	t.mQuit = systray.AddMenuItem("ออกจาก tray / Quit", "Close the tray; the agent keeps running")
@@ -101,12 +97,6 @@ func onReady() {
 			openBrowser(*agentURL + "/settings")
 		case <-t.mExpose.ClickedCh:
 			go t.toggleExpose()
-		case <-t.mFace.ClickedCh:
-			go t.toggleCard(func(c *config.Card) { c.ReadFaceImage = !c.ReadFaceImage })
-		case <-t.mLaser.ClickedCh:
-			go t.toggleCard(func(c *config.Card) { c.ReadLaserID = !c.ReadLaserID })
-		case <-t.mNhso.ClickedCh:
-			go t.toggleCard(func(c *config.Card) { c.ReadNHSO = !c.ReadNHSO })
 		case <-t.mQuit.ClickedCh:
 			systray.Quit()
 			return
@@ -208,8 +198,9 @@ func startHint() string {
 	}
 }
 
-// followOptionClicks mirrors the agent's answers back into the checkmarks,
-// so a hand edit or a second settings page cannot leave the menu lying.
+// followExposeState mirrors the agent's answers back into the expose
+// checkmark, so a hand edit or a second settings page cannot leave the menu
+// lying about what is exposed.
 func (t *tray) followOptionClicks() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -228,10 +219,6 @@ func (t *tray) refreshSettings() {
 	t.mu.Lock()
 	t.cfg, t.version, t.tokenSet = cfg, version, tokenSet
 	t.mu.Unlock()
-
-	setChecked(t.mFace, cfg.Card.ReadFaceImage)
-	setChecked(t.mLaser, cfg.Card.ReadLaserID)
-	setChecked(t.mNhso, cfg.Card.ReadNHSO)
 
 	exposed := !config.IsLoopbackListen(cfg.Server.Listen)
 	if tokenSet {
@@ -285,11 +272,6 @@ func (t *tray) toggleExpose() {
 			c.Server.Listen = "127.0.0.1"
 		}
 	})
-	t.afterSave(err)
-}
-
-func (t *tray) toggleCard(mutate func(*config.Card)) {
-	err := t.save(func(c *config.Config) { mutate(&c.Card) })
 	t.afterSave(err)
 }
 

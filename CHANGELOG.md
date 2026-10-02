@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The tray icon stands alone in the menu bar on macOS — the "Thai Smartcard"
+  title next to it is gone (hovering still names the app).
+- The read image / laser ID / NHSO switches are removed from the tray menu:
+  what the agent reads is configuration with one source of truth, changed in
+  `/settings`. The tray menu is now the status line, the two page shortcuts,
+  the expose-to-network toggle and quit.
+
 ## [4.0.0] - 2026-10-02
 
 Removing a protocol action is a breaking change (the versioning policy calls
