@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Bound WebSocket command frames and per-client delivery queues; retire slow
+  clients independently and detect idle broken connections with ping/pong.
+
 ## [4.2.0] - 2026-10-02
 
 ### Added

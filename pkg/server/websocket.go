@@ -12,17 +12,11 @@ import (
 )
 
 const (
-	// Time allowed to write a message to the peer.
-	writeWait = 10 * time.Second
-
-	// Time allowed to read the next pong message from the peer.
-	// pongWait = 60 * time.Second
-
-	// Send pings to peer with this period. Must be less than pongWait.
-	// pingPeriod = (pongWait * 9) / 10
-
-	// Maximum message size allowed from peer.
-	// maxMessageSize = 512
+	writeWait         = 10 * time.Second
+	pongWait          = 60 * time.Second
+	pingPeriod        = pongWait * 9 / 10
+	maxMessageSize    = 4096
+	outboundQueueSize = 16
 )
 
 var upgrader = websocket.Upgrader{
@@ -31,28 +25,61 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin:     func(r *http.Request) bool { return true },
 }
 
-// func getCmd(input string) string {
-// 	inputArr := strings.Split(input, " ")
-// 	return inputArr[0]
-// }
-
-// func getMessage(input string) string {
-// 	inputArr := strings.Split(input, " ")
-// 	var result string
-// 	for i := 1; i < len(inputArr); i++ {
-// 		result += inputArr[i]
-// 	}
-// 	return result
-// }
-
 type connection struct {
-	// The websocket connection.
-	ws *websocket.Conn
+	ws       *websocket.Conn
+	send     chan []byte
+	done     chan struct{}
+	stopOnce sync.Once
 }
 
-func (c *connection) write(mt int, payload []byte) error {
-	c.ws.SetWriteDeadline(time.Now().Add(writeWait))
-	return c.ws.WriteMessage(mt, payload)
+func (c *connection) stop() {
+	c.stopOnce.Do(func() {
+		close(c.done)
+		if c.ws != nil {
+			_ = c.ws.Close()
+		}
+	})
+}
+
+// One writer owns data, ping and deadlines. A full bounded queue retires only
+// this peer, rather than blocking card delivery to every other subscriber.
+func (c *connection) enqueue(payload []byte) bool {
+	select {
+	case <-c.done:
+		return false
+	default:
+	}
+	select {
+	case c.send <- payload:
+		return true
+	default:
+		c.stop()
+		return false
+	}
+}
+
+func (c *connection) writeLoop() {
+	ticker := time.NewTicker(pingPeriod)
+	defer ticker.Stop()
+	defer c.stop()
+	for {
+		var kind int
+		var payload []byte
+		select {
+		case <-c.done:
+			return
+		case payload = <-c.send:
+			kind = websocket.TextMessage
+		case <-ticker.C:
+			kind = websocket.PingMessage
+		}
+		if err := c.ws.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
+			return
+		}
+		if err := c.ws.WriteMessage(kind, payload); err != nil {
+			return
+		}
+	}
 }
 
 // subscriber is touched from two sides at once: every connection's handler
@@ -70,7 +97,7 @@ func (s *subscriber) register(c *connection) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
-		_ = c.ws.Close()
+		c.stop()
 		return false
 	}
 	if s.clients == nil {
@@ -89,7 +116,7 @@ func (s *ws) closeConnections() {
 	}
 	s.mu.Unlock()
 	for _, c := range clients {
-		_ = c.ws.Close()
+		c.stop()
 	}
 }
 
@@ -131,16 +158,17 @@ func (s *ws) Handler(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	c := &connection{ws: ws}
+	c := &connection{ws: ws, send: make(chan []byte, outboundQueueSize), done: make(chan struct{})}
 	if !s.subscriber.register(c) {
 		return
 	}
 
-	defer ws.Close()
-	// ws.SetReadLimit(maxMessageSize)
-	// ws.SetReadDeadline(time.Now().Add(pongWait))
-	// ws.SetPongHandler(func(string) error { ws.SetReadDeadline(time.Now().Add(pongWait)); return nil })
-	// Continuosly read and write message
+	defer c.stop()
+	defer s.subscriber.unregister(c)
+	go c.writeLoop()
+	ws.SetReadLimit(maxMessageSize)
+	_ = ws.SetReadDeadline(time.Now().Add(pongWait))
+	ws.SetPongHandler(func(string) error { return ws.SetReadDeadline(time.Now().Add(pongWait)) })
 	for {
 		mt, message, err := ws.ReadMessage()
 		if err != nil {
@@ -167,6 +195,8 @@ func (s *ws) Handler(w http.ResponseWriter, r *http.Request) {
 func (s *ws) Broadcast(msg model.Message) {
 	m, _ := json.Marshal(msg)
 	for _, c := range s.subscriber.snapshot() {
-		c.write(websocket.TextMessage, m)
+		if !c.enqueue(m) {
+			s.subscriber.unregister(c)
+		}
 	}
 }
