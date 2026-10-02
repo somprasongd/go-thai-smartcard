@@ -21,6 +21,7 @@ mkdir -p build/pkgroot/usr/local/bin build/pkgroot/Applications
 
 go build -trimpath -ldflags "-s -w -X main.version=$VERSION" \
     -o build/pkgroot/usr/local/bin/thai-smartcard-agent ./cmd/agent
+test "$(build/pkgroot/usr/local/bin/thai-smartcard-agent --version)" = "$VERSION"
 cp -R build/ThaiSmartcardTray.app build/pkgroot/Applications/
 
 pkgbuild \

@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"sync"
+	"time"
 
 	"github.com/somprasongd/go-thai-smartcard/pkg/model"
 )
@@ -18,16 +19,51 @@ import (
 // One cache is shared by every listener generation, so a settings save that
 // restarts the listener does not blank it.
 type StatusCache struct {
-	mu     sync.Mutex
-	status model.Status
-	have   bool
+	mu            sync.Mutex
+	status        model.Status
+	have          bool
+	health        string
+	lastReadAt    time.Time
+	lastErrorAt   time.Time
+	lastErrorCode string
 }
 
 // Record decodes one broadcast message, keeping only smc-status. The payload
 // arrives as whatever the read loop published, so it goes through JSON rather
 // than assuming a concrete type.
 func (c *StatusCache) Record(msg model.Message) {
-	if msg.Event != "smc-status" {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	switch msg.Event {
+	case "smc-data":
+		c.lastReadAt = time.Now().UTC()
+		c.health = "ready"
+		return
+	case "smc-error":
+		c.lastErrorAt = time.Now().UTC()
+		c.lastErrorCode = "operation-failed"
+		if degradedHealth(c.health) {
+			c.lastErrorCode = c.health
+		}
+		return
+	case "smc-health":
+		raw, _ := json.Marshal(msg.Payload)
+		var h struct {
+			State string `json:"state"`
+		}
+		if json.Unmarshal(raw, &h) == nil {
+			c.health = knownHealth(h.State)
+			if degradedHealth(c.health) {
+				c.lastErrorAt = time.Now().UTC()
+				c.lastErrorCode = c.health
+			}
+			if c.health == "pcsc-unavailable" {
+				c.status.Readers = nil
+			}
+		}
+		return
+	case "smc-status":
+	default:
 		return
 	}
 	raw, err := json.Marshal(msg.Payload)
@@ -38,10 +74,19 @@ func (c *StatusCache) Record(msg model.Message) {
 	if err := json.Unmarshal(raw, &st); err != nil {
 		return
 	}
-	c.mu.Lock()
 	c.status = st
+	c.health = knownHealth(st.Health)
+	if degradedHealth(c.health) {
+		c.lastErrorCode = c.health
+	}
+	if st.Health == "" {
+		if len(st.Readers) == 0 {
+			c.health = "no-reader"
+		} else {
+			c.health = "ready"
+		}
+	}
 	c.have = true
-	c.mu.Unlock()
 }
 
 // Snapshot returns the cached status and whether one has been seen at all.
@@ -49,4 +94,37 @@ func (c *StatusCache) Snapshot() (model.Status, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.status, c.have
+}
+
+// HealthSnapshot is operational metadata only; it never contains a card payload.
+type HealthSnapshot = model.Health
+
+func knownHealth(state string) string {
+	switch state {
+	case "ready", "no-reader", "reader-busy", "read-failed", "pcsc-unavailable", "starting":
+		return state
+	}
+	return "starting"
+}
+func (c *StatusCache) Health() HealthSnapshot {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	h := HealthSnapshot{LastErrorCode: c.lastErrorCode, State: knownHealth(c.health), Readers: append([]string{}, c.status.Readers...), Selected: c.status.Selected, CardState: c.status.State}
+	if !c.lastReadAt.IsZero() {
+		v := c.lastReadAt
+		h.LastReadAt = &v
+	}
+	if !c.lastErrorAt.IsZero() {
+		v := c.lastErrorAt
+		h.LastErrorAt = &v
+	}
+	return h
+}
+
+func degradedHealth(state string) bool {
+	switch state {
+	case "reader-busy", "read-failed", "pcsc-unavailable":
+		return true
+	}
+	return false
 }

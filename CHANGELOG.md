@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Run PR/main test CI on Linux, macOS and Windows, with Node behavior tests,
+  wasm builds and native Linux/macOS race detection.
+
+- Edit log mode/retention in Settings, display disk usage and distinguish applied
+  limits from configuration waiting for restart; preserve older clients.
+
+- Add a local diagnostics page and tray Troubleshoot menu for support reports,
+  clipboard copying and opening the active log directory without card data.
+
+- Add guarded reader health metadata and timestamps; show hardware problems
+  separately from agent connectivity in the tray.
+
+- Return private correlated command results, including busy queues and read
+  completion; the bundled page sends each command once and handles timeouts.
+
+### Fixed
+
+- Embed and verify the release version in agent packages on every OS.
+
+- Bound WebSocket command frames and per-client delivery queues; retire slow
+  clients independently and detect idle broken connections with ping/pong.
+
 ## [4.2.0] - 2026-10-02
 
 ### Added

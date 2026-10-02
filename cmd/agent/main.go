@@ -17,6 +17,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/somprasongd/go-thai-smartcard/internal/discovery"
@@ -143,6 +144,12 @@ func runAgentMode(ctx context.Context, configPath string, managed bool) {
 		result := serverCfg(next, configPath, broadcast, command, nil)
 		result.InstanceID = instance
 		result.Status = statusCache
+		result.Diagnostics = func() server.DiagnosticSnapshot {
+			runtimeSettings.mu.Lock()
+			configured := runtimeSettings.current.Logging
+			runtimeSettings.mu.Unlock()
+			return diagnosticSnapshot(configPath, managed, cfg.Logging, configured)
+		}
 		result.ApplySettings = runtimeSettings.apply
 		return result
 	}
@@ -266,32 +273,56 @@ func (c *optionsController) handle(cmd model.Command) {
 	case "get-status":
 		// Answered by the read loop, which owns the reader list and its own
 		// state. It re-publishes without changing anything.
-		c.sendControl(smc.Control{Kind: smc.ControlReportStatus})
+		c.sendCommandControl(cmd, smc.ControlReportStatus)
 	case "refresh-readers":
-		c.sendControl(smc.Control{Kind: smc.ControlRefreshReaders})
+		c.sendCommandControl(cmd, smc.ControlRefreshReaders)
 	case "read-now":
 		// Harmless when no card is in: the loop answers with an error rather
 		// than reading nothing silently.
-		c.sendControl(smc.Control{Kind: smc.ControlReadNow})
+		c.sendCommandControl(cmd, smc.ControlReadNow)
 	default:
+		if cmd.Reply != nil {
+			cmd.Reply.Send("failed", "unknown_action")
+		}
 		c.fail(fmt.Sprintf("unknown action %q", cmd.Action))
 	}
 }
 
-// sendControl hands a request to the read loop without blocking.
-//
-// The loop is busy reading a card most of the time it spends awake, and it
-// drains this channel between transport waits. Blocking here would instead
-// stall the command loop, and with it the server's outbound path. A dropped
-// request is recoverable: the client can send it again.
-func (c *optionsController) sendControl(cmd smc.Control) {
+// Responses are connection-scoped. The gate guarantees accepted precedes the
+// terminal result even if the read loop consumes the queued control immediately.
+func (c *optionsController) sendCommandControl(cmd model.Command, kind smc.ControlKind) {
+	reply := func(status, code string) {
+		if cmd.Reply != nil {
+			cmd.Reply.Send(status, code)
+		}
+	}
 	if c.control == nil {
+		reply("failed", "control_unavailable")
 		return
 	}
+	gate := make(chan struct{})
+	var once sync.Once
+	ctl := smc.Control{Kind: kind}
+	if cmd.Reply != nil {
+		ctl.Complete = &smc.ControlResult{Finish: func(err error) {
+			<-gate
+			once.Do(func() {
+				if errors.Is(err, smc.ErrReadBusy) {
+					reply("busy", "reader_busy")
+				} else if err != nil {
+					reply("failed", "operation_failed")
+				} else {
+					reply("completed", "")
+				}
+			})
+		}}
+	}
 	select {
-	case c.control <- cmd:
+	case c.control <- ctl:
+		reply("accepted", "")
+		close(gate)
 	default:
-		log.Printf("dropping a reader control request, the read loop is busy")
+		reply("busy", "reader_queue_full")
 	}
 }
 

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const html = fs.readFileSync(`${__dirname}/index.html`, 'utf8');
 let script = html.match(/<script>\s*([\s\S]*?)<\/script>/)[1];
 // Expose the closure's functions without changing the production page.
-script = script.replace(/\}\)\(\);\s*$/, 'globalThis.page = {store, boot, cidValid, clearData, handleEvent}; })();');
+script = script.replace(/\}\)\(\);\s*$/, 'globalThis.page = {store, boot, cidValid, clearData, handleEvent, sendCommand, pendingCommands, setWS: value => {ws=value}}; })();');
 function scenario(prefs) {
   const elements = new Map();
   const make = () => ({hidden:false, src:'', style:{}, dataset:{}, childNodes:[], listeners:{},
@@ -20,10 +20,10 @@ function scenario(prefs) {
     localStorage:{getItem:()=>prefs ? JSON.stringify(prefs) : null,setItem(){}},
     window:{location:{protocol:'http:',host:'localhost',search:''},fetch:()=>new Promise(()=>{})},
     fetch:()=>new Promise(()=>{}), navigator:{}, setTimeout(){},clearTimeout(){},
-    URLSearchParams, WebSocket:class {}, console
+    URLSearchParams, WebSocket:class {static OPEN=1}, console
   };
   vm.runInNewContext(script,context);
-  return {page:context.page,element};
+  return {page:context.page,element,window:context.window};
 }
 let test=scenario({privacy:'kiosk',mask:false,maskphoto:false,parts:true,nameparts:true,json:true,autoclear:30,lang:'en',dataLang:'both'});
 test.page.boot();
@@ -55,3 +55,16 @@ test.element('lightbox-img').src='data:image/jpeg;base64,c3ludGhldGlj';
 test.page.handleEvent('smc-removed',{},'ws');
 assert.equal(test.element('lightbox').hidden,true);
 assert.equal(test.element('lightbox-img').src,undefined);
+
+const commands=[];
+test.page.setWS({readyState:1,send:raw=>commands.push(JSON.parse(raw))});
+test.window.smcSocket={connected:true,emit(){throw new Error('duplicate command on socket.io')}};
+assert.equal(test.page.sendCommand({action:'read-now'}),true);
+assert.equal(commands.length,1);
+const requestId=commands[0].request_id;
+assert.ok(requestId);
+assert.equal(test.page.pendingCommands.size,1);
+test.page.handleEvent('smc-command-result',{request_id:requestId,status:'accepted'},'ws');
+assert.equal(test.page.pendingCommands.size,1);
+test.page.handleEvent('smc-command-result',{request_id:requestId,status:'completed'},'ws');
+assert.equal(test.page.pendingCommands.size,0);

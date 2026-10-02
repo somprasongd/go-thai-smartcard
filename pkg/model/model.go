@@ -34,7 +34,10 @@ type Message struct {
 // set-options and set-reader — is answered with an smc-error naming the
 // unknown action.
 type Command struct {
-	Action string `json:"action"`
+	Action    string `json:"action"`
+	RequestID string `json:"request_id,omitempty"`
+	// Reply stays in-process; transports bind it to the requesting connection.
+	Reply *CommandReply `json:"-"`
 }
 
 // Daemon states, as a client sees them.
@@ -58,6 +61,7 @@ type Status struct {
 	Readers  []string `json:"readers"`
 	Selected string   `json:"selected"`
 	State    string   `json:"state"`
+	Health   string   `json:"health,omitempty"`
 }
 
 type FormatedDate string
@@ -76,3 +80,14 @@ func NewFormatedDate(raw string) FormatedDate {
 		fmt.Sprintf("%v-%s-%s", year-543, raw[4:6], raw[6:]),
 	)
 }
+
+// CommandResult contains no card data and goes only to the requesting client.
+type CommandResult struct {
+	RequestID string `json:"request_id"`
+	Action    string `json:"action"`
+	Status    string `json:"status"`
+	Code      string `json:"code,omitempty"`
+}
+
+// CommandReply is an in-process response sink; a pointer keeps Command comparable.
+type CommandReply struct{ Send func(status, code string) }

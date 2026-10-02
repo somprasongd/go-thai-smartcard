@@ -14,9 +14,11 @@ package main
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os/exec"
 	"runtime"
 	"sync"
@@ -48,27 +50,32 @@ func main() {
 // showing only exists on the settings page, so the menu carries no switch
 // for them either.
 type tray struct {
-	mStatus       *systray.MenuItem
-	mTest         *systray.MenuItem
-	mConfig       *systray.MenuItem
-	mAgent        *systray.MenuItem
-	mAgentToggle  *systray.MenuItem
-	mAgentStatus  *systray.MenuItem
-	connection    string
-	observedState ctl.State
-	serviceErr    error
-	mAgentRestart *systray.MenuItem
-	mQuit         *systray.MenuItem
-	mStopQuit     *systray.MenuItem
-	lang          language
-	serviceOps    sync.Mutex
-	manualControl bool
-	manager       ctl.Manager
-	serviceUI     sync.Mutex
-	serviceState  func() (ctl.State, error)
-	mu            sync.RWMutex
-	url           string
-	notifyOnce    sync.Once
+	mStatus          *systray.MenuItem
+	mTest            *systray.MenuItem
+	mTroubleshoot    *systray.MenuItem
+	mDiagnostics     *systray.MenuItem
+	mCopyDiagnostics *systray.MenuItem
+	mOpenLogs        *systray.MenuItem
+	mConfig          *systray.MenuItem
+	mAgent           *systray.MenuItem
+	mAgentToggle     *systray.MenuItem
+	mAgentStatus     *systray.MenuItem
+	connection       string
+	lastReadAt       string
+	observedState    ctl.State
+	serviceErr       error
+	mAgentRestart    *systray.MenuItem
+	mQuit            *systray.MenuItem
+	mStopQuit        *systray.MenuItem
+	lang             language
+	serviceOps       sync.Mutex
+	manualControl    bool
+	manager          ctl.Manager
+	serviceUI        sync.Mutex
+	serviceState     func() (ctl.State, error)
+	mu               sync.RWMutex
+	url              string
+	notifyOnce       sync.Once
 }
 
 func onReady() {
@@ -92,6 +99,11 @@ func onReady() {
 	systray.AddSeparator()
 	t.mTest = systray.AddMenuItem(l.text("เปิดหน้าทดสอบ", "Open test page"), l.text("เปิดหน้าทดสอบการอ่านบัตร", "Open the agent's test page"))
 	t.mConfig = systray.AddMenuItem(l.text("ตั้งค่า", "Settings"), l.text("เปิดหน้าตั้งค่า", "Open settings"))
+
+	t.mTroubleshoot = systray.AddMenuItem(l.text("แก้ไขปัญหา", "Troubleshoot"), l.text("ตรวจสถานะและบันทึกการทำงาน", "Inspect operational diagnostics"))
+	t.mDiagnostics = t.mTroubleshoot.AddSubMenuItem(l.text("เปิดหน้าวิเคราะห์ปัญหา", "Open diagnostics"), "")
+	t.mCopyDiagnostics = t.mTroubleshoot.AddSubMenuItem(l.text("คัดลอกข้อมูลวิเคราะห์", "Copy diagnostics"), "")
+	t.mOpenLogs = t.mTroubleshoot.AddSubMenuItem(l.text("เปิดโฟลเดอร์ log", "Open log folder"), "")
 
 	// Restart and Pause/Resume go through the OS service manager (pkg/ctl); the
 	// tray never spawns an agent of its own (decision 12). The items are
@@ -124,6 +136,13 @@ func onReady() {
 			openBrowser(t.baseURL())
 		case <-t.mConfig.ClickedCh:
 			openBrowser(t.baseURL() + "/settings")
+
+		case <-t.mDiagnostics.ClickedCh:
+			openBrowser(t.baseURL() + "/diagnostics?lang=" + t.lang.text("th", "en"))
+		case <-t.mCopyDiagnostics.ClickedCh:
+			go t.troubleshoot("copy")
+		case <-t.mOpenLogs.ClickedCh:
+			go t.troubleshoot("logs")
 		case <-t.mAgentToggle.ClickedCh:
 			go t.serviceAction("toggle")
 		case <-t.mAgentRestart.ClickedCh:
@@ -235,6 +254,7 @@ func (t *tray) autoStart(ctx context.Context, client *agentClient) {
 // change callback a tray could subscribe to.
 func (t *tray) pollService(ctx context.Context) {
 	t.refreshServiceState()
+	t.refreshHealth(ctx)
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -243,6 +263,7 @@ func (t *tray) pollService(ctx context.Context) {
 			return
 		case <-ticker.C:
 			t.refreshServiceState()
+			t.refreshHealth(ctx)
 		}
 	}
 }
@@ -346,8 +367,26 @@ func (t *tray) applyStatus(status map[string]any) {
 		}
 		line += " — " + watching
 	}
+	health, _ := status["health"].(string)
+	switch health {
+	case "no-reader":
+		line = t.lang.text("ไม่พบเครื่องอ่านบัตร", "No card reader")
+	case "reader-busy":
+		line = t.lang.text("เครื่องอ่านถูกใช้งาน กำลังลองใหม่", "Reader busy; retrying")
+	case "read-failed":
+		line = t.lang.text("อ่านบัตรไม่สำเร็จ", "Card read failed")
+	case "pcsc-unavailable":
+		line = t.lang.text("บริการ PC/SC ไม่พร้อม", "PC/SC unavailable")
+	}
+	if stamp, ok := status["last_read_at"].(string); ok {
+		t.lastReadAt = stamp
+	}
+	tooltip := line
+	if t.lastReadAt != "" {
+		tooltip += " — " + t.lang.text("อ่านสำเร็จล่าสุด: ", "Last successful read: ") + t.lastReadAt
+	}
 	t.mStatus.SetTitle(line)
-	t.mStatus.SetTooltip(line)
+	t.mStatus.SetTooltip(tooltip)
 }
 
 func (t *tray) setUp() {
@@ -388,4 +427,32 @@ func openBrowser(url string) {
 	if err := cmd.Start(); err != nil {
 		log.Printf("open %s: %v", url, err)
 	}
+}
+
+// Poll only public operational metadata; no card data or config is fetched.
+func (t *tray) refreshHealth(ctx context.Context) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, t.baseURL()+"/api/health", nil)
+	if err != nil {
+		return
+	}
+	client := &http.Client{Timeout: time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return
+	}
+	var h struct {
+		State      string `json:"state"`
+		Readers    []any  `json:"readers"`
+		Selected   string `json:"selected"`
+		CardState  string `json:"card_state"`
+		LastReadAt string `json:"last_read_at"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&h) != nil {
+		return
+	}
+	t.applyStatus(map[string]any{"health": h.State, "state": h.CardState, "readers": h.Readers, "selected": h.Selected, "last_read_at": h.LastReadAt})
 }

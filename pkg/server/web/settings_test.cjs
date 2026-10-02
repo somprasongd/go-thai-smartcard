@@ -7,6 +7,7 @@ const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 const config = {
   server: { listen: '127.0.0.1', port: 9898, transports: ['ws'], allowed_origins: ['*'] },
   card: { read_face_image: true, read_laser_id: true, read_nhso: false, reader: '' },
+  logging: {mode:'file',max_size_mb:2,max_backups:0,max_age_days:0},
   tls: { enabled: false, port: 9899, cert_file: '', key_file: '' }
 };
 const settle = () => new Promise(resolve => setImmediate(resolve));
@@ -98,7 +99,7 @@ async function scenario(response, status = 200, alreadyRevealed = false, readerR
       window: { location: { origin: 'http://127.0.0.1:9898', assign: () => {} }, confirm: () => true },
       navigator: { clipboard: { writeText: async () => {} } },
       fetch: async (_url, options) => options
-        ? { ok: true, status: 200, json: async () => { sent.push(JSON.parse(options.body).config.server.listen); return { version: 'new' }; } }
+        ? { ok: true, status: 200, json: async () => { assert.deepEqual(JSON.parse(options.body).config.logging,config.logging); sent.push(JSON.parse(options.body).config.server.listen); return { version: 'new' }; } }
         : { ok: true, json: async () => ({ config: { ...config, server: { ...config.server, listen } }, version: 'old', token_set: false }) }
     };
     vm.runInNewContext(script, context);

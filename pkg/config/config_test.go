@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -431,7 +432,7 @@ func TestWriteModeAndBanner(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The file can hold the socket token, so it is mode 0600.
-	if perm := info.Mode().Perm(); perm != 0o600 {
+	if perm := info.Mode().Perm(); runtime.GOOS != "windows" && perm != 0o600 {
 		t.Errorf("mode = %o, want 600", perm)
 	}
 

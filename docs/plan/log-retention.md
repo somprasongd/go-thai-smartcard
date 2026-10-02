@@ -6,8 +6,10 @@ space. Existing review fixes on fix/review-findings remain in place.
 - `[logging]` is the only policy source: auto/file/console, MiB limit, backup
   count and age. Defaults: 10 MiB, 3 backups, 7 days. Auto selects files for
   managed runs and stderr for foreground runs. Hand edits apply on restart.
-- The settings API preserves the file-only policy when older clients or the
-  bundled page save their server/card/TLS fields. It is not a new browser flow.
+- Revised 2026-10-02: Settings edits retention and mode, with disk usage and
+  restart-required feedback. The API preserves policy when older clients omit
+  logging. Diagnostics distinguishes applied and configured limits; settings
+  saves never claim the new policy is already active.
 - One private writer beside the selected config bounds each file, splits large
   writes, rotates on UTC day change and prunes history by both count and age.
   A minute ticker handles idle expiry; startup prunes before writes. A process

@@ -34,8 +34,9 @@ const (
 // model.Command and the host translates, so pkg/smc does not depend on the
 // server.
 type Control struct {
-	Kind   ControlKind
-	Reader string
+	Kind     ControlKind
+	Reader   string
+	Complete *ControlResult
 }
 
 // DaemonConfig is what a read loop runs with.
@@ -58,6 +59,9 @@ type DaemonConfig struct {
 }
 
 // errNoCard is the answer to a read request when nothing is inserted.
+// ErrReadBusy lets clients distinguish a rejected overlapping read from a hardware failure.
+var ErrReadBusy = errors.New("a card read is already in progress")
+
 var errNoCard = errors.New("no card is inserted")
 
 // daemon is the read loop's state.
@@ -84,11 +88,13 @@ type daemon struct {
 	readers  []string
 	selected string
 	state    string
+	health   string
 
 	// pendingRead is a read request that arrived with no card in the reader.
 	// It is answered with an error rather than dropped, so the client that
 	// pressed the button learns why nothing happened.
-	pendingRead bool
+	pendingRead     bool
+	pendingComplete *ControlResult
 
 	// held is the session left open after a read. It stays open until the
 	// removal is observed, as it always has. A re-read has to close it first,
@@ -123,6 +129,7 @@ func (s *SmartCard) StartDaemonWith(ctx context.Context, cfg DaemonConfig) error
 		readerSelection: cfg.Selection,
 		ctx:             ctx,
 		state:           model.StateWaiting,
+		health:          "starting",
 	}
 	return d.run(ctx)
 }
@@ -134,6 +141,7 @@ func (d *daemon) run(ctx context.Context) error {
 	// the reader then reports the card locked exclusively, and every later
 	// insert fails until the card is removed or the broker is restarted.
 	defer d.release()
+	defer func() { d.completeRead(errors.New("reader loop stopped")) }()
 
 	d.broadcastStatus()
 
@@ -206,6 +214,7 @@ func (d *daemon) waitPresent(ctx context.Context) (string, error) {
 			// waiting: the client is waiting for an answer too.
 			d.pendingRead = false
 			d.publishError(errNoCard.Error())
+			d.completeRead(errNoCard)
 			continue
 		}
 
@@ -316,18 +325,22 @@ func (d *daemon) read(ctx context.Context, reader string) bool {
 	for errors.Is(err, transport.ErrCardBusy) {
 		if !notified {
 			notified = true
+			d.health = "reader-busy"
+			d.broadcastStatus()
 			d.publishError(fmt.Sprintf("%s; retrying while the card stays inserted", err))
 		}
 		switch d.busyHold(ctx, reader) {
 		case busyRetry:
 			// Still seated after the window: another full read.
 		case busyGone:
+			d.completeRead(errNoCard)
 			// The card left while the holder still owned it, and the watch
 			// consumed that state change. Reporting gone lets run skip the
 			// removal wait, which would block forever on a change that has
 			// already been seen.
 			return false
 		default:
+			d.completeRead(fmt.Errorf("card watch failed"))
 			// The watch broke rather than the card leaving. Claim the card is
 			// still seated and let the removal wait surface the failure, the
 			// way it does for every other transport error.
@@ -343,12 +356,15 @@ func (d *daemon) read(ctx context.Context, reader string) bool {
 	}
 
 	if err != nil {
+		d.health = "read-failed"
 		d.publishError(err.Error())
 	} else if data != nil {
+		d.health = "ready"
 		data.Reader = reader
 		d.publish(model.Message{Event: "smc-data", Payload: data})
 	}
 
+	d.completeRead(err)
 	d.setState(model.StateCardPresent)
 	return true
 }
@@ -426,12 +442,34 @@ func (d *daemon) applyControl(cmd Control) {
 		log.Printf("watching reader %s", d.selection())
 		d.broadcastStatus()
 	case ControlRefreshReaders:
-		d.resolveReaders()
+		ok := d.resolveReaders()
 		d.broadcastStatus()
+		if cmd.Complete != nil {
+			if ok {
+				cmd.Complete.Finish(nil)
+			} else {
+				cmd.Complete.Finish(d.problem())
+			}
+		}
 	case ControlReadNow:
-		d.pendingRead = true
+		if d.pendingRead || d.state == model.StateReading {
+			if cmd.Complete != nil {
+				cmd.Complete.Finish(ErrReadBusy)
+			}
+		} else if len(d.watchList()) == 0 {
+			d.publishError(errNoCard.Error())
+			if cmd.Complete != nil {
+				cmd.Complete.Finish(ErrNoReaders)
+			}
+		} else {
+			d.pendingRead = true
+			d.pendingComplete = cmd.Complete
+		}
 	case ControlReportStatus:
 		d.broadcastStatus()
+		if cmd.Complete != nil {
+			cmd.Complete.Finish(nil)
+		}
 	default:
 		log.Printf("ignoring unknown control kind %d", cmd.Kind)
 	}
@@ -460,9 +498,7 @@ func (d *daemon) awaitReaders(ctx context.Context) error {
 			}
 			// A refresh while nothing is attached is a reasonable thing to
 			// ask for, so answer it rather than making the client wait.
-			if cmd.Kind == ControlRefreshReaders || cmd.Kind == ControlSelectReader {
-				d.applyControl(cmd)
-			}
+			d.applyControl(cmd)
 		case <-time.After(readerRetryInterval):
 		}
 	}
@@ -476,7 +512,20 @@ func (d *daemon) awaitReaders(ctx context.Context) error {
 func (d *daemon) resolveReaders() bool {
 	list, err := d.card.transport.ListReaders()
 	if err != nil || len(list) == 0 {
+		health := "no-reader"
+		if err != nil {
+			health = "pcsc-unavailable"
+		}
+		changed := len(d.readers) > 0 || d.health != health
+		d.readers = nil
+		d.health = health
+		if changed {
+			d.broadcastStatus()
+		}
 		return false
+	}
+	if d.health == "starting" || d.health == "no-reader" || d.health == "pcsc-unavailable" {
+		d.health = "ready"
 	}
 
 	changed := !sameStrings(list, d.readers)
@@ -547,6 +596,9 @@ func (d *daemon) setState(state string) {
 		return
 	}
 	d.state = state
+	if state == model.StateWaiting && (d.health == "reader-busy" || d.health == "read-failed") {
+		d.health = "ready"
+	}
 	switch state {
 	case model.StateWaiting:
 		log.Println("Waiting for a Card Inserted")
@@ -563,6 +615,7 @@ func (d *daemon) broadcastStatus() {
 		Readers:  append([]string(nil), d.readers...),
 		Selected: d.selected,
 		State:    d.state,
+		Health:   d.health,
 	}
 	d.publish(model.Message{Event: "smc-status", Payload: payload})
 }
@@ -621,3 +674,14 @@ func (d *daemon) syncSelection() {
 		d.applyControl(Control{Kind: ControlSelectReader, Reader: requested})
 	}
 }
+
+func (d *daemon) completeRead(err error) {
+	if d.pendingComplete != nil {
+		f := d.pendingComplete
+		d.pendingComplete = nil
+		f.Finish(err)
+	}
+}
+
+// ControlResult lets a host observe completion without binding card logic to a transport.
+type ControlResult struct{ Finish func(error) }

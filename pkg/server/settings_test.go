@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	neturl "net/url"
@@ -511,8 +512,10 @@ func TestSettingsSavePreservesFileLoggingPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The bundled page and older clients send server/card/TLS only.
-	raw, _ := json.Marshal(map[string]any{"config": served(current), "version": version})
+	// Older clients send server/card/TLS only.
+	legacy := served(current)
+	legacy.Logging = nil
+	raw, _ := json.Marshal(map[string]any{"config": legacy, "version": version})
 	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/api/settings", bytes.NewReader(raw))
 	req.Header.Set(settingsHeader, "1")
 	res, err := http.DefaultClient.Do(req)
@@ -526,5 +529,39 @@ func TestSettingsSavePreservesFileLoggingPolicy(t *testing.T) {
 	next, err := config.Load(path)
 	if err != nil || next.Logging != current.Logging {
 		t.Fatal("settings erased the logging policy", err)
+	}
+}
+
+func TestSettingsLoggingChangeAndValidation(t *testing.T) {
+	for _, size := range []int{3, 0} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			srv, path := newSettingsServer(t, "")
+			current, version, err := config.LoadVersion(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			current.Logging = config.Logging{Mode: "file", MaxSizeMB: size, MaxBackups: 0, MaxAgeDays: 0}
+			raw, _ := json.Marshal(map[string]any{"config": served(current), "version": version})
+			req, _ := http.NewRequest(http.MethodPut, srv.URL+"/api/settings", bytes.NewReader(raw))
+			req.Header.Set(settingsHeader, "1")
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer res.Body.Close()
+			if size == 0 {
+				if res.StatusCode != http.StatusBadRequest {
+					t.Fatalf("invalid limit status %d", res.StatusCode)
+				}
+				return
+			}
+			if res.StatusCode != http.StatusOK {
+				t.Fatalf("save %d", res.StatusCode)
+			}
+			next, err := config.Load(path)
+			if err != nil || next.Logging != current.Logging {
+				t.Fatalf("logging not saved: %v", err)
+			}
+		})
 	}
 }

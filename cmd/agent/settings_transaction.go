@@ -20,17 +20,18 @@ import (
 
 // One coordinator belongs to the process, not to a particular listener's mux.
 type settingsCoordinator struct {
-	mu                sync.Mutex
-	ready             chan struct{}
-	path              string
-	current           config.Config
-	manager           *server.Manager
-	publisher         *discovery.Publisher
-	openPublisher     func() (*discovery.Publisher, error)
-	serverConfig      func(config.Config) server.ServerConfig
-	store             *smc.OptionsStore
-	selection         *smc.ReaderStore
-	commitPublication func(*discovery.Publication) error
+	mu                 sync.Mutex
+	ready              chan struct{}
+	path               string
+	current            config.Config
+	manager            *server.Manager
+	publisher          *discovery.Publisher
+	openPublisher      func() (*discovery.Publisher, error)
+	serverConfig       func(config.Config) server.ServerConfig
+	store              *smc.OptionsStore
+	selection          *smc.ReaderStore
+	commitPublication  func(*discovery.Publication) error
+	preparePublication func(*discovery.Publisher, string) (*discovery.Publication, error)
 }
 
 func (c *settingsCoordinator) publishStartup() {
@@ -102,7 +103,11 @@ func (c *settingsCoordinator) apply(next config.Config, expected string) (server
 	}
 	var publication *discovery.Publication
 	if c.publisher != nil && urlErr == nil {
-		publication, err = c.publisher.Prepare(url)
+		if c.preparePublication != nil {
+			publication, err = c.preparePublication(c.publisher, url)
+		} else {
+			publication, err = c.publisher.Prepare(url)
+		}
 		if err != nil {
 			return fail(fmt.Errorf("prepare endpoint: %w", err))
 		}

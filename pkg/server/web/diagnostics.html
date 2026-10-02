@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'">
+<title>Thai Smartcard — Diagnostics</title>
+<style>body{margin:0;background:#f3f7f5;color:#24352d;font:16px system-ui}main{max-width:850px;margin:40px auto;padding:24px;background:white;border-radius:12px}nav,header{display:flex;gap:12px;align-items:center;flex-wrap:wrap}header{justify-content:space-between}button,a{color:#156347}button{padding:8px 16px;border:1px solid #b5d6c5;border-radius:6px;background:#f5faf7;cursor:pointer}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f7f6;padding:20px;border-radius:8px}#notice{color:#55645d}@media(max-width:600px){main{margin:12px;padding:16px}}</style></head>
+<body><main><header><h1 id="title">Diagnostics</h1><nav><a id="card" href="/">Card reader</a><a id="settings" href="/settings">Settings</a></nav></header>
+<p id="notice">Operational metadata only. No card payload, token or log contents.</p>
+<nav><button id="refresh">Refresh</button><button id="copy" disabled>Copy diagnostics</button><span id="status" role="status"></span></nav>
+<pre id="report" tabindex="0"></pre></main><script>
+(function(){'use strict';
+var th=new URLSearchParams(location.search).get('lang')==='th';
+if(!location.search){try{th=JSON.parse(localStorage.getItem('smc.prefs')||'{}').lang==='th';}catch(e){}}
+var text=th?{title:'วิเคราะห์ปัญหา',card:'อ่านบัตร',settings:'ตั้งค่า',notice:'ข้อมูลสถานะการทำงานเท่านั้น ไม่มีข้อมูลบัตร token หรือเนื้อหา log',refresh:'รีเฟรช',copy:'คัดลอกข้อมูลวิเคราะห์'}:{};
+Object.keys(text).forEach(function(id){document.getElementById(id).textContent=text[id];});document.documentElement.lang=th?'th':'en';
+var report='';
+async function refresh(){document.getElementById('copy').disabled=true;try{
+var r=await fetch('/api/diagnostics');if(!r.ok)throw new Error('HTTP '+r.status);
+report=JSON.stringify(await r.json(),null,2);document.getElementById('report').textContent=report;
+document.getElementById('status').textContent='';document.getElementById('copy').disabled=false;
+}catch(e){document.getElementById('status').textContent=(th?'โหลดไม่ได้: ':'Could not load: ')+e.message;}}
+document.getElementById('refresh').addEventListener('click',refresh);
+document.getElementById('copy').addEventListener('click',async function(){try{await navigator.clipboard.writeText(report);document.getElementById('status').textContent=th?'คัดลอกแล้ว':'Copied';}catch(e){document.getElementById('status').textContent=th?'กรุณาเลือกข้อความแล้วคัดลอก':'Select the report and copy it manually';}});
+refresh();})();
+</script></body></html>

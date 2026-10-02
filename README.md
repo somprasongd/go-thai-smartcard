@@ -147,7 +147,7 @@ rules:
 
 ## Connect a client
 
-The agent broadcasts four events. `smc-data` carries the card; the rest say what
+The agent broadcasts card and status events. `smc-data` carries the card; the rest say what
 happened around it.
 
 | Event | Payload |
@@ -167,6 +167,40 @@ The control channel is **read-only**: `get-status`, `refresh-readers` and
 and `set-reader` are answered with an `smc-error` naming the unknown action,
 and the `remote_control` field is gone — a client that read it as "allowed"
 should assume the answer is always "no".
+
+### Troubleshooting
+
+Open **Troubleshoot → Open diagnostics** from the tray, or `/diagnostics`.
+The page and `/api/diagnostics` use the settings guard. Reports contain version,
+OS/architecture, foreground/service mode, endpoint, transports, TLS, reader
+health and active log directory; they exclude configuration, tokens, card data
+and log contents. **Copy diagnostics** in the tray also adds the OS service
+state. On Linux copying uses wl-copy, xclip or xsel; the page offers a manual
+copy fallback if clipboard access is unavailable. **Open log folder** opens
+only an existing absolute directory reported by the running agent.
+
+### Reader health
+
+`GET /api/health` uses the same loopback/Host/Origin/proxy-header guard as settings.
+It reports `starting`, `ready`, `no-reader`, `reader-busy`, `read-failed` or
+`pcsc-unavailable`, reader names, current card state and timestamps of the last
+successful read/error. It contains no card payload, token or raw error text.
+The tray's green agent dot means connected; its separate reader row displays
+hardware health and the last successful read in the tooltip.
+
+### Command results
+
+Commands may include an optional `request_id` (at most 128 bytes). Such requests
+receive `smc-command-result` **only on the requesting connection**, with
+`{request_id, action, status, code}`. Status is `accepted` followed by
+`completed` or `failed`, or `busy` when a queue/reader cannot accept the work.
+Accepted means queued, not successfully read. A completed read means the read
+finished successfully; card data continues to use the existing broadcast.
+Unknown actions fail. Requests without an ID keep the legacy event contract.
+Clients should use a timeout and avoid submitting the same command through both
+transports. The bundled page sends on one transport and times out after 30s.
+Inbound WebSocket frames are limited to 4 KiB; slow subscribers are disconnected
+when their 16-message delivery queue fills, and ping/pong detects broken peers.
 
 ### Via WebSocket (the default)
 
@@ -355,8 +389,10 @@ An oversized individual write is split across files within the same limits.
 Files are 0600 (private DACL on Windows); newly created directories are 0700.
 One process lock prevents concurrent agents rotating the same log.
 
-Logging is set in `config.toml` and applied on restart. `/settings` saves retain
-this administrator setting; the page does not edit it. `max_size_mb` accepts
+Logging is set in `config.toml` or the Application logs section of `/settings`
+and applies on restart. The page shows disk usage and a pending-restart notice;
+diagnostics distinguishes configured limits from the running process's limits.
+Older API clients that omit logging preserve the existing policy. `max_size_mb` accepts
 1–1024; `max_backups` accepts 0–1000 (0 keeps only the active file);
 `max_age_days` accepts 0–36500 (0 disables age expiry while count still applies).
 For a 5 MiB file and two backups, for example:
@@ -872,3 +908,12 @@ exported by an old Makefile but never read by the agent.)
 สนับสนุนได้ผ่านทาง Promptpay
 
 <img src="https://bit.ly/3gusiz8">
+
+### Automated verification
+
+PRs targeting main and pushes to main run `.github/workflows/test.yml` on Linux,
+macOS and Windows: native build/unit tests/vet/format, Node page behavior tests
+and wasm builds. Linux/macOS additionally run race checks. Tests use fake readers;
+physical-card and installer/reboot acceptance remain separate. Local `make check`
+remains useful before pushing. The release-tag workflow builds installers only;
+release after verification of the intended commit, then verify its package jobs.

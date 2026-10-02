@@ -32,6 +32,13 @@ func runCardDaemon(ctx context.Context, cfg smc.DaemonConfig, open func() (trans
 			log.Printf("card daemon: %v; retrying in %s", err, retry)
 			if cfg.Broadcast != nil {
 				select {
+				case cfg.Broadcast <- model.Message{Event: "smc-health", Payload: map[string]string{"state": "pcsc-unavailable"}}:
+				case <-ctx.Done():
+					return
+				}
+			}
+			if cfg.Broadcast != nil {
+				select {
 				case cfg.Broadcast <- model.Message{Event: "smc-error", Payload: map[string]string{"message": err.Error()}}:
 				case <-ctx.Done():
 					return
