@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Bounded service logs with configurable file size, backup count and age in
+  `[logging]`. Defaults keep the active file plus three 10 MiB backups and
+  expire backups after seven days; daily rotation and idle cleanup also cover
+  quiet agents. Foreground runs keep stderr unless file mode is selected.
+
+
 ### Fixed
 
 - Persist reader selection independently of the command queue and retain it
@@ -28,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installed agent.
 
 ### Changed
+
+- Managed services now keep bounded private application log files beside their
+  config; macOS registrations discard raw launchd output instead of creating
+  unbounded stderr captures. Foreground auto mode keeps console logging.
 
 - The interface language moved to a ไทย/EN toggle in both pages' app bar, and
   both pages follow it — /settings now speaks one language instead of

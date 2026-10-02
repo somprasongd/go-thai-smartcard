@@ -54,3 +54,17 @@ func Write(path string, data []byte, mode os.FileMode) error {
 	defer p.Abort()
 	return p.Commit()
 }
+
+// OpenAppend keeps append-only logs private, including a restrictive Windows
+// DACL; chmod alone does not prevent other Windows users reading a file.
+func OpenAppend(path string) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return nil, err
+	}
+	if err = setMode(f, 0600); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return f, nil
+}

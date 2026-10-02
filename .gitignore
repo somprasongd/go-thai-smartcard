@@ -20,3 +20,6 @@
 /agent
 /example
 /tray
+
+# Explicit file logging beside the development config
+/logs/

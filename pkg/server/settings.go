@@ -134,8 +134,8 @@ type settingsAPI struct {
 	status *StatusCache
 }
 
-// servedConfig is the config as a client sees it: everything but the token,
-// which no response ever carries.
+// servedConfig carries the settings the page edits. Logging remains a
+// startup-only file setting; no response ever carries the socket token.
 type servedConfig struct {
 	Server config.Server `json:"server"`
 	Card   config.Card   `json:"card"`
@@ -227,6 +227,9 @@ func (api *settingsAPI) put(w http.ResponseWriter, r *http.Request) {
 	}
 
 	next := body.Config
+	// Logging is an administrator/file setting applied on restart. A settings
+	// page or older client must not erase it by sending only server/card/TLS.
+	next.Logging = current.Logging
 	// The token lives in the file, not in a GET response, so a save that
 	// echoes the served config back must not wipe it. It is merged here and
 	// replaced below only when the agent generates a new one.

@@ -29,6 +29,7 @@ commands; `build-wasm` targets `cmd/agent`.
 - `cmd/example` — minimal library usage, doubles as the README's example
 - `pkg/config` — the config.toml loader: defaults, strict validation, the templated writer, the fingerprint the settings API round-trips
 - `internal/discovery` — public local endpoint metadata, instance verification and publisher locks; no config or token data
+- `internal/logfile` — private bounded logs with size/count/age retention, daily rotation, idle cleanup and process exclusion
 - `internal/atomicfile` — staged file replacement, including Windows share/delete and private-file ACL handling
 - `pkg/smc` — card logic only: applet selection, command/GET RESPONSE, TIS-620, parsing
 - `pkg/transport` — the `Transport`/`Card`/`Status` interface `pkg/smc` talks to
@@ -93,6 +94,7 @@ file, or the whole module stops building there.
   verify port navigation and one-time token preservation directly.
 - Config tests (`pkg/config`) are table-driven and need no reader; the settings
   and auth tests in `pkg/server` use `httptest`, no reader either
+- Logging limits in `[logging]` apply on restart; the settings API preserves them. Managed auto mode writes beside the selected config; foreground auto mode stays on stderr.
 - **No reader is required.** `pkg/transport.FakeCard` replays a recorded trace,
   and `NewFakeTransport` injects it via `smc.NewSmartCardWith`
 - `TestReadFromRecordedTrace` skips itself until `testdata/trace-real.json`

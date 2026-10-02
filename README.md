@@ -13,6 +13,7 @@ it as a library if you would rather build your own.
 - [Settings](#settings)
 - [Connect a client](#connect-a-client)
 - [Configuration](#configuration)
+- [Logs and disk retention](#logs-and-disk-retention)
 - [Use as a library](#use-as-a-library)
 - [Architecture](#architecture)
 - [Reader requirements](#reader-requirements)
@@ -304,6 +305,12 @@ mode = "files"
 cert_file = ""            # both required when enabled
 key_file = ""
 hostnames = []
+
+[logging]
+mode = "auto"            # services use files; foreground uses stderr
+max_size_mb = 10          # MiB per file
+max_backups = 3
+max_age_days = 7
 ```
 
 The loading rules worth knowing:
@@ -320,6 +327,68 @@ The loading rules worth knowing:
   are lost on the next save.
 - A stale `SMC_*` environment variable is not read; the agent logs a warning
   with the TOML that replaces it, for pasting into the file.
+
+### Logs and disk retention
+
+The agent's default `[logging] mode = "auto"` uses private rotating files when
+running as a service, and stderr when running in a terminal. `mode = "file"`
+uses files in either launch mode; `mode = "console"` delegates retention to
+whoever captures stderr (for example journald or a container runtime).
+
+Files are beside the selected config: `<config directory>/logs/agent.log`.
+With the standard service config locations, that is:
+
+| Platform | Log directory |
+| --- | --- |
+| Linux | `/etc/thai-smartcard/logs/` |
+| macOS | `/Library/Application Support/ThaiSmartcard/logs/` |
+| Windows | `%ProgramData%\ThaiSmartcard\logs\` |
+| Development with `--config ./config.dev.toml` and file mode | `./logs/` (Git ignored) |
+
+Default limits are 10 **MiB** per file, at most three backups and a maximum
+backup age of seven days. The active file plus backups use at most 40 MiB of
+log content. Count and age both apply, so busy agents may retain less than
+seven days. Files also rotate at a UTC day change; maintenance checks each
+minute even while no new events arrive. Age is measured from the backup's
+last log write. Oversized existing backups are removed when limits shrink.
+An oversized individual write is split across files within the same limits.
+Files are 0600 (private DACL on Windows); newly created directories are 0700.
+One process lock prevents concurrent agents rotating the same log.
+
+Logging is set in `config.toml` and applied on restart. `/settings` saves retain
+this administrator setting; the page does not edit it. `max_size_mb` accepts
+1–1024; `max_backups` accepts 0–1000 (0 keeps only the active file);
+`max_age_days` accepts 0–36500 (0 disables age expiry while count still applies).
+For a 5 MiB file and two backups, for example:
+
+```toml
+[logging]
+mode = "auto"
+max_size_mb = 5
+max_backups = 2
+max_age_days = 3
+```
+
+That limits the main log content to 15 MiB. A service that cannot load its
+config records the failure in a separate `startup.log`, capped at 1 MiB with
+no backups, then exits with an error. File I/O failure cannot be made durable
+on an unwritable/full filesystem; startup fails and stderr is the fallback.
+No card trace is created by any logging mode.
+
+On macOS, new service registrations and package upgrades send launchd's raw
+stdout/stderr to `/dev/null`, so there is no second growing `.err.log` next to
+the rotating application log. An existing manual registration needs reinstalling
+with the new binary (`service uninstall`, `service install`, `service start`).
+Old `/var/log/thai-smartcard-agent.err.log` and `.out.log` files are outside this
+policy; after confirming the old registration has stopped using them, remove
+those files separately if no longer needed. A package upgrade changes the
+registration but preserves those historical files.
+
+To clear current application logs manually, stop the service, remove the files
+in its `logs` directory, and start it again; the agent recreates its files.
+Archived `agent.log.*.bak` files may be removed while the service is running.
+Do not delete the active log or `.lock` file during a run. Rotation and expiry
+are automatic; no scheduled deletion command is required.
 
 ### TLS
 

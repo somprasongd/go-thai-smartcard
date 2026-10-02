@@ -9,6 +9,14 @@ set -e
 # The agent service: install and start (decision 12 — installers install and
 # start it; the tray never spawns the agent).
 /usr/local/bin/thai-smartcard-agent service install || true
+# Application-managed logs have bounded size/history. Also migrate an existing
+# launchd registration, which service install deliberately does not overwrite.
+AGENT_PLIST=/Library/LaunchDaemons/thai-smartcard-agent.plist
+if [ -f "$AGENT_PLIST" ]; then
+    /usr/bin/plutil -replace StandardErrorPath -string /dev/null "$AGENT_PLIST"
+    /usr/bin/plutil -replace StandardOutPath -string /dev/null "$AGENT_PLIST"
+    launchctl bootout system "$AGENT_PLIST" 2>/dev/null || true
+fi
 /usr/local/bin/thai-smartcard-agent service start || true
 
 # The tray's control helper: a root LaunchDaemon that accepts start/stop/

@@ -92,6 +92,8 @@ func runManaged(configPath string) bool {
 // newAgentService wires the agent loop into the service manager's Start/Stop.
 func newAgentService(configPath string) (service.Service, error) {
 	prg := &agentProgram{configPath: configPath}
+	opts := service.KeyValue{"Restart": "always", "RestartSec": "5s", "SuccessExitStatus": "0"}
+	configureServiceOutput(opts)
 	return service.New(prg, &service.Config{
 		Name:        serviceName,
 		DisplayName: "Thai Smartcard Agent",
@@ -99,14 +101,7 @@ func newAgentService(configPath string) (service.Service, error) {
 		// The config file is the whole configuration; the service needs no
 		// other arguments. The packaged systemd unit carries the same pair.
 		Arguments: []string{"--config", configPath},
-		Option: service.KeyValue{
-			// systemd: the unit file packaged with the .deb/.rpm sets these
-			// (and After=pcscd.service, which the library cannot express on
-			// Linux) — the keys here only matter for `service install`.
-			"Restart":           "always",
-			"RestartSec":        "5s",
-			"SuccessExitStatus": "0",
-		},
+		Option:    opts,
 	})
 }
 

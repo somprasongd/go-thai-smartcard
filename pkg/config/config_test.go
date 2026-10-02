@@ -38,6 +38,7 @@ func TestDefault(t *testing.T) {
 func TestLoadRoundTrip(t *testing.T) {
 	// What Write renders must load back to the same config, comments aside.
 	want := Config{
+		Logging: Default().Logging,
 		Server: Server{
 			Listen:         "0.0.0.0",
 			Port:           9911,

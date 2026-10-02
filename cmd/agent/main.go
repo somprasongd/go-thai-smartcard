@@ -85,7 +85,20 @@ func runAgentMode(ctx context.Context, configPath string, managed bool) {
 	if configPath == "" {
 		configPath = config.DefaultPath()
 	}
-	cfg := loadConfig(configPath)
+	cfg, notice, err := loadConfig(configPath)
+	if err != nil {
+		reportStartupFailure(configPath, managed, err)
+		os.Exit(1)
+	}
+	stopLogging, err := startLogging(configPath, cfg.Logging, managed)
+	if err != nil {
+		reportStartupFailure(configPath, managed, err)
+		os.Exit(1)
+	}
+	defer stopLogging()
+	if notice != "" {
+		log.Print(notice)
+	}
 
 	for _, warning := range config.EnvWarnings(os.LookupEnv) {
 		log.Printf("WARNING: %s", warning)
@@ -190,25 +203,23 @@ func cardOptions(card config.Card) smc.Options {
 // and stops the agent on a file it cannot use. The strict loader is the point:
 // a service that starts on a typoed config while the operator believes the
 // typoed value applied is worse than one that does not start.
-func loadConfig(path string) config.Config {
+func loadConfig(path string) (config.Config, string, error) {
 	if path == "" {
 		path = config.DefaultPath()
 	}
 	cfg, err := config.Load(path)
 	switch {
 	case err == nil:
-		return cfg
+		return cfg, "", nil
 	case errors.Is(err, config.ErrNotFound):
 		cfg = config.Default()
 		if werr := config.Write(path, cfg); werr != nil {
-			log.Printf("no config file at %s and none could be written (%v); running on the defaults", path, werr)
+			return cfg, fmt.Sprintf("no config file at %s and none could be written (%v); running on the defaults", path, werr), nil
 		} else {
-			log.Printf("no config file at %s, wrote the defaults; hand edits need a restart", path)
+			return cfg, fmt.Sprintf("no config file at %s, wrote the defaults; hand edits need a restart", path), nil
 		}
-		return cfg
 	default:
-		log.Fatalf("%v", err)
-		return config.Config{}
+		return config.Config{}, "", err
 	}
 }
 
