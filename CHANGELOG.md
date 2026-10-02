@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The laser ID is displayed the way the card prints it — `AA0-0000000-00` —
+  in the card page's data block and the table view. The payload keeps the raw
+  value.
 - Both bundled pages were redesigned into a light admin console: a white app
   bar (with a GitHub repository link at its right) and a sidebar menu — page
   navigation on top, then the display, privacy and reader controls grouped

@@ -1875,9 +1875,13 @@
           return check === Number(cid.charAt(12));
         }
 
+        // The laser code is printed on the card as AA0-0000000-00 (3-7-2),
+        // so that is how the page shows it. A length that is not 12 is shown
+        // raw rather than cut to fit the pattern.
         function groupLaser(s) {
           if (!s) return "";
-          return (s.match(/.{1,4}/g) || []).join(" ");
+          var m = s.match(/^(.{3})(.{7})(.{2})$/);
+          return m ? m[1] + "-" + m[2] + "-" + m[3] : s;
         }
 
         /* ----------------------------- rendering --------------------------- */
