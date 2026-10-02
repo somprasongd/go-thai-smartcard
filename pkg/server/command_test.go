@@ -152,9 +152,11 @@ func connectSocketIOClient(t *testing.T, h *httptest.Server) *websocket.Conn {
 	}
 	t.Cleanup(func() { c.Close() })
 
+	// Deadlines are absolute, so each read gets a fresh one — a slow CI
+	// runner must not turn an earlier read's clock into the next one's.
 	read := func(what string) {
 		t.Helper()
-		_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
+		_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
 		if _, _, err := c.ReadMessage(); err != nil {
 			t.Fatalf("%s: %v", what, err)
 		}

@@ -100,14 +100,16 @@ func TestManagerRetiresSocketIOConnections(t *testing.T) {
 	}
 	defer conn.Close()
 	// v4 handshake: engine.io OPEN from the server, then the client joins
-	// the default namespace and gets its ack back.
-	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	// the default namespace and gets its ack back. Deadlines are absolute,
+	// so every read gets a fresh one.
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	if _, payload, err := conn.ReadMessage(); err != nil || !strings.HasPrefix(string(payload), "0") {
 		t.Fatal("socket.io handshake", err)
 	}
 	if err := conn.WriteMessage(websocket.TextMessage, []byte("40")); err != nil {
 		t.Fatal("socket.io handshake", err)
 	}
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	if _, payload, err := conn.ReadMessage(); err != nil || !strings.HasPrefix(string(payload), "40") {
 		t.Fatal("socket.io handshake", err)
 	}
