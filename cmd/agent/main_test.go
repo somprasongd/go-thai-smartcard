@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -56,6 +55,13 @@ func TestOptionsControllerIsReadOnly(t *testing.T) {
 			wantMessage: `unknown action "set-reader"`,
 		},
 		{
+			// The sockets carry no derived copy of the config: what the agent
+			// reads lives in config.toml, read through /api/settings.
+			name:        "get-options is gone",
+			cmd:         model.Command{Action: "get-options"},
+			wantMessage: `unknown action "get-options"`,
+		},
+		{
 			name:        "an unknown action is an error, not a panic",
 			cmd:         model.Command{Action: "delete-everything"},
 			wantMessage: `unknown action "delete-everything"`,
@@ -94,34 +100,15 @@ func TestOptionsControllerIsReadOnly(t *testing.T) {
 	}
 }
 
-// get-options answers with what is in force, so a page that connects late
-// learns the current state instead of guessing.
-func TestOptionsControllerGetOptions(t *testing.T) {
-	c, broadcast := newTestController(smc.Options{ShowFaceImage: true, ShowLaserData: true})
-
-	c.handle(model.Command{Action: "get-options"})
-
-	got := answers(broadcast)
-	if len(got) != 1 {
-		t.Fatalf("got %d broadcasts, want 1: %+v", len(got), got)
-	}
-	if got[0].Event != "smc-options" {
-		t.Errorf("event = %q, want smc-options", got[0].Event)
-	}
-	// The page is written against this payload, so pin it byte for byte. There
-	// is no remote_control any more: the socket is read-only, always.
-	payload, err := json.Marshal(got[0])
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	wantJSON := `{"event":"smc-options","payload":{"show_face_image":true,"show_nhso":false,"show_laser":true}}`
-	if string(payload) != wantJSON {
-		t.Errorf("payload =\n%s\nwant\n%s", payload, wantJSON)
-	}
-}
-
 func TestOptionsControllerRun(t *testing.T) {
-	c, broadcast := newTestController(smc.Options{})
+	// Every remaining action is forwarded to the read loop, so the observable
+	// effect of a command is a Control on the control channel, not a
+	// broadcast.
+	c := &optionsController{
+		store:     smc.NewOptionsStore(smc.Options{}),
+		broadcast: make(chan model.Message, 8),
+		control:   make(chan smc.Control, 8),
+	}
 	command := make(chan model.Command, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -132,13 +119,13 @@ func TestOptionsControllerRun(t *testing.T) {
 		close(done)
 	}()
 
-	command <- model.Command{Action: "get-options"}
+	command <- model.Command{Action: "get-status"}
 
 	deadline := time.After(2 * time.Second)
-	for len(answers(broadcast)) == 0 {
+	for len(c.control) == 0 {
 		select {
 		case <-deadline:
-			t.Fatal("the command was never answered")
+			t.Fatal("the command was never forwarded")
 		case <-time.After(5 * time.Millisecond):
 		}
 	}

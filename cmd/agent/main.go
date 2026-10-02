@@ -121,9 +121,6 @@ func runAgent(ctx context.Context, configPath string) {
 					log.Printf("dropping a reader control request, the read loop is busy")
 				}
 			}
-			// Tell the pages what is read now, so their displays catch up
-			// without waiting for the next card.
-			broadcast <- model.Message{Event: "smc-options", Payload: toModelOptions(store.Get())}
 		}
 
 		if !reflect.DeepEqual(next.Server, prev.Server) || !reflect.DeepEqual(next.TLS, prev.TLS) {
@@ -244,7 +241,10 @@ func loadConfig(path string) config.Config {
 	}
 }
 
-// optionsController answers the read-only control commands a client sends.
+// optionsController answers the harmless control commands a client sends —
+// status, refresh and re-read. What the agent reads is configuration with one
+// source of truth (config.toml via /api/settings), so the socket neither
+// carries nor changes it.
 //
 // It lives in the agent rather than in pkg/smc because the broadcast belongs
 // to this process, and pkg/smc stays free of the server's concerns. The card
@@ -280,8 +280,6 @@ func (c *optionsController) run(ctx context.Context, command <-chan model.Comman
 // removed set-options and set-reader land here too, answered as unknown.
 func (c *optionsController) handle(cmd model.Command) {
 	switch cmd.Action {
-	case "get-options":
-		c.broadcastOptions()
 	case "get-status":
 		// Answered by the read loop, which owns the reader list and its own
 		// state. It re-publishes without changing anything.
@@ -314,16 +312,6 @@ func (c *optionsController) sendControl(cmd smc.Control) {
 	}
 }
 
-// broadcastOptions answers with the options in force, so a page that connects
-// late learns the current state instead of assuming its own.
-func (c *optionsController) broadcastOptions() {
-	current := c.store.Get()
-	c.send(model.Message{
-		Event:   "smc-options",
-		Payload: toModelOptions(current),
-	})
-}
-
 func (c *optionsController) fail(message string) {
 	log.Println("control command rejected:", message)
 	c.send(model.Message{
@@ -337,14 +325,4 @@ func (c *optionsController) send(msg model.Message) {
 		return
 	}
 	c.broadcast <- msg
-}
-
-// toModelOptions copies the card options onto the wire type, so the two
-// definitions cannot drift apart silently.
-func toModelOptions(opts smc.Options) model.Options {
-	return model.Options{
-		ShowFaceImage: opts.ShowFaceImage,
-		ShowNhsoData:  opts.ShowNhsoData,
-		ShowLaserData: opts.ShowLaserData,
-	}
 }

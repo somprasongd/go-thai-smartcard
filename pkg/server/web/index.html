@@ -1129,25 +1129,6 @@
           </div>
 
           <div class="group">
-            <p class="group-title" data-i18n="opt.applets">Card data to read</p>
-            <!-- What the agent reads is configuration now, shown here rather
-                 than changed here. -->
-            <label class="check">
-              <input type="checkbox" id="opt-face" disabled />
-              <span data-i18n="applet.face">Face image</span>
-            </label>
-            <label class="check">
-              <input type="checkbox" id="opt-laser" disabled />
-              <span data-i18n="applet.laser">Laser ID</span>
-            </label>
-            <label class="check">
-              <input type="checkbox" id="opt-nhso" disabled />
-              <span data-i18n="applet.nhso">NHSO (social security)</span>
-            </label>
-            <p class="note"><a href="/settings" data-i18n="nav.settings">Settings</a></p>
-          </div>
-
-          <div class="group">
             <button class="btn primary wide" id="btn-copy" type="button" data-i18n="act.copyAll">
               Copy as JSON
             </button>
@@ -1189,17 +1170,17 @@
 
         /* ==================================================================
          * Wire contract with cmd/agent. These names are fixed by the Go side:
-         *   in : {"action":"get-options"} | {"action":"get-status"}
-         *        | {"action":"refresh-readers"} | {"action":"read-now"}
-         *        (the read-only set; anything else is answered as an error)
-         *   out: "smc-options" {show_face_image, show_nhso, show_laser}
-         *        "smc-status" {readers, selected, state},
+         *   in : {"action":"get-status"} | {"action":"refresh-readers"}
+         *        | {"action":"read-now"}
+         *        (anything else is answered as an error)
+         *   out: "smc-status" {readers, selected, state},
          *             where state is waiting | reading | card-present
          *        "smc-data" (also carries the reader it read from) /
          *        "smc-inserted" / "smc-removed" / "smc-error"
          *
-         * The card socket is read-only: what the agent reads and which reader
-         * it watches change in /settings, never over the socket.
+         * The card socket is read-only. What the agent reads is configuration
+         * with one source of truth — config.toml, read through /api/settings —
+         * so the sockets carry no derived copy of it; change it in /settings.
          *
          * socket.io delivers the bare payload on a named event. The WebSocket
          * delivers one JSON object per frame, shaped {event, payload}.
@@ -1251,7 +1232,6 @@
             "reader.all": "ทั้งหมด",
             "opt.reader": "เครื่องอ่าน",
             "opt.readerPick": "อุปกรณ์",
-            "opt.applets": "ข้อมูลที่อ่านจากบัตร",
             "mode.kiosk": "เครื่องคิว",
             "mode.dev": "นักพัฒนา",
             "mode.counter": "หน้าร้าน",
@@ -1267,9 +1247,6 @@
             "act.copied": "คัดลอกแล้ว",
             "panel.json": "ข้อมูลดิบ",
             "panel.log": "Event",
-            "applet.face": "รูปภาพหน้า",
-            "applet.laser": "เลเซอร์ไอดี",
-            "applet.nhso": "สิทธิการรักษาพยาบาล",
             "nav.settings": "ตั้งค่าที่ /settings",
             "reader.note.none": "ไม่พบเครื่องอ่าน — เสียบเครื่องแล้วกดรีเฟรช",
             "reader.note.reading": "กำลังอ่านบัตรอยู่ รอสักครู่",
@@ -1377,7 +1354,6 @@
             "reader.all": "All",
             "opt.reader": "Reader",
             "opt.readerPick": "Device",
-            "opt.applets": "Card data to read",
             "mode.kiosk": "Kiosk",
             "mode.dev": "Dev",
             "mode.counter": "Counter",
@@ -1393,9 +1369,6 @@
             "act.copied": "Copied",
             "panel.json": "Payload",
             "panel.log": "Events",
-            "applet.face": "Face image",
-            "applet.laser": "Laser ID",
-            "applet.nhso": "Hospital treatment (NHSO)",
             "nav.settings": "Change in settings",
             "reader.note.none": "No reader found — plug one in and press refresh.",
             "reader.note.reading": "Reading the card, hold on a moment.",
@@ -1460,12 +1433,6 @@
             "no.data": "No data yet"
           }
         };
-
-        var APPLETS = [
-          { id: "face", key: "show_face_image", i18n: "applet.face" },
-          { id: "laser", key: "show_laser", i18n: "applet.laser" },
-          { id: "nhso", key: "show_nhso", i18n: "applet.nhso" }
-        ];
 
         /* Field inventory. Every leaf the card can return, so the table view is
          * complete by construction rather than by remembering to add a row. */
@@ -2310,11 +2277,6 @@
             return true;
           }
 
-          if (ev === "smc-options") {
-            applyServerOptions(payload);
-            return true;
-          }
-
           void source;
           return false;
         }
@@ -2329,16 +2291,6 @@
             if (!p) return "";
             var count = Array.isArray(p.readers) ? p.readers.length : 0;
             return "state=" + (p.state || "-") + " readers=" + count + " selected=" + (p.selected || "-");
-          }
-          if (ev === "smc-options") {
-            return p
-              ? "face=" +
-                  !!p.show_face_image +
-                  " laser=" +
-                  !!p.show_laser +
-                  " nhso=" +
-                  !!p.show_nhso
-              : "";
           }
           return (p && p.message) || "";
         }
@@ -2357,17 +2309,6 @@
           store.data = null;
           $("pill-time").hidden = true;
           render();
-        }
-
-        function applyServerOptions(p) {
-          if (!p) return;
-          // Reflect server truth into the read-only displays. What the agent
-          // reads is configuration, shown here and changed in /settings.
-          APPLETS.forEach(function (a) {
-            if (typeof p[a.key] === "boolean") {
-              $("opt-" + a.id).checked = p[a.key];
-            }
-          });
         }
 
         // The reader that produced what is on screen. smc-data carries it as
@@ -2525,7 +2466,6 @@
             // WebSocket open, so a page that reached the agent over socket.io
             // alone never learned the options or the reader list and sat with
             // its switches wrong until something else changed.
-            socket.emit("smc-command", { action: "get-options" });
             socket.emit("smc-command", { action: "get-status" });
           });
           socket.on("disconnect", function () {
@@ -2540,7 +2480,6 @@
             "smc-inserted",
             "smc-removed",
             "smc-error",
-            "smc-options",
             "smc-status"
           ].forEach(function (ev) {
             socket.on(ev, function (payload) {
@@ -2548,7 +2487,7 @@
             });
           });
 
-          // Outbound: the control channel the agent answers with smc-options.
+          // Outbound: the control channel the agent answers with smc-status.
           window.smcSocket = socket;
         }
 
@@ -2581,12 +2520,9 @@
           ws.onopen = function () {
             wsRetry = 0;
             setConn("ws", true);
-            // Ask the agent what it is actually reading, so the switches match
-            // reality on first paint instead of assuming the defaults.
-            sendCommand({ action: "get-options" });
-            // Same reason for the readers, the watched one and the card state:
-            // the reader picker and the read-again button are driven by that
-            // payload alone, so without it they start out disabled.
+            // Ask for the readers, the watched one and the card state: the
+            // read-again button is driven by that payload alone, so without
+            // it the button starts out disabled.
             sendCommand({ action: "get-status" });
           };
 

@@ -139,7 +139,7 @@ rules:
 
 ## Connect a client
 
-The agent broadcasts five events. `smc-data` carries the card; the rest say what
+The agent broadcasts four events. `smc-data` carries the card; the rest say what
 happened around it.
 
 | Event | Payload |
@@ -148,15 +148,17 @@ happened around it.
 | `smc-inserted` | `{message}` — a card arrived |
 | `smc-removed` | `{message}` — the card was taken out |
 | `smc-error` | `{message}` — a read failed, or an action was refused |
-| `smc-options` | what the agent is reading |
 | `smc-status` | readers, the selected one, and what the agent is doing |
 
-The control channel is **read-only**: `get-options`, `get-status`,
-`refresh-readers` and `read-now` are the actions there are. The removed
-`set-options` and `set-reader` are answered with an `smc-error` naming the
-unknown action, and `remote_control` is gone from `smc-options` and
-`smc-status` — a client that read a missing field as "allowed" should now
-assume the answer is always "no".
+What the agent reads is configuration with **one source of truth** —
+`config.toml`, read through `GET /api/settings` — and the card sockets carry no
+derived copy of it.
+
+The control channel is **read-only**: `get-status`, `refresh-readers` and
+`read-now` are the actions there are. The removed `get-options`, `set-options`
+and `set-reader` are answered with an `smc-error` naming the unknown action,
+and the `remote_control` field is gone — a client that read it as "allowed"
+should assume the answer is always "no".
 
 ### Via WebSocket (the default)
 
