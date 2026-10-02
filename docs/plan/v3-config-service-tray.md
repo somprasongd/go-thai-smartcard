@@ -635,18 +635,24 @@ local gate — build, tests, vet, gofmt, `-race` on `pkg/server`, wasm builds of
 exposure, 401 without token, 409 stale save). The macOS `.pkg` builds locally
 (universal tray).
 
-Pending, in order:
+Released as **one v3.0.0 release covering phases 1–4** (2026-10-02, the
+user's pick): PR #11 merged, changelog folded, `v3.0.0` tagged, release cut
+from the changelog section. The packaging workflow then proved itself on real
+runners — first run failed twice (libpcsclite-dev missing on the Linux job;
+Inno resolves `Source:` relative to the `.iss`), second run failed on a
+guessed nfpm release URL, fixed across PRs #12 and #13 and re-tagged per the
+undo path above; the final run is green and the release carries
+`thai-smartcard-agent_3.0.0_amd64.deb`, `thai-smartcard-agent-3.0.0.x86_64.rpm`,
+`thai-smartcard-setup-3.0.0.exe` and `thai-smartcard-agent-3.0.0.pkg`.
 
-1. **User approval** to push `v3` to origin and how to release: one `v3.0.0`
-   release containing phases 1–4 (recommended — the code lands on `main`
-   together, so one tag describes it honestly), four releases following the
-   phase table (tags would differ only by changelog commits), or push + PR
-   with no release yet.
-2. The Linux host verification of decision 17 against the CI-built
-   `.deb`/`.rpm`.
-3. Apple Developer secrets (`MACOS_SIGNING_IDENTITY`, `APPLE_API_KEY_*`) for
-   the tray's signing and notarization (decision 20).
-4. Phase 5 stays "later".
+Pending, on real hardware/accounts only:
+
+1. The Linux host verification of decision 17 against the released
+   `.deb`/`.rpm` — `packaging/VERIFY.md` is the checklist.
+2. Apple Developer secrets (`MACOS_SIGNING_IDENTITY`, `APPLE_API_KEY_*`) so
+   the tray is signed and notarized (decision 20) — `packaging/macos/SIGNING.md`;
+   until then the released `.pkg` is unsigned.
+3. Phase 5 stays "later".
 
 Additional local verification since the implementation record (2026-10-02):
 `actionlint` passes on the packaging workflow; the tray builds with the
