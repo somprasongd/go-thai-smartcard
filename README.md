@@ -87,6 +87,26 @@ a switched-off transport as disabled instead of loading the script. And a
 switched-off transport is not an error: the WebSocket carries the data either
 way.
 
+### Previous card data after connection loss
+
+When all card transports disconnect, displayed data is no longer confirmed
+current. Settings has a **Card data after connection loss** display preference:
+clear immediately, keep with an old-data warning, or clear after 5–3600 seconds.
+The preset default clears immediately for kiosk and keeps with a warning for
+counter/dev. This is saved only in this browser and origin, applies immediately
+across open tabs, and does not change agent configuration or require restart.
+Use **Save display preference** in that section independently of the agent's
+config Save button. If the agent URL/port changes, set this preference again at
+the new origin; its preset default applies there.
+
+The warning includes the browser's time of receiving the last successful read.
+Reconnect and status messages do not make old card data current; only a new
+successful `smc-data` event does. A delayed expiry continues after reconnect,
+and a new read cancels it. Copies of old data require confirmation. Losing only
+one transport while the other is connected does not mark the data old. The
+existing card-removal clearing setting is unchanged. Card data itself is never
+persisted by this preference.
+
 ## Settings
 
 <http://localhost:9898/settings> is a self-contained page (plain HTML, no CDN,
