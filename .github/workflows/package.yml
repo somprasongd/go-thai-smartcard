@@ -15,8 +15,8 @@ permissions:
   contents: write
 
 jobs:
-  # Phase 2: the agent's .deb and .rpm, from one nfpm config. The package
-  # carries the systemd unit, the polkit rule and the default config.
+  # Phase 2 + 4: the agent's .deb/.rpm (systemd unit, polkit rule, default
+  # config) and the tray's .deb/.rpm (which depend on the agent's package).
   linux:
     runs-on: ubuntu-latest
     steps:
@@ -33,6 +33,14 @@ jobs:
 
       - name: Build the agent
         run: go build -o ./bin/thai-smartcard-agent.linux-amd64 ./cmd/agent
+
+      # cmd/tray is cgo too: fyne-io/systray talks to the desktop's appindicator
+      # interface, so the headers must be on the runner before it builds.
+      - name: Install tray build dependencies
+        run: sudo apt-get install -y libayatana-appindicator3-dev libgtk-3-dev
+
+      - name: Build the tray
+        run: CGO_ENABLED=1 go build -trimpath -o ./bin/thai-smartcard-tray.linux-amd64 ./cmd/tray
 
       - name: Install nfpm
         # go install pins the same version validated locally; release-asset
@@ -52,6 +60,10 @@ jobs:
             -t "./dist/thai-smartcard-agent_${VERSION}_amd64.deb"
           NFPM_VERSION="$VERSION" "$(go env GOPATH)/bin/nfpm" package -p rpm -f packaging/nfpm.yaml \
             -t "./dist/thai-smartcard-agent-${VERSION}.x86_64.rpm"
+          NFPM_VERSION="$VERSION" "$(go env GOPATH)/bin/nfpm" package -p deb -f packaging/nfpm-tray.yaml \
+            -t "./dist/thai-smartcard-tray_${VERSION}_amd64.deb"
+          NFPM_VERSION="$VERSION" "$(go env GOPATH)/bin/nfpm" package -p rpm -f packaging/nfpm-tray.yaml \
+            -t "./dist/thai-smartcard-tray-${VERSION}.x86_64.rpm"
 
       - name: Attach to the release
         env:
