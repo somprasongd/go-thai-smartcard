@@ -70,6 +70,12 @@ type Address struct {
 // range when a read failed.
 const minAddressFieldCount = 5
 
+// The labels the card puts in front of the labelled address slots.
+const (
+	mooPrefix = "หมู่ที่"
+	soiPrefix = "ซอย"
+)
+
 // NewAddressFromRaw parses a raw address field.
 //
 // The raw value comes off the card, so it can be truncated or empty when a
@@ -82,15 +88,27 @@ func NewAddressFromRaw(raw string) Address {
 	}
 	a.HouseNo = temps[0]
 
-	if strings.HasPrefix(temps[1], "หมู่ที่") {
-		a.Moo = strings.TrimSpace(strings.TrimPrefix(temps[1], "หมู่ที่"))
+	// The card lays the address out as fixed slots separated by '#': the
+	// house number, middle slots for the moo, the soi and whatever else the
+	// address needs (a village name, a road), then the three trailing
+	// subdistrict/district/province fields. Which middle slots are filled
+	// varies with the address, so each slot is identified by its label
+	// rather than by its position — the soi has a slot of its own, and
+	// looking for it in the moo's slot dropped it from every address that
+	// carried both (issue #7). Unlabelled slots are address text and join
+	// into the street.
+	var streetParts []string
+	for _, field := range temps[1 : len(temps)-3] {
+		switch {
+		case strings.HasPrefix(field, mooPrefix):
+			a.Moo = strings.TrimSpace(strings.TrimPrefix(field, mooPrefix))
+		case strings.HasPrefix(field, soiPrefix):
+			a.Soi = strings.TrimSpace(strings.TrimPrefix(field, soiPrefix))
+		case strings.TrimSpace(field) != "":
+			streetParts = append(streetParts, field)
+		}
 	}
-
-	if strings.HasPrefix(temps[1], "ซอย") {
-		a.Soi = strings.TrimSpace(strings.TrimPrefix(temps[1], "ซอย"))
-	}
-
-	a.Street = strings.TrimSpace(strings.Join(temps[2:len(temps)-3], " "))
+	a.Street = strings.TrimSpace(strings.Join(streetParts, " "))
 
 	subdistrict := temps[len(temps)-3]
 	if strings.HasPrefix(subdistrict, "ตำบล") {
@@ -113,7 +131,11 @@ func NewAddressFromRaw(raw string) Address {
 	province := temps[len(temps)-1]
 	a.Province = strings.TrimSpace(strings.TrimPrefix(province, "จังหวัด"))
 
+	// The field is padded with trailing spaces to its fixed width, so each
+	// part is trimmed on the way in rather than carrying the padding into
+	// the joined address.
 	for i, v := range temps {
+		v = strings.TrimSpace(v)
 		if len(v) == 0 {
 			continue
 		}
