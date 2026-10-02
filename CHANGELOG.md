@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-10-03
+
 ### Changed
 
 - **Breaking:** the opt-in socket.io transport now speaks the socket.io v4
@@ -711,6 +713,7 @@ First release.
 - PM2 and systemd run instructions in the README.
 
 [unreleased]: https://github.com/somprasongd/go-thai-smartcard/compare/v4.4.0...HEAD
+[5.0.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v4.4.0...v5.0.0
 [4.4.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v4.3.0...v4.4.0
 [4.3.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v4.2.0...v4.3.0
 [4.2.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v4.1.0...v4.2.0
