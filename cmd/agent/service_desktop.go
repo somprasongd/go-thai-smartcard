@@ -58,7 +58,7 @@ func serviceCommand(args []string) {
 		if err != nil {
 			log.Fatalf("service status: %v", err)
 		}
-		fmt.Printf("%s: %v\n", serviceName, state)
+		fmt.Printf("%s: %s\n", serviceName, describeStatus(state))
 		return
 	case "install", "uninstall", "start", "stop", "restart":
 		if err := service.Control(svc, action); err != nil {
@@ -108,6 +108,20 @@ func newAgentService(configPath string) (service.Service, error) {
 			"SuccessExitStatus": "0",
 		},
 	})
+}
+
+// describeStatus turns kardianos's numeric Status into words. The library
+// (v1.2.2) has no String method, and "thai-smartcard-agent: 2" reads like an
+// error to whoever ran it.
+func describeStatus(s service.Status) string {
+	switch s {
+	case service.StatusRunning:
+		return "running"
+	case service.StatusStopped:
+		return "stopped"
+	default:
+		return "unknown"
+	}
 }
 
 // agentProgram is the service.Interface the manager drives.

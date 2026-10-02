@@ -499,6 +499,33 @@ the agent. The `.deb`/`.rpm` do all of this for you — they install the service
 start it, and ship the polkit rule and the default config — and are built by
 the packaging workflow from a release tag. By hand:
 
+### Controlling the service
+
+One subcommand drives the platform's own manager — launchd on macOS, systemd
+on Linux, the Service Control Manager on Windows:
+
+```sh
+thai-smartcard-agent service start      # start
+thai-smartcard-agent service stop       # stop
+thai-smartcard-agent service restart    # restart, e.g. after a hand edit of config.toml
+thai-smartcard-agent service status     # running / stopped
+thai-smartcard-agent service install    # register with the manager
+thai-smartcard-agent service uninstall  # remove the registration; config.toml stays
+```
+
+On macOS and Linux the state-changing ones need `sudo`; on Windows run them
+from an **Administrator** terminal. Stopping the agent deliberately leaves the
+tray app alone, and quitting the tray never stops the agent — it is a service,
+not the tray's child.
+
+- **Linux** — the packaged unit (`.deb`/`.rpm`) sets `After=pcscd.service`,
+  which `service install` cannot express; prefer the package. The service is
+  also visible to `systemctl status thai-smartcard-agent`.
+- **Windows** — the service is also visible to `sc query thai-smartcard-agent`
+  and `net start thai-smartcard-agent`.
+- **macOS** — the registration is a LaunchDaemon at
+  `/Library/LaunchDaemons/thai-smartcard-agent.plist`.
+
 ### Linux
 
 ```sh
