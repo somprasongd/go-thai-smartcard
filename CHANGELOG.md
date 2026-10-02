@@ -19,15 +19,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   end of the image and stopped reading there ([#2](https://github.com/somprasongd/go-thai-smartcard/issues/2)).
 - The Windows uninstaller tried to `net stop` a tray service that does not
   exist; it now force-closes the tray process.
+- A field command that failed was still sent a GET RESPONSE. The reader threw
+  the first response of every two step exchange away, so a command answered
+  with an error status surfaced, at best, as a parse error on whatever the card
+  said next. The status words are now checked against what a real card answers
+  on every exchange of a recorded session — `61 xx` for the field command,
+  `90 00` at the end of the GET RESPONSE — and anything else fails that field,
+  which the personal reader logs and skips, leaving the rest of the record
+  readable ([#20](https://github.com/somprasongd/go-thai-smartcard/issues/20)).
 
 ### Changed
 
 - `reader.payload` is the new binary-safe half of the read path: it performs the
-  exchange and returns the card's bytes with the status word stripped,
-  interpreting nothing. `readData`, `readDataThai` and `readLaserData` are thin
-  wrappers over it and keep trimming exactly as before, so text fields are
-  unaffected. `ReadFaceImage` is now the first caller, and no longer routes the
-  portrait through a hex string and back.
+  exchange and returns the card's bytes with the status word stripped. The
+  status words themselves are the only thing it interprets (see the fix above);
+  the payload bytes are interpreted by no one. `readData`, `readDataThai` and
+  `readLaserData` are thin wrappers over it and keep trimming exactly as
+  before, so text fields are unaffected. `ReadFaceImage` is now the first
+  caller, and no longer routes the portrait through a hex string and back.
 - The portrait is cut at its JPEG end-of-image marker. The card pads the last
   chunk out to the chunk width, so the payload runs past the end of the image;
   cutting at `FFD9` removes that padding without having to guess which byte the
