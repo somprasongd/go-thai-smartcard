@@ -32,7 +32,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libpcsclite-dev pkg-config
 
       - name: Build the agent
-        run: go build -o ./bin/thai-smartcard-agent.linux-amd64 ./cmd/agent
+        run: |
+          go build -trimpath -ldflags "-X main.version=${GITHUB_REF_NAME#v}" -o ./bin/thai-smartcard-agent.linux-amd64 ./cmd/agent
+          test "$(./bin/thai-smartcard-agent.linux-amd64 --version)" = "${GITHUB_REF_NAME#v}"
 
       # cmd/tray is cgo too: fyne-io/systray talks to the desktop's appindicator
       # interface, so the headers must be on the runner before it builds.
@@ -87,7 +89,9 @@ jobs:
 
       - name: Build the agent and the tray
         run: |
-          go build -trimpath -o ./bin/thai-smartcard-agent.windows-amd64.exe ./cmd/agent
+          $releaseVersion = $env:GITHUB_REF_NAME -replace '^v', ''
+          go build -trimpath -ldflags "-X main.version=$releaseVersion" -o ./bin/thai-smartcard-agent.windows-amd64.exe ./cmd/agent
+          if ((& ./bin/thai-smartcard-agent.windows-amd64.exe --version) -ne $releaseVersion) { throw "Agent version mismatch" }
           go build -trimpath -ldflags "-H=windowsgui" -o ./bin/thai-smartcard-tray.exe ./cmd/tray
 
       - name: Install Inno Setup

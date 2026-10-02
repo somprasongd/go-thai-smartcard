@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Embed and verify the release version in agent packages on every OS.
+
 - Bound WebSocket command frames and per-client delivery queues; retire slow
   clients independently and detect idle broken connections with ping/pong.
 
