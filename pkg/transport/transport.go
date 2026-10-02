@@ -63,7 +63,16 @@ type Transport interface {
 	// ListReaders returns the names of the readers currently attached.
 	ListReaders() ([]string, error)
 
-	// Connect opens an exclusive session with the card in reader.
+	// Connect opens a session with the card in reader and locks the card
+	// against every other handle for the session's lifetime — through
+	// whatever mechanism the backend has that does not require being the
+	// only handle, since other processes legitimately park handles on
+	// inserted cards (on macOS, CryptoTokenKit does that to PKI cards).
+	//
+	// It fails with ErrCardBusy when the lock cannot be taken because
+	// another process is actively using the card; callers may retry after a
+	// short wait. Backends report it by wrapping this sentinel so a plain
+	// errors.Is check works without leaking backend types.
 	Connect(reader string) (Card, error)
 
 	// WaitCardPresent returns the index in readers of a reader that has a card,

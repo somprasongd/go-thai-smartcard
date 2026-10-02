@@ -116,6 +116,13 @@ func (s *SmartCard) StartDaemonWith(ctx context.Context, cfg DaemonConfig) error
 }
 
 func (d *daemon) run(ctx context.Context) error {
+	// However the loop ends — cancelled, a failed wait, the process stopping —
+	// the held session is closed here. A card session left open by an exiting
+	// process outlives the process in the PC/SC broker's bookkeeping on macOS:
+	// the reader then reports the card locked exclusively, and every later
+	// insert fails until the card is removed or the broker is restarted.
+	defer d.release()
+
 	d.broadcastStatus()
 
 	if err := d.awaitReaders(ctx); err != nil {
@@ -140,7 +147,19 @@ func (d *daemon) run(ctx context.Context) error {
 			Payload: map[string]string{"message": "Connected to " + reader},
 		})
 
-		d.read(reader)
+		if !d.read(ctx, reader) {
+			// The card was taken out while the read was still fighting for the
+			// session. The removal has been observed already, so waiting for
+			// it again would block: the backend reports a change from the last
+			// observed state, and that change has been consumed.
+			d.release()
+			d.setState(model.StateWaiting)
+			d.publish(model.Message{
+				Event:   "smc-removed",
+				Payload: map[string]string{"message": "Disonnected from " + reader},
+			})
+			continue
+		}
 
 		if err := d.waitRemoval(ctx, reader); err != nil {
 			if ctx.Err() != nil {
@@ -238,7 +257,12 @@ func (d *daemon) waitRemoval(ctx context.Context, reader string) error {
 				d.drainControl()
 				if d.pendingRead {
 					d.pendingRead = false
-					d.read(reader)
+					if !d.read(ctx, reader) {
+						// The card left during the re-read's busy retry. The
+						// removal is already observed, which is all this wait was
+						// for.
+						return nil
+					}
 				}
 				continue
 			}
@@ -251,11 +275,22 @@ func (d *daemon) waitRemoval(ctx context.Context, reader string) error {
 	}
 }
 
-// read reads the card in reader and publishes the result.
+// read reads the card in reader and publishes the result. It reports whether
+// the card is still seated, which is whether run still has a removal left to
+// wait for.
 //
 // One options snapshot per read, so a change made while this card is being read
 // applies to the next one rather than halfway through this one.
-func (d *daemon) read(reader string) {
+//
+// A read whose connect lost the exclusive-access race is retried here for as
+// long as the card stays seated. The holder — on macOS, CryptoTokenKit's probe
+// of PKI cards — does let go after a few seconds, and asking the operator to
+// pull the card and put it back is the one thing the loop must not do: from
+// the reader's point of view nothing is wrong with the card at all. Other
+// failures are not retried; they publish the error and wait for the removal
+// or a re-read request as before, because a card that fails the same way on
+// every attempt would otherwise be hammered forever.
+func (d *daemon) read(ctx context.Context, reader string) bool {
 	d.release()
 	d.setState(model.StateReading)
 
@@ -263,6 +298,36 @@ func (d *daemon) read(reader string) {
 	if card != nil {
 		// Held open until the removal is observed, or until a re-read needs it.
 		d.held = card
+	}
+
+	notified := false
+	for errors.Is(err, transport.ErrCardBusy) {
+		if !notified {
+			notified = true
+			d.publishError(fmt.Sprintf("%s; retrying while the card stays inserted", err))
+		}
+		switch d.busyHold(ctx, reader) {
+		case busyRetry:
+			// Still seated after the window: another full read.
+		case busyGone:
+			// The card left while the holder still owned it, and the watch
+			// consumed that state change. Reporting gone lets run skip the
+			// removal wait, which would block forever on a change that has
+			// already been seen.
+			return false
+		default:
+			// The watch broke rather than the card leaving. Claim the card is
+			// still seated and let the removal wait surface the failure, the
+			// way it does for every other transport error.
+			return true
+		}
+		// Each retry opens its own session, so nothing may be held from the
+		// last one.
+		d.release()
+		card, data, err = d.card.readCard(reader, d.store.Get())
+		if card != nil {
+			d.held = card
+		}
 	}
 
 	if err != nil {
@@ -273,6 +338,50 @@ func (d *daemon) read(reader string) {
 	}
 
 	d.setState(model.StateCardPresent)
+	return true
+}
+
+// busyWait is what a hold between busy retries concluded.
+type busyWait int
+
+const (
+	// busyRetry means the card is still seated: try the read again.
+	busyRetry busyWait = iota
+	// busyGone means the card was taken out during the hold.
+	busyGone
+	// busyBroken means the watch itself failed and said nothing about the
+	// card.
+	busyBroken
+)
+
+// busyHold waits out one poll window between busy retries, and reports what it
+// saw.
+//
+// The wait is a removal watch rather than a sleep, so a card pulled out while
+// the holder still owned it ends the retrying instead of sending a read into
+// an empty reader. It also keeps answering control requests, which is what
+// makes a hold that lasts as long as the operator leaves the card in
+// harmless.
+func (d *daemon) busyHold(ctx context.Context, reader string) busyWait {
+	if _, err := d.card.transport.WaitCardRemove(ctx, []string{reader}); err != nil {
+		if !errors.Is(err, transport.ErrCardTimeout) {
+			if ctx.Err() == nil {
+				log.Printf("watching the busy card: %s", err.Error())
+			}
+			return busyBroken
+		}
+		// Still seated after the window: worth another connect.
+	} else {
+		return busyGone
+	}
+
+	d.drainControl()
+	// A re-read request is what this loop is already doing.
+	d.pendingRead = false
+	if ctx.Err() != nil {
+		return busyBroken
+	}
+	return busyRetry
 }
 
 // drainControl applies everything a client has queued, without blocking.

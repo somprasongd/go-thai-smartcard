@@ -30,6 +30,9 @@ type scriptedTransport struct {
 	armed   map[string]bool
 	// connects counts sessions, so a test can assert a re-read reopened one.
 	connects int
+	// disconnects counts closed sessions, so a test can assert the daemon
+	// lets go of the card when it stops.
+	disconnects int
 	// busyConnects makes the next Connect calls fail with a sharing
 	// violation, which is what the retry has to ride out.
 	busyConnects int
@@ -81,7 +84,7 @@ func (t *scriptedTransport) Connect(string) (transport.Card, error) {
 	}
 	// A fresh session every time, replaying from the start, so the same card can
 	// be read more than once.
-	return &scriptedCard{trace: personalTrace(false)}, nil
+	return &scriptedCard{trace: personalTrace(false), transport: t}, nil
 }
 
 func (t *scriptedTransport) poll(readers []string, want bool) (int, error) {
@@ -126,8 +129,9 @@ func (t *scriptedTransport) WaitCardRemove(_ context.Context, readers []string) 
 func (t *scriptedTransport) Close() error { return nil }
 
 type scriptedCard struct {
-	trace *transport.Trace
-	pos   int
+	trace     *transport.Trace
+	pos       int
+	transport *scriptedTransport
 }
 
 func (c *scriptedCard) Status() (transport.Status, error) {
@@ -147,7 +151,12 @@ func (c *scriptedCard) Transmit(cmd []byte) ([]byte, error) {
 	return hex.DecodeString(want.Response)
 }
 
-func (c *scriptedCard) Disconnect() error { return nil }
+func (c *scriptedCard) Disconnect() error {
+	c.transport.mu.Lock()
+	c.transport.disconnects++
+	c.transport.mu.Unlock()
+	return nil
+}
 
 // harness runs a daemon against a scripted transport and collects its events.
 type harness struct {
@@ -160,6 +169,10 @@ type harness struct {
 	events     []model.Message
 	statuses   []model.Status
 	dataEvents []*model.Data
+
+	// stopGuard keeps stop idempotent: a test may stop the daemon itself,
+	// and t.Cleanup stops it again afterwards.
+	stopOnce sync.Once
 }
 
 func newHarness(t *testing.T, pause time.Duration, readers ...string) *harness {
@@ -221,12 +234,14 @@ func newHarnessWithReader(t *testing.T, pause time.Duration, reader string, read
 }
 
 func (h *harness) stop() {
-	h.cancel()
-	select {
-	case <-h.done:
-	case <-time.After(5 * time.Second):
-		h.t.Error("daemon did not stop")
-	}
+	h.stopOnce.Do(func() {
+		h.cancel()
+		select {
+		case <-h.done:
+		case <-time.After(5 * time.Second):
+			h.t.Error("daemon did not stop")
+		}
+	})
 }
 
 func (h *harness) counts() map[string]int {
@@ -524,9 +539,10 @@ func TestDaemonRetriesAConnectThatLostTheExclusiveRace(t *testing.T) {
 	}
 }
 
-// Retries are bounded: a reader that never frees up produces the error the
-// client can see, naming the busy reader.
-func TestDaemonGivesUpWhenTheReaderStaysBusy(t *testing.T) {
+// A holder that never lets go is not a reason to stop serving the reader: the
+// busy error is published once, the loop keeps retrying while the card stays
+// seated, and it is the removal — not a retry count — that ends it.
+func TestDaemonKeepsRetryingWhileTheHolderStaysBusy(t *testing.T) {
 	h := newHarness(t, time.Millisecond, "Reader A")
 	h.transport.mu.Lock()
 	h.transport.busyConnects = 999
@@ -540,5 +556,84 @@ func TestDaemonGivesUpWhenTheReaderStaysBusy(t *testing.T) {
 			}
 		}
 		return false
+	})
+	if got := len(h.reads()); got != 0 {
+		t.Errorf("read %d card(s) that were never connected to", got)
+	}
+
+	h.transport.setPresent("Reader A", false)
+	h.settle("the removal that ends the retrying", func() bool {
+		return h.counts()["smc-removed"] == 1
+	})
+	h.settle("the waiting status", func() bool {
+		status, ok := h.lastStatus()
+		return ok && status.State == model.StateWaiting
+	})
+}
+
+// A daemon that stops while holding a session has to close it. A session left
+// open by an exiting process outlives the process in the PC/SC broker — on
+// macOS the reader then reports the card locked exclusively, and every later
+// insert fails until the card is removed or the broker restarts.
+func TestDaemonShutdownClosesTheHeldSession(t *testing.T) {
+	h := newHarness(t, time.Millisecond, "Reader A")
+	h.transport.setPresent("Reader A", true)
+
+	h.settleReads(1)
+
+	h.transport.mu.Lock()
+	if h.transport.disconnects != 0 {
+		h.transport.mu.Unlock()
+		t.Fatal("the held session was closed while the card was still seated and served")
+	}
+	h.transport.mu.Unlock()
+
+	// The card stays seated; only the daemon goes away.
+	h.stop()
+
+	h.transport.mu.Lock()
+	defer h.transport.mu.Unlock()
+	if h.transport.disconnects == 0 {
+		t.Error("the daemon stopped holding the card and never disconnected the session")
+	}
+}
+
+// The common macOS case: CryptoTokenKit seizes an inserted PKI card and lets
+// go a few seconds later. The read must come out without anyone touching the
+// reader, with one notice about the busy card — not one per retry — and with
+// no removal invented on the way.
+func TestDaemonReadsACardOnceTheHolderReleasesIt(t *testing.T) {
+	h := newHarness(t, time.Millisecond, "Reader A")
+	h.transport.mu.Lock()
+	// More busy rejections than the connect burst makes attempts, so only the
+	// daemon-level retry can produce the read.
+	h.transport.busyConnects = 13
+	h.transport.mu.Unlock()
+	h.transport.setPresent("Reader A", true)
+
+	reads := h.settleReads(1)
+	if reads[0].Reader != "Reader A" {
+		t.Errorf("read Reader = %q, want %q", reads[0].Reader, "Reader A")
+	}
+	if got := h.counts()["smc-removed"]; got != 0 {
+		t.Errorf("a busy retry reported %d removal(s)", got)
+	}
+
+	busyErrors := 0
+	for _, msg := range h.errorMessages() {
+		if strings.Contains(msg, "sharing violation") {
+			busyErrors++
+			if !strings.Contains(msg, "retrying while the card stays inserted") {
+				t.Errorf("busy error %q does not say the read is being retried", msg)
+			}
+		}
+	}
+	if busyErrors != 1 {
+		t.Errorf("published %d busy error(s), want exactly one notice", busyErrors)
+	}
+
+	h.settle("the card-present status", func() bool {
+		status, ok := h.lastStatus()
+		return ok && status.State == model.StateCardPresent
 	})
 }

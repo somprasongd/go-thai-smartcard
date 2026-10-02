@@ -32,6 +32,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A card that macOS CryptoTokenKit was holding no longer blocks the read
+  until the card is pulled and re-seated. The session was opened exclusive,
+  which PC/SC refuses the moment any other handle exists — and CryptoTokenKit
+  parks a shared handle on every inserted PKI card for as long as the card
+  stays seated, so the connect sat in sharing violations through every retry
+  and only ever got through by beating the probe to a fresh insert. The
+  session is now opened shared and locked with a transaction, which
+  coexists with the parked handle and still shuts every other process out of
+  the card for the whole read. The connect also bursts its retries a few
+  hundred milliseconds wide, and the daemon keeps retrying whole reads for
+  as long as the card stays inserted — one notice that another application
+  holds the card, then the read itself the moment the way in opens. When the
+  reader reports the card locked exclusively — a hold no retry can break —
+  the error now says so and names the way out: remove the card and insert it
+  again. The agent also closes its held session on shutdown, which used to
+  leak into the PC/SC broker on macOS and keep the card locked for every
+  later insert until the reader was emptied, and releasing a session the
+  reader has already dropped on its own — an invalid handle or a removed
+  card — no longer logs a disconnect error.
 - The test page kept the "cannot reach the agent" panel after the WebSocket
   connected. Nothing repainted the empty state when a transport came up — it
   was written before anything connected, and only a card event or a total

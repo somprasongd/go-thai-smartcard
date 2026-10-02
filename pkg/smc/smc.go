@@ -24,11 +24,14 @@ const readerRetryInterval = 2 * time.Second
 // an exclusive-access race: a fast re-insert right after this very transport
 // released the previous session, or another process that seizes inserted
 // cards (on macOS, CryptoTokenKit's smart card service does that to PKI
-// cards). One to a few seconds is enough for the former and sometimes wins
-// the latter; beyond that the read fails and the operator sees why.
+// cards). The attempts come in a dense burst a few hundred milliseconds wide,
+// because a holder that is going to let go does so quickly, and only a fast
+// connect wins the card back before the next insert. A holder that keeps the
+// card longer is not this burst's problem: the daemon loop keeps retrying
+// whole reads for as long as the card stays seated.
 const (
-	connectRetries    = 4
-	connectRetryDelay = time.Second
+	connectRetries    = 10
+	connectRetryDelay = 25 * time.Millisecond
 )
 
 // Options selects which parts of the card to read.
