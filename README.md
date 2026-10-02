@@ -91,6 +91,9 @@ way.
 <http://localhost:9898/settings> is a self-contained page (plain HTML, no CDN,
 so it works on a hospital network that cannot reach the internet) for everything
 the agent reads and who may connect to it — the one place that changes them.
+`listen` renders as an "Expose to network" checkbox, the one decision most
+deployments ever make about it; a deliberate custom bind (a specific interface
+address) keeps the free-text field.
 
 What a save does:
 

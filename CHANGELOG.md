@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- An "Expose to network" checkbox on /settings in place of the raw `listen`
+  field, in the shape of Ollama's switch. The free text invited values whose
+  exposure was hard to predict — `localhost` and `127.0.0.1` mean the same
+  thing, while a machine's own LAN address silently exposes. The two standard
+  listens get the checkbox; a deliberate custom bind (a specific interface
+  address) keeps the free-text field. The config key itself is unchanged.
 - Local endpoint discovery for the tray, for both foreground agents and system
   services. The tray verifies the process identity and follows port changes
   without editing login/startup arguments; `--url` remains an explicit override.
