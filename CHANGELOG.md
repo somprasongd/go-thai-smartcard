@@ -9,14 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Both bundled pages were redesigned around the document they serve: an ink
-  desk with a single gold rule carries the pages, the card data renders as the
-  paper card itself — crest band, gold hairlines, guilloche — and seal red is
-  the only action colour. The empty state draws the reader slot with a card
-  waiting above it instead of an icon; Thai-first system type replaces the
-  generic stack; panel eyebrows, all-caps labels and the dark-dashboard card
-  chrome are gone. No behaviour changes: every control, state and page script
-  test is the same.
+- Both bundled pages were redesigned into a light admin console: a white app
+  bar (with a GitHub repository link at its right) and a sidebar menu — page
+  navigation on top, then the display, privacy and reader controls grouped
+  beneath it — sit over a quiet mint-gray desk with a single accent, the deep
+  green of the Thai ID card itself. The card data still renders as the paper
+  document with the gold identity band, and it stays the one loud object; on
+  phones the sidebar unpacks so the order becomes navigation, card, controls.
+  The empty state draws the reader slot with a card waiting above it. No
+  behaviour changes: every control, state and page script test is the same.
 
 ### Added
 

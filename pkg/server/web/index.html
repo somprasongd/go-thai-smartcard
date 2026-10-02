@@ -17,37 +17,41 @@
     -->
     <style>
       /* ---------------------------------------------------------------------
-         Design system: "โต๊ะรับรอง" — a lacquered ink desk under a gold rule,
-         with the card itself as the only loud object: a paper document with a
-         crest-red band, read at a counter. Seal red means action or state,
-         gold marks identity lines, jade marks good news. Thai-first system
-         type; mono only where the content is actually numeric.
+         Design system: "แผงควบคุมเครื่องอ่านบัตร" — a light admin console.
+         One white shell (app bar + sidebar) on a quiet mint-gray desk; a
+         single accent, the deep green of the Thai ID card itself, means
+         action or state. Gold survives only on the card document, where it
+         marks the identity band. The card is the one loud object; everything
+         around it is hairlines and whitespace. Thai-first system type; mono
+         only where the content is actually numeric.
          --------------------------------------------------------------------- */
       :root {
-        --desk: #1b2130;
-        --desk-elev: #232b3d;
-        --desk-deep: #131826;
-        --line: #333d55;
-        --line-soft: #2a3348;
-        --fg: #edece5;
-        --fg-dim: #a4acbe;
-        --fg-faint: #6f7889;
-        --seal: #d0243f;
-        --seal-deep: #a3122a;
-        --gold: #b08d4f;
-        --ok: #2f9e63;
-        --warn: #d08700;
-        --danger: #e05252;
+        --bg: #f4f6f5;
+        --surface: #ffffff;
+        --surface-2: #f0f4f2;
+        --line: #e1e7e4;
+        --line-soft: #ebefed;
+        --fg: #17251f;
+        --fg-dim: #5a6b64;
+        --fg-faint: #8d9c95;
+        --accent: #0c7a5b;
+        --accent-deep: #095f47;
+        --accent-soft: #e2f1ea;
+        --gold: #c9a75c;
+        --ok: #17855c;
+        --warn: #b45309;
+        --danger: #d64550;
 
-        /* Card stock: the physical card's paper */
-        --card-bg: #f8f5ee;
-        --card-fg: #262115;
-        --card-dim: #7a7160;
-        --card-line: #ded3ba;
-        --card-accent: #a3122a;
+        /* Card stock: the document itself, paper-white under a green band */
+        --card-bg: #ffffff;
+        --card-fg: #1c2b25;
+        --card-dim: #6b7c75;
+        --card-line: #e3e8e5;
+        --card-accent: #0a6b52;
 
         --radius: 12px;
         --radius-sm: 8px;
+        --appbar-h: 57px;
         --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
         --sans: "Sukhumvit Set", -apple-system, BlinkMacSystemFont, "Segoe UI",
           "Noto Sans Thai", "Leelawadee UI", Sarabun, Roboto, sans-serif;
@@ -77,9 +81,7 @@
       }
 
       body {
-        background:
-          radial-gradient(1100px 480px at 18% -8%, rgba(176, 141, 79, 0.07), transparent 62%),
-          var(--desk);
+        background: var(--bg);
         color: var(--fg);
         font-family: var(--sans);
         font-size: calc(15px * var(--scale));
@@ -88,7 +90,7 @@
       }
 
       :focus-visible {
-        outline: 2px solid var(--gold);
+        outline: 2px solid var(--accent);
         outline-offset: 2px;
         border-radius: 4px;
       }
@@ -105,42 +107,44 @@
         border: 0;
       }
 
-      /* ----------------------------- top bar ----------------------------- */
-      .topbar {
+      /* ----------------------------- app bar ----------------------------- */
+      .appbar {
         position: sticky;
         top: 0;
         z-index: 20;
         display: flex;
         flex-wrap: wrap;
-        gap: 12px;
+        gap: 8px 14px;
         align-items: center;
-        padding: 12px 18px;
-        background: rgba(19, 24, 38, 0.94);
-        backdrop-filter: blur(8px);
-        border-bottom: 1px solid rgba(176, 141, 79, 0.55);
+        min-height: var(--appbar-h);
+        padding: 8px 16px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--line);
       }
 
       .brand {
         display: flex;
         align-items: center;
         gap: 10px;
+        text-decoration: none;
+        color: var(--fg);
         font-weight: 700;
         letter-spacing: 0.01em;
         margin-right: auto;
       }
 
-      /* The seal: a red disc under a gold ring, like the crest it serves. */
+      /* The mark: a small green tile, the only strong colour up here. */
       .brand-mark {
         width: 30px;
         height: 30px;
-        border-radius: 50%;
-        background: radial-gradient(circle at 34% 30%, #d0243f, var(--seal-deep));
-        box-shadow: 0 0 0 2px var(--desk-deep), 0 0 0 3px var(--gold);
+        border-radius: 9px;
+        background: linear-gradient(135deg, #0d805f, #085c45);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
         display: grid;
         place-items: center;
         font-size: 9px;
         font-weight: 800;
-        letter-spacing: 0.06em;
+        letter-spacing: 0.07em;
         color: #fff;
         flex: none;
       }
@@ -152,28 +156,14 @@
         align-items: center;
       }
 
-      .topbar-link {
-        margin-left: auto;
-        color: var(--fg-dim);
-        text-decoration: none;
-        font-size: 14px;
-        white-space: nowrap;
-      }
-
-      .topbar-link:hover {
-        color: var(--fg);
-        text-decoration: underline;
-        text-underline-offset: 3px;
-      }
-
       .pill {
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        padding: 4px 10px;
-        border-radius: 7px;
-        border: 1px solid var(--line-soft);
-        background: var(--desk-elev);
+        padding: 4px 11px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--surface-2);
         font-size: 12px;
         color: var(--fg-dim);
         white-space: nowrap;
@@ -194,12 +184,12 @@
 
       .dot.on {
         background: var(--ok);
-        box-shadow: 0 0 0 3px rgba(47, 158, 99, 0.18);
+        box-shadow: 0 0 0 3px rgba(23, 133, 92, 0.16);
       }
 
       .dot.off {
         background: var(--danger);
-        box-shadow: 0 0 0 3px rgba(224, 82, 82, 0.16);
+        box-shadow: 0 0 0 3px rgba(214, 69, 80, 0.14);
       }
 
       .dot.wait {
@@ -217,32 +207,131 @@
         }
       }
 
-      /* ------------------------------ layout ----------------------------- */
-      .layout {
+      .iconbtn {
+        display: inline-grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+        color: var(--fg-dim);
+        background: transparent;
+        border: 1px solid transparent;
+        flex: none;
+      }
+
+      .iconbtn:hover {
+        background: var(--surface-2);
+        color: var(--fg);
+        border-color: var(--line);
+      }
+
+      /* ------------------------------ shell ------------------------------ */
+      .shell {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 340px;
-        gap: 20px;
-        padding: 20px;
+        grid-template-columns: 266px minmax(0, 1fr);
         align-items: start;
-        max-width: 1500px;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: var(--appbar-h);
+        height: calc(100vh - var(--appbar-h));
+        overflow-y: auto;
+        background: var(--surface);
+        border-right: 1px solid var(--line);
+        padding: 14px 0 28px;
+      }
+
+      .nav {
+        display: grid;
+        gap: 2px;
+        padding: 0 12px 14px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+
+      .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        border-radius: var(--radius-sm);
+        text-decoration: none;
+        color: var(--fg-dim);
+        font-size: 13.5px;
+        font-weight: 550;
+      }
+
+      .nav-item svg {
+        flex: none;
+        color: var(--fg-faint);
+      }
+
+      .nav-item:hover {
+        background: var(--surface-2);
+        color: var(--fg);
+      }
+
+      .nav-item:hover svg {
+        color: var(--fg-dim);
+      }
+
+      .nav-item.is-active {
+        background: var(--accent-soft);
+        color: var(--accent-deep);
+        font-weight: 650;
+      }
+
+      .nav-item.is-active svg {
+        color: var(--accent);
+      }
+
+      .side-sec {
+        padding: 16px 16px 4px;
+      }
+
+      .side-sec + .side-sec {
+        border-top: 1px solid var(--line-soft);
+        margin-top: 12px;
+      }
+
+      .side-label {
+        margin: 0 0 10px;
+        font-size: 12.5px;
+        font-weight: 650;
+        color: var(--fg);
+      }
+
+      .group {
+        margin: 0 0 14px;
+      }
+
+      .group-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--fg-faint);
+        margin: 0 0 8px;
+      }
+
+      /* ------------------------------- main ------------------------------ */
+      main {
+        display: grid;
+        gap: 18px;
+        align-content: start;
+        padding: 24px 28px 48px;
+        width: 100%;
+        max-width: 1180px;
         margin: 0 auto;
       }
 
-      @media (max-width: 1080px) {
-        .layout {
-          grid-template-columns: minmax(0, 1fr);
-        }
-      }
-
       .panel {
-        background: var(--desk-elev);
-        border: 1px solid var(--line-soft);
+        background: var(--surface);
+        border: 1px solid var(--line);
         border-radius: var(--radius);
       }
 
       .panel > h2 {
         margin: 0;
-        padding: 12px 14px;
+        padding: 12px 16px;
         font-size: 13px;
         font-weight: 650;
         color: var(--fg-dim);
@@ -261,12 +350,12 @@
       }
 
       .panel-body {
-        padding: 14px;
+        padding: 14px 16px;
       }
 
       /* --------------------------- empty state --------------------------- */
       .stage {
-        min-height: 60vh;
+        min-height: min(62vh, 640px);
         display: grid;
         place-items: center;
       }
@@ -296,10 +385,10 @@
         transform: translateX(-50%);
         width: 84px;
         height: 54px;
-        border-radius: 9px;
-        background: linear-gradient(var(--card-accent) 0 9px, var(--card-bg) 9px);
+        border-radius: 8px;
+        background: linear-gradient(var(--accent) 0 9px, var(--card-bg) 9px);
         border: 1px solid var(--card-line);
-        box-shadow: 0 14px 26px -14px rgba(0, 0, 0, 0.8);
+        box-shadow: 0 16px 28px -14px rgba(23, 37, 31, 0.35);
       }
 
       .empty-icon::after {
@@ -311,9 +400,9 @@
         width: 132px;
         height: 14px;
         border-radius: 999px;
-        background: var(--desk-deep);
+        background: #e6ebe8;
         border: 1px solid var(--line);
-        box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.55);
+        box-shadow: inset 0 2px 5px rgba(23, 37, 31, 0.12);
       }
 
       .empty h3 {
@@ -337,19 +426,20 @@
       .empty code {
         font-family: var(--mono);
         font-size: 12.5px;
-        background: var(--desk-deep);
+        background: var(--surface-2);
         border: 1px solid var(--line);
         border-radius: 5px;
         padding: 1.5px 6px;
+        color: var(--accent-deep);
       }
 
       .empty.is-error .empty-icon::before {
-        background: linear-gradient(var(--seal-deep) 0 9px, #f3dfe0 9px);
-        border-color: rgba(224, 82, 82, 0.6);
+        background: linear-gradient(var(--danger) 0 9px, #fdf1f2 9px);
+        border-color: rgba(214, 69, 80, 0.5);
       }
 
       .empty.is-error .empty-icon::after {
-        border-color: rgba(224, 82, 82, 0.6);
+        border-color: rgba(214, 69, 80, 0.5);
       }
 
       /* ------------------------------ the card --------------------------- */
@@ -360,8 +450,8 @@
         color: var(--card-fg);
         border-radius: 16px;
         border: 1px solid var(--card-line);
-        box-shadow: 0 24px 54px -20px rgba(0, 0, 0, 0.8),
-          inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        box-shadow: 0 30px 60px -30px rgba(23, 37, 31, 0.3),
+          0 2px 6px -2px rgba(23, 37, 31, 0.08);
         position: relative;
         overflow: hidden;
       }
@@ -373,7 +463,7 @@
         inset: 0;
         background-image: repeating-linear-gradient(
           115deg,
-          rgba(163, 18, 42, 0.028) 0 2px,
+          rgba(12, 122, 91, 0.025) 0 2px,
           transparent 2px 7px
         );
         pointer-events: none;
@@ -383,8 +473,10 @@
         display: flex;
         align-items: center;
         gap: 10px;
-        padding: 12px 20px;
-        border-bottom: 1px solid rgba(176, 141, 79, 0.55);
+        padding: 12px 22px;
+        background: linear-gradient(120deg, #0d805f, #085c45);
+        border-bottom: 2px solid var(--gold);
+        color: #fff;
         position: relative;
       }
 
@@ -392,9 +484,9 @@
         width: 32px;
         height: 32px;
         border-radius: 50%;
-        background: radial-gradient(circle at 34% 30%, #d0243f, var(--card-accent));
-        box-shadow: 0 0 0 2px var(--card-bg), 0 0 0 3px var(--gold);
-        color: #fff;
+        background: rgba(255, 255, 255, 0.13);
+        box-shadow: 0 0 0 1.5px var(--gold);
+        color: #f3e6c8;
         display: grid;
         place-items: center;
         font-size: 14px;
@@ -405,12 +497,12 @@
         font-size: 13px;
         font-weight: 750;
         letter-spacing: 0.02em;
-        color: var(--card-accent);
+        color: #fff;
       }
 
       .idcard-sub {
         font-size: 11px;
-        color: var(--card-dim);
+        color: rgba(255, 255, 255, 0.72);
         letter-spacing: 0.04em;
       }
 
@@ -444,7 +536,7 @@
         object-fit: cover;
         border-radius: 8px;
         border: 1px solid var(--card-line);
-        background: #e9e2d2;
+        background: #eef1ef;
         display: block;
         cursor: zoom-in;
       }
@@ -454,7 +546,7 @@
         aspect-ratio: 3 / 4;
         border-radius: 8px;
         border: 1px dashed var(--card-line);
-        background: #efe9da;
+        background: #f3f6f4;
         display: grid;
         place-items: center;
         color: var(--card-dim);
@@ -537,7 +629,7 @@
         margin-left: 8px;
         padding: 1px 8px;
         border-radius: 999px;
-        background: rgba(0, 0, 0, 0.055);
+        background: rgba(23, 37, 31, 0.05);
         border: 1px solid var(--card-line);
         font-size: 11px;
         font-weight: 650;
@@ -548,21 +640,21 @@
       }
 
       .f-value .derived.ok {
-        color: #1d6f42;
-        border-color: rgba(29, 111, 66, 0.35);
-        background: rgba(29, 111, 66, 0.08);
+        color: #116b45;
+        border-color: rgba(17, 107, 69, 0.32);
+        background: rgba(17, 107, 69, 0.07);
       }
 
       .f-value .derived.warn {
         color: #8a5a06;
-        border-color: rgba(138, 90, 6, 0.35);
-        background: rgba(138, 90, 6, 0.08);
+        border-color: rgba(138, 90, 6, 0.32);
+        background: rgba(138, 90, 6, 0.07);
       }
 
       .f-value .derived.bad {
-        color: #9f1239;
-        border-color: rgba(159, 18, 57, 0.35);
-        background: rgba(159, 18, 57, 0.08);
+        color: #b4233a;
+        border-color: rgba(180, 35, 58, 0.32);
+        background: rgba(180, 35, 58, 0.07);
       }
 
       .f-value .copy-btn {
@@ -582,8 +674,9 @@
       }
 
       .f-value .copy-btn:hover {
-        background: rgba(0, 0, 0, 0.05);
+        background: var(--surface-2);
         color: var(--card-fg);
+        border-color: var(--fg-faint);
       }
 
       .f:hover .copy-btn,
@@ -599,8 +692,8 @@
       }
 
       .idcard-foot {
-        padding: 12px 20px;
-        border-top: 1px solid rgba(176, 141, 79, 0.55);
+        padding: 12px 22px;
+        border-top: 1px solid var(--card-line);
         display: flex;
         flex-wrap: wrap;
         gap: 10px 20px;
@@ -621,12 +714,12 @@
 
       @keyframes cardflash {
         0% {
-          box-shadow: 0 0 0 4px rgba(176, 141, 79, 0.75),
-            0 24px 54px -20px rgba(0, 0, 0, 0.8);
+          box-shadow: 0 0 0 4px rgba(12, 122, 91, 0.4),
+            0 30px 60px -30px rgba(23, 37, 31, 0.3);
         }
         100% {
-          box-shadow: 0 24px 54px -20px rgba(0, 0, 0, 0.8),
-            inset 0 1px 0 rgba(255, 255, 255, 0.6);
+          box-shadow: 0 30px 60px -30px rgba(23, 37, 31, 0.3),
+            0 2px 6px -2px rgba(23, 37, 31, 0.08);
         }
       }
 
@@ -634,7 +727,6 @@
       .blocks {
         display: grid;
         gap: 18px;
-        margin-top: 18px;
       }
 
       .kv {
@@ -664,7 +756,7 @@
         padding: 12px 14px;
         border: 1px dashed var(--line);
         border-radius: var(--radius-sm);
-        background: var(--desk-elev);
+        background: var(--surface-2);
         color: var(--fg-dim);
         font-size: 13px;
       }
@@ -672,7 +764,7 @@
       .absent code {
         font-family: var(--mono);
         font-size: 12px;
-        background: var(--desk-deep);
+        background: var(--surface);
         border: 1px solid var(--line);
         border-radius: 4px;
         padding: 1px 5px;
@@ -698,7 +790,7 @@
         color: var(--fg-dim);
         font-weight: 650;
         font-size: 12px;
-        background: var(--desk-deep);
+        background: var(--surface-2);
       }
 
       .fields-table td.key {
@@ -727,8 +819,8 @@
       }
 
       .fields-table tr.group-head td {
-        background: var(--desk-deep);
-        color: #e56a7e;
+        background: var(--accent-soft);
+        color: var(--accent-deep);
         font-weight: 700;
         font-size: 12px;
       }
@@ -740,29 +832,13 @@
       }
 
       /* ----------------------------- controls ---------------------------- */
-      .group {
-        padding: 14px;
-        border-bottom: 1px solid var(--line-soft);
-      }
-
-      .group:last-child {
-        border-bottom: none;
-      }
-
-      .group-title {
-        font-size: 12px;
-        font-weight: 650;
-        color: var(--fg-faint);
-        margin: 0 0 9px;
-      }
-
       .seg {
         display: grid;
         grid-auto-flow: column;
         grid-auto-columns: 1fr;
         gap: 3px;
         padding: 3px;
-        background: var(--desk-deep);
+        background: var(--surface-2);
         border: 1px solid var(--line);
         border-radius: 9px;
       }
@@ -784,9 +860,10 @@
       }
 
       .seg button[aria-pressed="true"] {
-        background: var(--seal);
-        color: #fff;
+        background: var(--surface);
+        color: var(--accent-deep);
         font-weight: 650;
+        box-shadow: 0 1px 2.5px rgba(23, 37, 31, 0.16);
       }
 
       .check {
@@ -798,7 +875,7 @@
       }
 
       .check input {
-        accent-color: var(--seal);
+        accent-color: var(--accent);
         width: 15px;
         height: 15px;
         flex: none;
@@ -824,7 +901,7 @@
       }
 
       .field-row select {
-        background: var(--desk-deep);
+        background: var(--surface);
         color: var(--fg);
         border: 1px solid var(--line);
         border-radius: 8px;
@@ -840,7 +917,7 @@
       }
 
       .btn {
-        background: var(--desk-deep);
+        background: var(--surface);
         color: var(--fg);
         border: 1px solid var(--line);
         border-radius: 8px;
@@ -852,19 +929,20 @@
       }
 
       .btn:hover {
+        background: var(--surface-2);
         border-color: var(--fg-faint);
       }
 
       .btn.primary {
-        background: var(--seal);
-        border-color: var(--seal);
+        background: var(--accent);
+        border-color: var(--accent);
         color: #fff;
         font-weight: 650;
       }
 
       .btn.primary:hover {
-        background: var(--seal-deep);
-        border-color: var(--seal-deep);
+        background: var(--accent-deep);
+        border-color: var(--accent-deep);
       }
 
       .btn.wide {
@@ -877,10 +955,10 @@
       }
 
       .btn.primary:disabled {
-        background: var(--seal);
+        background: var(--accent);
       }
 
-      /* The card's own copy button sits on paper: ink on paper, not chrome. */
+      /* The card's own copy button sits on the document: quiet ink on paper. */
       .idcard-foot .btn {
         background: transparent;
         border-color: var(--card-line);
@@ -888,7 +966,7 @@
       }
 
       .idcard-foot .btn:hover {
-        background: rgba(0, 0, 0, 0.05);
+        background: var(--surface-2);
         border-color: var(--card-dim);
       }
 
@@ -913,7 +991,7 @@
         display: grid;
         grid-template-columns: 62px 92px minmax(0, 1fr);
         gap: 8px;
-        padding: 3px 14px;
+        padding: 3px 16px;
         font-size: 12px;
       }
 
@@ -926,7 +1004,7 @@
       .log-row .ev {
         font-family: var(--mono);
         font-size: 11px;
-        color: #e56a7e;
+        color: var(--accent-deep);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -942,7 +1020,7 @@
         position: fixed;
         inset: 0;
         z-index: 50;
-        background: rgba(12, 15, 24, 0.92);
+        background: rgba(13, 22, 18, 0.92);
         display: grid;
         place-items: center;
         cursor: zoom-out;
@@ -953,8 +1031,8 @@
         max-width: min(92vw, 560px);
         max-height: 88vh;
         border-radius: 10px;
-        border: 1px solid rgba(176, 141, 79, 0.55);
-        box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.9);
+        border: 1px solid var(--line);
+        box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.7);
       }
 
       .toast {
@@ -962,13 +1040,13 @@
         left: 50%;
         bottom: 26px;
         transform: translateX(-50%) translateY(8px);
-        background: var(--desk-deep);
-        color: var(--fg);
-        border: 1px solid rgba(176, 141, 79, 0.55);
+        background: #1d2b25;
+        color: #f2f6f4;
+        border: 1px solid #31423b;
         border-radius: 10px;
         padding: 10px 16px;
         font-size: 13.5px;
-        box-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.85);
+        box-shadow: 0 18px 40px -16px rgba(13, 22, 18, 0.55);
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.18s, transform 0.18s;
@@ -981,6 +1059,40 @@
         transform: translateX(-50%) translateY(0);
       }
 
+      .toast.err {
+        border-color: rgba(214, 69, 80, 0.6);
+      }
+
+      /* ---------------------------- responsive --------------------------- */
+      @media (max-width: 1080px) {
+        .shell {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        /* The sidebar unpacks on mobile so the order becomes nav, then the
+           card, then the control groups — someone holding a phone should not
+           scroll past every control to reach the read. */
+        .sidebar {
+          display: contents;
+        }
+
+        .sidebar > .nav {
+          order: -1;
+          background: var(--surface);
+          border-bottom: 1px solid var(--line);
+          padding: 12px;
+        }
+
+        .sidebar > .side-sec {
+          order: 1;
+          background: var(--surface);
+        }
+
+        main {
+          padding: 20px 16px 40px;
+        }
+      }
+
       @media (prefers-reduced-motion: reduce) {
         * {
           transition: none !important;
@@ -990,12 +1102,12 @@
       </style>
   </head>
 
-  <body>
-    <header class="topbar">
-      <div class="brand">
+    <body>
+    <header class="appbar">
+      <a class="brand" href="/">
         <span class="brand-mark">SMC</span>
-        <span data-i18n="app.title">Thai ID Card Agent</span>
-      </div>
+        <span class="brand-name" data-i18n="app.title">ตัวอ่านบัตรประชาชน</span>
+      </a>
 
       <div class="pills">
         <span class="pill" id="pill-sio">
@@ -1023,33 +1135,48 @@
         </span>
       </div>
 
-      <a class="topbar-link" href="/settings" data-i18n="nav.settings">Settings</a>
+      <a
+        class="iconbtn"
+        href="https://github.com/somprasongd/go-thai-smartcard"
+        target="_blank"
+        rel="noopener"
+        aria-label="GitHub repository"
+        title="GitHub"
+      >
+        <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true">
+          <path
+            d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"
+          />
+        </svg>
+      </a>
     </header>
 
-    <div class="layout">
-      <main>
-        <!-- stage: empty state or card/table -->
-        <section class="panel stage" id="stage">
-          <div class="empty" id="empty">
-            <div class="empty-icon" id="empty-icon">💳</div>
-            <h3 id="empty-title">…</h3>
-            <p id="empty-text"></p>
-            <p class="hint" id="empty-hint"></p>
-          </div>
+    <div class="shell">
+      <aside class="sidebar">
+        <nav class="nav" aria-label="หน้าหลัก">
+          <a class="nav-item is-active" href="/" aria-current="page">
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+              <rect x="1.75" y="3.25" width="12.5" height="9.5" rx="1.8" />
+              <path d="M1.75 6.25h12.5" />
+              <path d="M4.25 9.75h3" />
+            </svg>
+            <span data-i18n="nav.home">อ่านบัตร</span>
+          </a>
+          <a class="nav-item" href="/settings">
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+              <path d="M2 4.5h4.2M9.6 4.5H14M2 11.5h1.9M7.3 11.5H14" />
+              <circle cx="8.4" cy="4.5" r="1.85" />
+              <circle cx="5.2" cy="11.5" r="1.85" />
+            </svg>
+            <span data-i18n="nav.settings">ตั้งค่า</span>
+          </a>
+        </nav>
 
-          <div id="data" hidden></div>
-        </section>
-
-        <!-- address / laser / nhso blocks live under the card -->
-        <div class="blocks" id="blocks" hidden></div>
-      </main>
-
-      <aside>
-        <section class="panel">
-          <h2><span data-i18n="opt.display">Display</span></h2>
+        <section class="side-sec">
+          <h3 class="side-label" data-i18n="opt.display">การแสดงผล</h3>
 
           <div class="group">
-            <p class="group-title" data-i18n="opt.privacy">Mode</p>
+            <p class="group-title" data-i18n="opt.privacy">โหมด</p>
             <div class="seg" id="seg-privacy" role="group">
               <button type="button" data-v="kiosk" data-i18n="mode.kiosk">Kiosk</button>
               <button type="button" data-v="dev" data-i18n="mode.dev">Dev</button>
@@ -1059,7 +1186,7 @@
           </div>
 
           <div class="group">
-            <p class="group-title" data-i18n="opt.view">View</p>
+            <p class="group-title" data-i18n="opt.view">มุมมอง</p>
             <div class="seg" id="seg-view" role="group">
               <button type="button" data-v="card" data-i18n="view.card">Card</button>
               <button type="button" data-v="table" data-i18n="view.table">Table</button>
@@ -1067,7 +1194,7 @@
           </div>
 
           <div class="group">
-            <p class="group-title" data-i18n="opt.lang">Language</p>
+            <p class="group-title" data-i18n="opt.lang">ภาษา</p>
             <div class="seg" id="seg-lang" role="group">
               <button type="button" data-v="th">ไทย</button>
               <button type="button" data-v="en">EN</button>
@@ -1076,7 +1203,7 @@
           </div>
 
           <div class="group">
-            <p class="group-title" data-i18n="opt.toggles">Show</p>
+            <p class="group-title" data-i18n="opt.toggles">แสดง</p>
             <label class="check">
               <input type="checkbox" id="opt-photo" checked />
               <span data-i18n="opt.photo">Face photo</span>
@@ -1101,9 +1228,12 @@
               <span data-i18n="opt.log">Event log</span>
             </label>
           </div>
+        </section>
+
+        <section class="side-sec">
+          <h3 class="side-label" data-i18n="opt.privacy2">ความเป็นส่วนตัว</h3>
 
           <div class="group">
-            <p class="group-title" data-i18n="opt.privacy2">Privacy</p>
             <label class="check">
               <input type="checkbox" id="opt-mask" />
               <span data-i18n="opt.mask">Mask ID number</span>
@@ -1123,9 +1253,12 @@
               </select>
             </div>
           </div>
+        </section>
+
+        <section class="side-sec">
+          <h3 class="side-label" data-i18n="opt.reader">เครื่องอ่าน</h3>
 
           <div class="group">
-            <p class="group-title" data-i18n="opt.reader">Reader</p>
             <div class="field-row">
               <!-- The group title already names the field on screen; the label
                    stays for the accessible name, which is what the tab order
@@ -1153,8 +1286,25 @@
             </button>
           </div>
         </section>
+      </aside>
 
-        <section class="panel" id="panel-json" style="margin-top: 18px" hidden>
+      <main>
+        <!-- stage: empty state or card/table -->
+        <section class="panel stage" id="stage">
+          <div class="empty" id="empty">
+            <div class="empty-icon" id="empty-icon">💳</div>
+            <h3 id="empty-title">…</h3>
+            <p id="empty-text"></p>
+            <p class="hint" id="empty-hint"></p>
+          </div>
+
+          <div id="data" hidden></div>
+        </section>
+
+        <!-- address / laser / nhso blocks live under the card -->
+        <div class="blocks" id="blocks" hidden></div>
+
+        <section class="panel" id="panel-json" hidden>
           <h2>
             <span data-i18n="panel.json">Payload</span>
             <span class="count" id="json-count"></span>
@@ -1164,14 +1314,14 @@
           </div>
         </section>
 
-        <section class="panel" id="panel-log" style="margin-top: 18px">
+        <section class="panel" id="panel-log">
           <h2>
             <span data-i18n="panel.log">Events</span>
             <span class="count" id="log-count">0</span>
           </h2>
           <div class="log" id="log"></div>
         </section>
-      </aside>
+      </main>
     </div>
 
     <div class="lightbox" id="lightbox" hidden>
@@ -1263,7 +1413,8 @@
             "act.copied": "คัดลอกแล้ว",
             "panel.json": "ข้อมูลดิบ",
             "panel.log": "Event",
-            "nav.settings": "ตั้งค่าที่ /settings",
+            "nav.home": "อ่านบัตร",
+            "nav.settings": "ตั้งค่า",
             "reader.note.none": "ไม่พบเครื่องอ่าน — เสียบเครื่องแล้วกดรีเฟรช",
             "reader.note.reading": "กำลังอ่านบัตรอยู่ รอสักครู่",
             "reader.note.ready": "อ่านบัตรแล้ว กด “อ่านซ้ำ” เพื่ออ่านอีกครั้ง",
@@ -1385,7 +1536,8 @@
             "act.copied": "Copied",
             "panel.json": "Payload",
             "panel.log": "Events",
-            "nav.settings": "Change in settings",
+            "nav.home": "Card reader",
+            "nav.settings": "Settings",
             "reader.note.none": "No reader found — plug one in and press refresh.",
             "reader.note.reading": "Reading the card, hold on a moment.",
             "reader.note.ready": "Card read — press “Read again” for another pass.",
