@@ -48,4 +48,4 @@ Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [UninstallRun]
 Filename: "{app}\{#AppExeName}"; Parameters: "service uninstall"; Flags: runhidden; RunOnceId: "SvcUninstall"
-Filename: "net.exe"; Parameters: "stop ThaiSmartcardTray"; Flags: runhidden; RunOnceId: "TrayStop"
+Filename: "taskkill.exe"; Parameters: "/F /IM thai-smartcard-tray.exe"; Flags: runhidden; RunOnceId: "TrayStop"
