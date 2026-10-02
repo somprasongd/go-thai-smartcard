@@ -122,10 +122,23 @@
         <p class="hint">
           การแก้ค่า server จะย้าย listener ให้เอง หากเปิด port ใหม่ไม่ได้จะคงค่าเดิม / server changes apply without restarting the agent.
         </p>
-        <div class="row">
-          <label for="listen">listen</label>
+        <div class="row" id="expose-row">
+          <label>listen</label>
+          <span class="checks" style="display: flex; gap: 16px">
+            <label><input type="checkbox" id="expose" /> เปิดให้เครือข่ายเข้าถึง / Expose to network</label>
+          </span>
+          <span class="hint">
+            เครื่องอื่นบนเครือข่ายเข้าถึง agent ได้ (listen = 0.0.0.0) — ต้องมี token ดูหัวข้อถัดไป /
+            other devices can reach the agent; a token is required, see below.
+          </span>
+        </div>
+        <div class="row" id="listen-row" hidden>
+          <label for="listen">listen <small>(กำหนดเอง / custom)</small></label>
           <input type="text" id="listen" spellcheck="false" />
-          <span class="hint">"0.0.0.0" = เปิดให้เครือข่ายเข้าถึง / exposes the agent to the network (ต้องมี token)</span>
+          <span class="hint">
+            bind เฉพาะ interface ได้ เช่น 192.168.1.10 — ค่าอื่นที่ไม่ใช่ loopback ถือว่าเปิดเครือข่ายเช่นกัน /
+            a specific interface; anything beyond loopback counts as exposed too.
+          </span>
         </div>
         <div class="row">
           <label for="port">port</label>
@@ -148,7 +161,9 @@
         </div>
       </section>
 
-      <section>
+      <!-- A loopback token is inert: the guard enforces it only beyond
+           loopback, so the whole section hides until exposure is on. -->
+      <section id="token-section" hidden>
         <h2>Socket token <small>[server] token</small></h2>
         <p class="hint">
           ต้องมีเมื่อเปิดให้เครือข่ายภายนอกเข้าถึง / required when the agent listens beyond localhost.
@@ -246,8 +261,42 @@
           el.hidden = false;
         }
 
+        // The two standard listens get a checkbox, Ollama-style: exposure is
+        // one decision and the free-text field invited values whose exposure
+        // was hard to predict ("localhost" and "127.0.0.1" agree, a machine's
+        // own LAN address silently exposes). Anything else is a deliberate
+        // custom bind — a specific interface address — and keeps the field.
+        function listenIsStandard(listen) {
+          return listen === "127.0.0.1" || listen === "0.0.0.0";
+        }
+
+        // Mirrors config.IsLoopbackListen for the common values. The server
+        // decides enforcement; this only drives whether the token section is
+        // worth showing on an agent that is not exposed.
+        function listenIsLoopback(listen) {
+          return (
+            listen === "localhost" ||
+            listen === "::1" ||
+            /^127(?:\.\d{1,3}){3}$/.test(listen)
+          );
+        }
+
+        function effectiveListen() {
+          return $("listen-row").hidden
+            ? ($("expose").checked ? "0.0.0.0" : "127.0.0.1")
+            : $("listen").value.trim();
+        }
+
+        function syncTokenSection() {
+          $("token-section").hidden = listenIsLoopback(effectiveListen());
+        }
+
         function fill(config, tokenSet) {
-          $("listen").value = config.server.listen;
+          var listen = config.server.listen || "127.0.0.1";
+          $("expose").checked = listen === "0.0.0.0";
+          $("expose-row").hidden = !listenIsStandard(listen);
+          $("listen-row").hidden = listenIsStandard(listen);
+          $("listen").value = listen;
           $("port").value = config.server.port;
           $("t-ws").checked = (config.server.transports || []).indexOf("ws") !== -1;
           $("t-socketio").checked = (config.server.transports || []).indexOf("socketio") !== -1;
@@ -262,6 +311,7 @@
           $("tls-key").value = config.tls.key_file;
           tokenSet ? showTokenSet() : showTokenMissing();
           syncWarnings();
+          syncTokenSection();
         }
 
         function collect() {
@@ -274,7 +324,9 @@
             .filter(function (line) { return line !== ""; });
           return {
             server: {
-              listen: $("listen").value.trim() || "127.0.0.1",
+              listen: $("listen-row").hidden
+                ? ($("expose").checked ? "0.0.0.0" : "127.0.0.1")
+                : $("listen").value.trim() || "127.0.0.1",
               port: parseInt($("port").value, 10) || 9898,
               transports: transports,
               allowed_origins: origins,
@@ -397,6 +449,8 @@
           );
         });
         $("origins").addEventListener("input", syncWarnings);
+        $("expose").addEventListener("change", syncTokenSection);
+        $("listen").addEventListener("input", syncTokenSection);
 
         load();
       })();

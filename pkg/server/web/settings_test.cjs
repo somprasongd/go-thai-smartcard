@@ -55,4 +55,69 @@ async function scenario(response, status = 200, alreadyRevealed = false) {
   assert.equal(result.element('save-status').className, 'error');
   result = await scenario({ version: 'new', endpoint_url: 'http://127.0.0.1:9898' });
   assert.deepEqual(result.navigations, []);
+
+  // The two standard listens render the Ollama-style expose checkbox and the
+  // checkbox maps back onto those values; a custom bind keeps the text field.
+  // The token section follows exposure: hidden on loopback, shown beyond it.
+  async function listenScenario(listen, setExpose, typeListen) {
+    const elements = new Map();
+    const element = id => {
+      if (!elements.has(id)) elements.set(id, {
+        value: '', checked: false, hidden: true, textContent: '', listeners: {},
+        addEventListener(type, callback) { this.listeners[type] = callback; }
+      });
+      return elements.get(id);
+    };
+    const sent = [];
+    const context = {
+      document: { getElementById: element }, URL,
+      window: { location: { origin: 'http://127.0.0.1:9898', assign: () => {} }, confirm: () => true },
+      navigator: { clipboard: { writeText: async () => {} } },
+      fetch: async (_url, options) => options
+        ? { ok: true, status: 200, json: async () => { sent.push(JSON.parse(options.body).config.server.listen); return { version: 'new' }; } }
+        : { ok: true, json: async () => ({ config: { ...config, server: { ...config.server, listen } }, version: 'old', token_set: false }) }
+    };
+    vm.runInNewContext(script, context);
+    await settle();
+    const rows = {
+      expose: !element('expose-row').hidden,
+      text: !element('listen-row').hidden,
+      token: !element('token-section').hidden
+    };
+    let tokenAfterExpose = null;
+    if (setExpose !== undefined) {
+      element('expose').checked = setExpose;
+      element('expose').listeners.change();
+      tokenAfterExpose = !element('token-section').hidden;
+    }
+    let tokenAfterType = null;
+    if (typeListen !== undefined) {
+      element('listen').value = typeListen;
+      element('listen').listeners.input();
+      tokenAfterType = !element('token-section').hidden;
+    }
+    element('btn-save').listeners.click();
+    await settle();
+    return { rows, tokenAfterExpose, tokenAfterType, listen: sent[0] };
+  }
+
+  let probe = await listenScenario('127.0.0.1');
+  assert.deepEqual(probe.rows, { expose: true, text: false, token: false });
+  assert.equal(probe.listen, '127.0.0.1');
+  probe = await listenScenario('127.0.0.1', true);
+  assert.equal(probe.listen, '0.0.0.0');
+  assert.equal(probe.tokenAfterExpose, true);
+  probe = await listenScenario('0.0.0.0');
+  assert.deepEqual(probe.rows, { expose: true, text: false, token: true });
+  assert.equal(probe.listen, '0.0.0.0');
+  probe = await listenScenario('0.0.0.0', false);
+  assert.equal(probe.listen, '127.0.0.1');
+  assert.equal(probe.tokenAfterExpose, false);
+  probe = await listenScenario('192.168.1.10');
+  assert.deepEqual(probe.rows, { expose: false, text: true, token: true });
+  assert.equal(probe.listen, '192.168.1.10');
+  probe = await listenScenario('192.168.1.10', undefined, 'localhost');
+  assert.equal(probe.tokenAfterType, false);
+  probe = await listenScenario('localhost', undefined, '0.0.0.0');
+  assert.equal(probe.tokenAfterType, true);
 })().catch(error => { console.error(error); process.exitCode = 1; });
