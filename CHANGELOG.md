@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.0] - 2026-10-03
+
 ### Added
 
 - Run PR/main test CI on Linux, macOS and Windows, with Node behavior tests,
@@ -25,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   completion; the bundled page sends each command once and handles timeouts.
 
 ### Fixed
+
+- Open private Windows log locks with the required access and tolerate brief
+  sharing/delete races when reading atomically replaced configuration files.
 
 - Embed and verify the release version in agent packages on every OS.
 
@@ -679,7 +684,8 @@ First release.
   and a fix for waiting on readers in macOS.
 - PM2 and systemd run instructions in the README.
 
-[unreleased]: https://github.com/somprasongd/go-thai-smartcard/compare/v4.2.0...HEAD
+[unreleased]: https://github.com/somprasongd/go-thai-smartcard/compare/v4.3.0...HEAD
+[4.3.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v4.2.0...v4.3.0
 [4.2.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v4.0.2...v4.1.0
 [4.0.2]: https://github.com/somprasongd/go-thai-smartcard/compare/v4.0.1...v4.0.2
