@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Mark displayed card data as old when all transports disconnect, keep that
+  warning through reconnection until a successful read, and confirm copies.
+- Add browser-local Settings for immediate clearing, keeping old data with a
+  warning, or clearing after a delay; preset defaults clear for kiosk and keep
+  for counter/dev. Existing card-removal clearing remains unchanged.
+
 ## [4.3.0] - 2026-10-03
 
 ### Added

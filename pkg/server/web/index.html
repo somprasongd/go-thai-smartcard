@@ -1418,6 +1418,7 @@
       <main>
         <div class="workarea">
           <div class="work-main">
+            <div id="stale-banner" role="status" hidden style="padding:12px 16px;border:1px solid #d8a436;border-radius:10px;background:#fff4d5;color:#634600;margin-bottom:12px"></div>
             <!-- stage: empty state or card/table -->
             <section class="panel stage" id="stage">
               <div class="empty" id="empty">
@@ -1850,6 +1851,8 @@
         var store = {
           ui: loadPrefs(),
           data: null,
+          stale: false,
+          readAt: null,
           reader: "",
           // What the agent reports in smc-status. "selected" is the reader the
           // agent watches, which is configuration now and only displayed here.
@@ -1893,6 +1896,61 @@
             /* nothing to do */
           }
         }
+
+        // Display policy is local to this browser/origin, never card data or agent config.
+        var staleTimer = null;
+        var staleSince = null;
+        function staleText(th, en) { return store.ui.lang === "en" ? en : th; }
+        function stalePolicy() {
+          var policy = {mode: store.ui.privacy === "kiosk" ? "clear" : "keep", seconds:30};
+          try {
+            var saved = JSON.parse(localStorage.getItem("smc.stalePolicy"));
+            if (saved && ["clear","keep","delay"].indexOf(saved.mode) >= 0) {
+              policy.mode = saved.mode;
+              if (Number.isInteger(saved.seconds) && saved.seconds >= 5 && saved.seconds <= 3600) policy.seconds = saved.seconds;
+            }
+          } catch (e) {}
+          return policy;
+        }
+        function cancelStaleTimer() {
+          if (staleTimer !== null) clearTimeout(staleTimer);
+          staleTimer = null;
+          staleSince = null;
+        }
+        function renderStale() {
+          var banner = $("stale-banner");
+          banner.hidden = !store.data || !store.stale;
+          if (banner.hidden) return;
+          var connected = store.conn.ws || store.conn.sio;
+          banner.textContent = staleText("ข้อมูลจากการอ่านครั้งก่อน — ", "Previous card data — ") +
+            (connected ? staleText("เชื่อมต่อแล้ว รอผลอ่านใหม่", "Reconnected; waiting for a new read") : staleText("การเชื่อมต่อขาด", "Connection lost")) +
+            staleText(" · อ่านล่าสุด ", " · Last read ") + store.readAt.toLocaleString(store.ui.lang === "en" ? "en-GB" : "th-TH");
+        }
+        function markStale() {
+          if (!store.data) return;
+          store.stale = true;
+          // Close the enlarged portrait so the freshness warning stays visible.
+          $("lightbox").hidden = true;
+          $("lightbox-img").removeAttribute("src");
+          if (staleSince === null) staleSince = Date.now();
+          applyStalePolicy();
+        }
+        function applyStalePolicy() {
+          if (!store.stale || !store.data) return;
+          var policy = stalePolicy();
+          if (staleTimer !== null) clearTimeout(staleTimer);
+          staleTimer = null;
+          if (policy.mode === "clear") { clearData(); return; }
+          if (policy.mode === "delay") {
+            var remaining = Math.max(0, policy.seconds * 1000 - (Date.now() - staleSince));
+            if (!remaining) { clearData(); return; }
+            staleTimer = setTimeout(clearData, remaining);
+          }
+          renderStale();
+        }
+        window.addEventListener("storage", function (event) {
+          if (event.key === "smc.stalePolicy" || event.key === null) applyStalePolicy();
+        });
 
         /* ------------------------------ helpers ---------------------------- */
         function $(id) {
@@ -1939,6 +1997,7 @@
         }
 
         function copyText(text) {
+          if (store.stale && !window.confirm(staleText("กำลังคัดลอกข้อมูลจากการอ่านครั้งก่อน ต้องการดำเนินการต่อหรือไม่?", "Copy previous card data? Its current validity is unconfirmed."))) return Promise.reject(Object.assign(new Error("copy cancelled"), {cancelled:true}));
           if (navigator.clipboard && window.isSecureContext) {
             return navigator.clipboard.writeText(text);
           }
@@ -2063,8 +2122,8 @@
                 function () {
                   toast(t("act.copied"));
                 },
-                function () {
-                  toast(t("copy.failed"), true);
+                function (error) {
+                  if (!error || !error.cancelled) toast(t("copy.failed"), true);
                 }
               );
             });
@@ -2449,6 +2508,7 @@
         }
 
         function render() {
+          renderStale();
           // Only #data is rebuilt. #empty and #data are both children of the
           // stage, so clearing the stage itself would detach #empty and break
           // every later call to showEmpty().
@@ -2574,6 +2634,9 @@
           }
 
           if (ev === "smc-data") {
+            cancelStaleTimer();
+            store.stale = false;
+            store.readAt = new Date();
             store.data = payload;
             store.lastError = "";
             // payload.reader is the reader the agent actually read from.
@@ -2659,6 +2722,9 @@
         }
 
         function clearData() {
+          cancelStaleTimer();
+          store.stale = false;
+          store.readAt = null;
           $("lightbox").hidden = true;
           $("lightbox-img").removeAttribute("src");
           store.data = null;
@@ -2765,6 +2831,7 @@
             // Nothing is watching a reader any more, so a stale "card in" would
             // be a claim about a process that is gone.
             store.state = "";
+            markStale();
             renderStatePill();
             syncReaderUI();
           }
@@ -2773,7 +2840,7 @@
           // and nothing repaints again until a card event arrives, so the panel
           // would sit at noconn under a green pill. With data on screen there
           // is nothing to repaint — and no re-flash of the card either.
-          if (ok && !store.data) render();
+          if (ok) { renderStale(); if (!store.data) render(); }
           if (!ok && !store.conn.ever) render();
         }
 
@@ -2988,8 +3055,8 @@
             function () {
               toast(t("act.copied"));
             },
-            function () {
-              toast(t("copy.failed"), true);
+            function (error) {
+              if (!error || !error.cancelled) toast(t("copy.failed"), true);
             }
           );
         }
@@ -2999,6 +3066,7 @@
             var b = e.target.closest("button");
             if (!b) return;
             store.ui.privacy = b.dataset.v;
+            applyStalePolicy();
             applyPrivacyPreset(store.ui.privacy);
             savePrefs();
             applyI18n();

@@ -45,6 +45,7 @@ func TestManagerReusesTLSAndUnchangedHTTPBindings(t *testing.T) {
 
 func TestManagerReplaceCanChangeBroadcastSource(t *testing.T) {
 	cfg := ServerConfig{Listen: "127.0.0.1", Port: freePort(t), Transports: []string{"ws"}}
+	cfg.Command = make(chan model.Command, 1)
 	mgr, err := Start(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -59,6 +60,18 @@ func TestManagerReplaceCanChangeBroadcastSource(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// Dial returns when the upgrade response arrives, before the handler
+		// necessarily registers its subscriber. A round-trip control command
+		// proves registration finished before this one-shot broadcast.
+		if err := conn.WriteJSON(model.Command{Action: "get-status"}); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-cfg.Command:
+		case <-time.After(time.Second):
+			t.Fatal("replacement websocket handler was not ready")
+		}
+
 		select {
 		case cfg.Broadcast <- model.Message{Event: "smc-status"}:
 		case <-time.After(time.Second):

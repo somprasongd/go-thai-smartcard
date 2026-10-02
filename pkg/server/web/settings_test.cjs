@@ -24,6 +24,7 @@ async function scenario(response, status = 200, alreadyRevealed = false, readerR
     });
     return elements.get(id);
   };
+  const storage = new Map();
   const navigations = [];
   const context = {
     document: {
@@ -34,6 +35,7 @@ async function scenario(response, status = 200, alreadyRevealed = false, readerR
       createElement: tag => ({ tag, value: '', textContent: '' })
     }, URL,
     window: { location: { origin: 'http://127.0.0.1:9898', assign: url => navigations.push(url) }, confirm: () => true },
+    localStorage: {getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},
     navigator: { clipboard: { writeText: async () => {} } },
     fetch: async (_url, options) => _url === "/api/readers" ? { ok: true, json: async () => ({readers:["saved reader"]}) } : options ? {
       ok: status === 200, status, json: async () => response, text: async () => 'port is occupied'
@@ -51,10 +53,24 @@ async function scenario(response, status = 200, alreadyRevealed = false, readerR
   element('port').value = 9999;
   element('btn-save').listeners.click();
   await settle();
-  return { element, navigations };
+  return { element, navigations, storage };
 }
 
 (async () => {
+  const policy = await scenario({version:'new'});
+  assert.equal(policy.element('stale-mode').value,'auto');
+  policy.element('stale-mode').value='delay';policy.element('stale-mode').listeners.change();
+  assert.equal(policy.element('stale-delay-row').hidden,false);
+  policy.element('stale-seconds').value=0;policy.element('btn-stale-save').listeners.click();
+  assert.equal(policy.storage.has('smc.stalePolicy'),false);
+  policy.element('stale-seconds').value=15;policy.element('btn-stale-save').listeners.click();
+  assert.deepEqual(JSON.parse(policy.storage.get('smc.stalePolicy')),{mode:'delay',seconds:15});
+  policy.element('stale-mode').value='keep';policy.element('stale-mode').listeners.change();
+  assert.equal(policy.element('stale-delay-row').hidden,true);
+  policy.element('btn-stale-save').listeners.click();
+  assert.equal(JSON.parse(policy.storage.get('smc.stalePolicy')).mode,'keep');
+  policy.element('stale-mode').value='auto';policy.element('btn-stale-save').listeners.click();
+  assert.equal(policy.storage.has('smc.stalePolicy'),false);
   const moved = { version: 'new', endpoint_url: 'http://127.0.0.1:9999' };
   await scenario(moved, 200, false, true);
   let result = await scenario(moved);

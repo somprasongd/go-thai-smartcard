@@ -430,6 +430,20 @@
       <main>
         <div class="error" id="boot-error" hidden></div>
 
+        <section id="sec-stale">
+          <h2 data-i18n="stale.title">ข้อมูลบัตรเมื่อการเชื่อมต่อขาด</h2>
+          <p class="note" data-i18n="stale.help"></p>
+          <div class="row"><label for="stale-mode" data-i18n="stale.mode"></label><select id="stale-mode">
+            <option value="auto" data-i18n="stale.auto"></option>
+            <option value="clear" data-i18n="stale.clear"></option>
+            <option value="keep" data-i18n="stale.keep"></option>
+            <option value="delay" data-i18n="stale.delay"></option>
+          </select></div>
+          <div class="row" id="stale-delay-row" hidden><label for="stale-seconds" data-i18n="stale.seconds"></label><input id="stale-seconds" type="number" min="5" max="3600" step="1" value="30"></div>
+          <button type="button" id="btn-stale-save" data-i18n="stale.save"></button>
+          <p class="note" id="stale-save-status" role="status"></p>
+        </section>
+
         <section id="sec-logging">
           <h2 data-i18n="log.title">บันทึกการทำงาน</h2>
           <p class="note" data-i18n="log.help"></p>
@@ -612,6 +626,12 @@
             "tip.server": "การแก้ค่า server จะย้าย listener ให้เอง หากเปิด port ใหม่ไม่ได้จะคงค่าเดิม",
             "opt.expose": "เปิดให้เครือข่ายเข้าถึง",
             "tip.expose": "เครื่องอื่นบนเครือข่ายเข้าถึง agent ได้ (listen = 0.0.0.0) — ต้องมี token ดูหัวข้อถัดไป",
+            "stale.title":"ข้อมูลบัตรเมื่อการเชื่อมต่อขาด",
+            "stale.help":"ใช้เฉพาะ browser นี้และ URL เดียวกัน ไม่ต้อง restart; เชื่อมต่อกลับแล้วข้อมูลยังเป็นผลอ่านเก่าจนกว่าจะอ่านใหม่สำเร็จ",
+            "stale.mode":"เมื่อการเชื่อมต่อขาด", "stale.auto":"ตามรูปแบบ: kiosk ล้างทันที; counter/dev เก็บพร้อมป้าย",
+            "stale.clear":"ล้างทันที", "stale.keep":"เก็บพร้อมป้ายข้อมูลเก่า", "stale.delay":"ล้างหลังเวลาที่กำหนด",
+            "stale.seconds":"ระยะเวลา (วินาที)", "stale.save":"บันทึกการแสดงผล", "stale.saved":"บันทึกการแสดงผลแล้ว",
+            "stale.invalid":"ระบุจำนวนวินาทีเต็มตั้งแต่ 5 ถึง 3600", "stale.failed":"บันทึกไม่ได้ กรุณาตรวจสิทธิ์การเก็บข้อมูลของ browser",
             "listen.custom": "กำหนดเอง",
             "tip.listen": "bind เฉพาะ interface ได้ เช่น 192.168.1.10 — ค่าอื่นที่ไม่ใช่ loopback ถือว่าเปิดเครือข่ายเช่นกัน",
             "origins.perline": "หนึ่ง origin ต่อบรรทัด",
@@ -671,6 +691,12 @@
             "tip.server": "Server changes move the listener without restarting the agent; if the new port cannot open, the old one is kept.",
             "opt.expose": "Expose to network",
             "tip.expose": "Other devices on the network can reach the agent (listen = 0.0.0.0) — a token is required, see the next section.",
+            "stale.title":"Card data after connection loss",
+            "stale.help":"Applies to this browser and origin only, without restart. Reconnecting keeps data marked as old until a new read succeeds.",
+            "stale.mode":"On connection loss", "stale.auto":"By preset: kiosk clears; counter/dev keep with warning",
+            "stale.clear":"Clear immediately", "stale.keep":"Keep with old data warning", "stale.delay":"Clear after a delay",
+            "stale.seconds":"Delay (seconds)", "stale.save":"Save display preference", "stale.saved":"Display preference saved",
+            "stale.invalid":"Enter a whole number from 5 to 3600 seconds", "stale.failed":"Cannot save. Check browser storage permissions.",
             "listen.custom": "custom",
             "tip.listen": "A specific interface can be bound, e.g. 192.168.1.10 — anything beyond loopback counts as exposed too.",
             "origins.perline": "one per line",
@@ -778,6 +804,7 @@
         }
 
         function applyLang() {
+          $("stale-save-status").textContent = "";
           document.documentElement.setAttribute("lang", uiLang);
           Array.prototype.forEach.call(document.querySelectorAll("[data-i18n]"), function (n) {
             n.textContent = t(n.dataset.i18n);
@@ -1085,6 +1112,28 @@
           applyLang();
           loadReaders();
         });
+
+        function syncStalePolicy() { $("stale-delay-row").hidden = $("stale-mode").value !== "delay"; }
+        function loadStalePolicy() {
+          var saved;
+          try { saved = JSON.parse(localStorage.getItem("smc.stalePolicy")); } catch (e) {}
+          $("stale-mode").value = saved && ["clear","keep","delay"].indexOf(saved.mode) >= 0 ? saved.mode : "auto";
+          $("stale-seconds").value = saved && Number.isInteger(saved.seconds) && saved.seconds >= 5 && saved.seconds <= 3600 ? saved.seconds : 30;
+          syncStalePolicy();
+        }
+        $("stale-mode").addEventListener("change", syncStalePolicy);
+        $("btn-stale-save").addEventListener("click", function () {
+          var mode = $("stale-mode").value, seconds = Number($("stale-seconds").value);
+          if (mode === "delay" && (!Number.isInteger(seconds) || seconds < 5 || seconds > 3600)) {
+            $("stale-save-status").textContent = t("stale.invalid"); return;
+          }
+          try {
+            if (mode === "auto") localStorage.removeItem("smc.stalePolicy");
+            else localStorage.setItem("smc.stalePolicy",JSON.stringify({mode:mode,seconds: mode === "delay" ? seconds : 30}));
+            $("stale-save-status").textContent = t("stale.saved");
+          } catch (e) { $("stale-save-status").textContent = t("stale.failed"); }
+        });
+        loadStalePolicy();
 
         uiLang = detectLang();
         detectShell();
