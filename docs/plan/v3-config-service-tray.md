@@ -668,7 +668,12 @@ the single source of truth, read through `/api/settings`; the bundled page's
 applet display went with it. Released as **v4.0.0** (a protocol action removal
 is MAJOR by the versioning policy), CI green, all six packages attached — the
 wire contract is now: in `get-status`/`refresh-readers`/`read-now`, out
-`smc-status`/`smc-data`/`smc-inserted`/`smc-removed`/`smc-error`.
+`smc-status`/`smc-data`/`smc-inserted`/`smc-removed`/`smc-error`. The same
+decision reached the tray as **v4.0.1**: the menu bar shows the icon alone
+(no SetTitle) and the read image / laser ID / NHSO switches left the menu —
+config has one source of truth and it is changed in `/settings` only. The
+tray menu is now the status line, the two page shortcuts, the expose toggle
+and quit.
 
 Pending, on real hardware/accounts only:
 
