@@ -25,7 +25,7 @@ it as a library if you would rather build your own.
 
 ## Quick start
 
-Requires [Go](https://go.dev/dl/) 1.18 or newer, and a reader that PC/SC can
+Requires [Go](https://go.dev/dl/) 1.27 or newer, and a reader that PC/SC can
 see. Check the reader first — nothing else works until it does:
 
 ```sh
@@ -394,7 +394,7 @@ Web NFC does not help either, since a Thai ID card has a contact chip rather
 than a contactless one. Browsers on mobile are narrower still, so an agent
 remains the only backend that works everywhere. The interface is what makes it
 worth retrying if a browser ever exposes PC/SC properly; see issue
-[#10](https://github.com/somprasongd/go-thai-smartcard/issues/10).
+[#5](https://github.com/somprasongd/go-thai-smartcard/issues/5).
 
 ## Reader requirements
 

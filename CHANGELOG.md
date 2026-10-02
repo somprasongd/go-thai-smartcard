@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Building now requires Go 1.27 or newer (the `go` directive was 1.18 when the
+  v3 work started; `golang.org/x/sys` — needed for the Windows service-user
+  check — already raised the floor to 1.26, and this makes the documented
+  minimum match reality). README's browser-transport issue reference fixed
+  (#5, not #10).
+
 ## [3.0.0] - 2026-10-02
 
 This release is breaking. In one sentence each: **environment variables are not
