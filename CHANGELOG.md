@@ -29,7 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Open private Windows log locks with the required access and tolerate brief
-  sharing/delete races when reading atomically replaced configuration files.
+  sharing/delete races when reading atomically replaced configuration files;
+  allow up to two seconds for transient Windows replacement contention.
 
 - Embed and verify the release version in agent packages on every OS.
 
