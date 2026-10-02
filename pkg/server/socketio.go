@@ -50,8 +50,8 @@ func NewSocketIO(command chan model.Command) *socketIO {
 	// The connection is unused: the agent has one set of options, so a
 	// command is not scoped to the client that sent it. A malformed frame is
 	// logged and dropped here, and the agent is never asked to answer it.
-	server.OnEvent("/", commandEvent, func(_ socketio.Conn, payload json.RawMessage) {
-		srv.onCommand(payload)
+	server.OnEvent("/", commandEvent, func(c socketio.Conn, payload json.RawMessage) {
+		srv.commandWithReply(payload, func(msg model.Message) { c.Emit(msg.Event, msg.Payload) })
 	})
 
 	server.OnConnect("/", func(s socketio.Conn) error {
@@ -99,10 +99,15 @@ func (s *socketIO) Broadcast(msg model.Message) {
 
 // onCommand handles an inbound smc-command event.
 func (s *socketIO) onCommand(payload json.RawMessage) {
+	s.commandWithReply(payload, func(model.Message) {})
+}
+
+func (s *socketIO) commandWithReply(payload json.RawMessage, send func(model.Message)) {
 	cmd, err := decodeCommand(payload)
 	if err != nil {
 		log.Printf("socket.io %s: %v", commandEvent, err)
 		return
 	}
+	bindCommandReply(&cmd, send)
 	forwardCommand(s.command, cmd)
 }

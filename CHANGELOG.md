@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Return private correlated command results, including busy queues and read
+  completion; the bundled page sends each command once and handles timeouts.
+
 ### Fixed
 
 - Embed and verify the release version in agent packages on every OS.

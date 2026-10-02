@@ -188,6 +188,12 @@ func (s *ws) Handler(w http.ResponseWriter, r *http.Request) {
 			log.Println("websocket command:", err)
 			continue
 		}
+		bindCommandReply(&cmd, func(msg model.Message) {
+			raw, err := json.Marshal(msg)
+			if err == nil {
+				c.enqueue(raw)
+			}
+		})
 		forwardCommand(s.command, cmd)
 	}
 }

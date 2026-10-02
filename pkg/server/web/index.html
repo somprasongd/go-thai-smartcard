@@ -2555,6 +2555,17 @@
 
         /* ---------------------------- event handling ----------------------- */
         function handleEvent(ev, payload, source) {
+          if (ev === "smc-command-result") {
+            var pending = payload && pendingCommands.get(payload.request_id);
+            if (!pending) return false;
+            if (payload.status !== "accepted") {
+              clearTimeout(pending.timer);
+              pendingCommands.delete(payload.request_id);
+              if (payload.status !== "completed") toast(store.ui.lang === "th" ? "คำสั่งไม่สำเร็จ: " + payload.code : "Command failed: " + payload.code);
+            }
+            addLog(ev, payload.status);
+            return true;
+          }
           addLog(ev, describe(ev, payload));
 
           if (ev === "smc-status") {
@@ -2816,7 +2827,8 @@
             // WebSocket open, so a page that reached the agent over socket.io
             // alone never learned the options or the reader list and sat with
             // its switches wrong until something else changed.
-            socket.emit("smc-command", { action: "get-status" });
+            window.smcSocket = socket;
+            sendCommand({ action: "get-status" });
           });
           socket.on("disconnect", function () {
             setConn("sio", false);
@@ -2830,7 +2842,8 @@
             "smc-inserted",
             "smc-removed",
             "smc-error",
-            "smc-status"
+            "smc-status",
+            "smc-command-result"
           ].forEach(function (ev) {
             socket.on(ev, function (payload) {
               handleEvent(ev, payload, "sio");
@@ -2841,17 +2854,24 @@
           window.smcSocket = socket;
         }
 
+        var pendingCommands = new Map();
+        var commandSequence = 0;
         function sendCommand(obj) {
-          var sent = false;
-          if (window.smcSocket && window.smcSocket.connected) {
-            window.smcSocket.emit("smc-command", obj);
-            sent = true;
-          }
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify(obj));
-            sent = true;
-          }
-          return sent;
+          var useWS = ws && ws.readyState === WebSocket.OPEN;
+          var useSIO = window.smcSocket && window.smcSocket.connected;
+          if (!useWS && !useSIO) return false;
+          if (pendingCommands.size >= 16) return false;
+          var id = Date.now().toString(36) + "-" + (++commandSequence);
+          var command = Object.assign({}, obj, {request_id: id});
+          var timer = setTimeout(function () {
+            pendingCommands.delete(id);
+            toast(store.ui.lang === "th" ? "หมดเวลารอผลคำสั่ง" : "Command response timed out");
+          }, 30000);
+          pendingCommands.set(id, {timer: timer});
+          // Send once: both transports can be connected to the same agent.
+          if (useWS) ws.send(JSON.stringify(command));
+          else window.smcSocket.emit("smc-command", command);
+          return true;
         }
 
         function connectWS() {

@@ -147,7 +147,7 @@ rules:
 
 ## Connect a client
 
-The agent broadcasts four events. `smc-data` carries the card; the rest say what
+The agent broadcasts card and status events. `smc-data` carries the card; the rest say what
 happened around it.
 
 | Event | Payload |
@@ -167,6 +167,20 @@ The control channel is **read-only**: `get-status`, `refresh-readers` and
 and `set-reader` are answered with an `smc-error` naming the unknown action,
 and the `remote_control` field is gone — a client that read it as "allowed"
 should assume the answer is always "no".
+
+### Command results
+
+Commands may include an optional `request_id` (at most 128 bytes). Such requests
+receive `smc-command-result` **only on the requesting connection**, with
+`{request_id, action, status, code}`. Status is `accepted` followed by
+`completed` or `failed`, or `busy` when a queue/reader cannot accept the work.
+Accepted means queued, not successfully read. A completed read means the read
+finished successfully; card data continues to use the existing broadcast.
+Unknown actions fail. Requests without an ID keep the legacy event contract.
+Clients should use a timeout and avoid submitting the same command through both
+transports. The bundled page sends on one transport and times out after 30s.
+Inbound WebSocket frames are limited to 4 KiB; slow subscribers are disconnected
+when their 16-message delivery queue fills, and ping/pong detects broken peers.
 
 ### Via WebSocket (the default)
 

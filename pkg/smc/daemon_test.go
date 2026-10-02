@@ -681,3 +681,18 @@ func TestDaemonCancellationUnblocksBroadcast(t *testing.T) {
 		t.Fatal("broadcast blocked shutdown")
 	}
 }
+
+func TestReadCommandHasTerminalFailureWithNoCard(t *testing.T) {
+	h := newHarness(t, time.Millisecond, "Reader A")
+	h.settle("reader discovery", func() bool { s, ok := h.lastStatus(); return ok && len(s.Readers) > 0 })
+	result := make(chan error, 1)
+	h.control <- smc.Control{Kind: smc.ControlReadNow, Complete: &smc.ControlResult{Finish: func(err error) { result <- err }}}
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("empty read reported success")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no terminal result")
+	}
+}

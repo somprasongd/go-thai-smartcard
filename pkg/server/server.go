@@ -235,6 +235,9 @@ func decodeCommand(payload []byte) (model.Command, error) {
 	if err := json.Unmarshal(payload, &cmd); err != nil {
 		return model.Command{}, fmt.Errorf("decode command: %w", err)
 	}
+	if len(cmd.RequestID) > 128 || len(cmd.Action) > 64 {
+		return model.Command{}, fmt.Errorf("command identifier too long")
+	}
 	return cmd, nil
 }
 
@@ -245,11 +248,27 @@ func decodeCommand(payload []byte) (model.Command, error) {
 // lesser failure.
 func forwardCommand(command chan model.Command, cmd model.Command) {
 	if command == nil {
+		if cmd.Reply != nil {
+			cmd.Reply.Send("failed", "control_unavailable")
+		}
 		return
 	}
 	select {
 	case command <- cmd:
 	default:
+		if cmd.Reply != nil {
+			cmd.Reply.Send("busy", "command_queue_full")
+		}
 		log.Printf("dropping %q command, the agent is not reading commands", cmd.Action)
 	}
+}
+
+func bindCommandReply(cmd *model.Command, send func(model.Message)) {
+	if cmd.RequestID == "" {
+		return
+	}
+	id, action := cmd.RequestID, cmd.Action
+	cmd.Reply = &model.CommandReply{Send: func(status, code string) {
+		send(model.Message{Event: "smc-command-result", Payload: model.CommandResult{RequestID: id, Action: action, Status: status, Code: code}})
+	}}
 }
