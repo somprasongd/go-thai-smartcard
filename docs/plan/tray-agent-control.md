@@ -204,45 +204,18 @@ Restart agent…     (ใช้หลังแก้ config.toml มือ)
   the control story; the v3 plan's decision-12 amendment is recorded here and
   marked there.
 
-## Open decisions
+## Decisions
 
-1. **macOS helper vs prompts**: proposed = helper (invisible after install),
-   with `osascript` as the documented fallback when the helper is missing.
-   Alternative = prompts only, no helper.
-2. **Who may control**: proposed = Linux active local session, Windows
-   Interactive Users, macOS group `admin`. Alternative = lock down to a
-   dedicated group/user (tighter, but a plain kiosk operator then cannot use
-   the feature it exists for).
-3. **Restart menu item**: proposed = yes — and still the only UI for "hand
-   edits need a restart", since UI saves already apply the listener live
-   through the settings transaction. Alternative = start/stop only.
-4. **Confirm on Stop**: proposed = yes, one confirmation. Alternative = no
-   confirmation anywhere.
-5. **Menu shape**: proposed = an "Agent" submenu with Start/Stop/Restart.
-   Alternative = flat items in the root menu.
+Settled 2026-10-02 ("ตามข้อเสนอทั้งหมด"):
 
-## Verified against the code (2026-10-02, main @ 3203a2c, after v4.1.0)
-
-- `cmd/agent/service_desktop.go`: `serviceCommand` already wires
-  install/uninstall/start/stop/restart/status through `kardianos/service`
-  (`newAgentService`, `service.Control`, `svc.Status`); the service name is
-  the constant `thai-smartcard-agent` — the macOS `control-helper` reuses
-  these in-process, as the plan assumes.
-- `cmd/tray`: menu is status / test page / settings / Quit (the read toggles
-  were removed in v4.0.1); the tray discovers the agent endpoint via
-  `internal/discovery` + `agentClient` (`cmd/tray/client.go`) and still shows
-  only the terminal hint when down (`setDown`/`startHint`) — the gap this
-  plan closes is unchanged. `pkg/ctl` is tray-only; the tray has no js build.
-- Packaging anchors all exist as the plan assumes: the polkit directory
-  carries `50-thai-smartcard.pcscd.rules` (the new rule joins it as
-  `49-…agent.rules`), `packaging/windows/installer.iss` has the `[Run]`
-  section with `service install`/`service start` (the `sc sdset` line slots
-  after them), and the macOS postinstall already runs
-  `/usr/local/bin/thai-smartcard-agent service install|start` (the
-  LaunchDaemon plist lines slot beside them). `golang.org/x/sys` is already a
-  dependency, so `windows/svc/mgr` needs no new module.
-- README sections "Run as a service" and "Tray" exist as named.
-- The v3 plan's decision 12 ("tray never spawns the agent") and decision 17
-  (polkit precedent) are the amendment and precedent targets, as referenced.
-- One correction from this pass: the release target, changed from v3.1.0 to
-  v4.2.0 (v4.1.0 shipped in the meantime).
+1. **Settled:** macOS helper with a local unix socket, `osascript` as the
+   automatic fallback when the helper is missing.
+2. **Settled:** Linux = active local session, Windows = Interactive Users,
+   macOS = group `admin`; the README documents how to widen the macOS socket
+   group. No operator-group machinery for now.
+3. **Settled:** the Restart item ships (the only UI for "hand edits need a
+   restart").
+4. **Settled:** a confirmation dialog guards Stop only (Start and Restart
+   execute immediately). On Linux without zenity/kdialog the confirmation
+   falls back to executing without a dialog.
+5. **Settled:** an "Agent" submenu.
