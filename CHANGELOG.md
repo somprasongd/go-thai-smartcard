@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `/settings` and `/api/*` were not served when the agent was started without
+  `--config`: the resolved config path never reached the listener, so the
+  routes were not registered and `/settings` fell through to the bundled test
+  page. The bare invocation is the default one, so this hit every
+  `go run ./cmd/agent` and `agent run`.
+- A card insert could fail with a PC/SC sharing violation — losing the
+  exclusive-access race against the just-released previous session on a fast
+  re-insert, or against another process that seizes inserted cards (on macOS,
+  CryptoTokenKit). The agent now recognises the violation as a busy reader
+  and retries the connect with a short backoff before giving up; the new
+  `transport.ErrCardBusy` sentinel is how backends report it.
+
 ### Changed
 
 - Building now requires Go 1.27 or newer (the `go` directive was 1.18 when the
