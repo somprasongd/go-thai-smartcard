@@ -650,6 +650,18 @@ linux job (appindicator/GTK headers on the runner), also
 `thai-smartcard-tray-3.0.0.x86_64.rpm`: all six assets of phase 4 are on the
 release.
 
+**v3.0.1 followed the same day**, from two defects the live reader test
+found: `/settings`/`/api/*` were not served on a bare invocation (the raw
+`--config` flag value reached the listener, so without the flag the routes
+were never registered and `/settings` served the test page), and a card
+insert could fail with a PC/SC sharing violation (a fast re-insert racing the
+just-released session, or macOS's CryptoTokenKit seizing the card) — the
+connect is now retried with a short backoff via the new
+`transport.ErrCardBusy` sentinel (PR #17; also fixed a pointer comparison
+that made the TLS reload tests vacuous/flaky). The retry is verified by
+scripted-transport tests and the route fix live; the README gained a
+sharing-violation troubleshooting note.
+
 Pending, on real hardware/accounts only:
 
 1. The Linux host verification of decision 17 against the released
