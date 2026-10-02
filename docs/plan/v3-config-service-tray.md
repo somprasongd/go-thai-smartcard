@@ -662,6 +662,12 @@ that made the TLS reload tests vacuous/flaky). The retry is verified by
 scripted-transport tests and the route fix live; the README gained a
 sharing-violation troubleshooting note.
 
+After the live reader test the user tightened the wire contract once more:
+the `smc-options` broadcast and `get-options` are removed outright — config is
+the single source of truth, read through `/api/settings`; the bundled page's
+applet display went with it. Ships as **v4.0.0** (a protocol action removal is
+MAJOR by the versioning policy).
+
 Pending, on real hardware/accounts only:
 
 1. The Linux host verification of decision 17 against the released

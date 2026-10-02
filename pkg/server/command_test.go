@@ -18,7 +18,7 @@ import (
 // is what the last test pins down.
 const (
 	legacySetOptions = `{"action":"set-options","options":{"show_face_image":true,"show_nhso":false,"show_laser":true}}`
-	getOptionsJSON   = `{"action":"get-options"}`
+	getStatusJSON    = `{"action":"get-status"}`
 	quotedSetOption  = `"{\"action\":\"set-options\",\"options\":{\"show_face_image\":true,\"show_nhso\":false,\"show_laser\":true}}"`
 )
 
@@ -30,9 +30,9 @@ func TestDecodeCommand(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "the get-options shape from the contract",
-			payload: getOptionsJSON,
-			want:    model.Command{Action: "get-options"},
+			name:    "the get-status shape from the contract",
+			payload: getStatusJSON,
+			want:    model.Command{Action: "get-status"},
 		},
 		{
 			// A removed action still decodes: the agent, not the decoder,
@@ -48,8 +48,8 @@ func TestDecodeCommand(t *testing.T) {
 		},
 		{
 			name:    "surrounding whitespace is tolerated",
-			payload: "  \n" + getOptionsJSON + "\t",
-			want:    model.Command{Action: "get-options"},
+			payload: "  \n" + getStatusJSON + "\t",
+			want:    model.Command{Action: "get-status"},
 		},
 		{
 			// The agent rejects an unknown action with an error broadcast;
@@ -114,7 +114,7 @@ func TestForwardCommandDoesNotBlock(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := model.Command{Action: "get-options"}
+			cmd := model.Command{Action: "get-status"}
 
 			dropped := make(chan struct{})
 			go func() {
@@ -150,11 +150,11 @@ func TestSocketIOInboundCommand(t *testing.T) {
 		want     model.Command
 	}{
 		{
-			name:     "a get-options event reaches the agent",
-			payload:  getOptionsJSON,
+			name:     "a get-status event reaches the agent",
+			payload:  getStatusJSON,
 			command:  make(chan model.Command, 1),
 			wantRecv: true,
-			want:     model.Command{Action: "get-options"},
+			want:     model.Command{Action: "get-status"},
 		},
 		{
 			name:     "a legacy set-options event decodes to the action name",
@@ -178,7 +178,7 @@ func TestSocketIOInboundCommand(t *testing.T) {
 		},
 		{
 			name:     "a well formed event is dropped when no channel is wired",
-			payload:  getOptionsJSON,
+			payload:  getStatusJSON,
 			command:  nil,
 			wantRecv: false,
 		},
@@ -225,10 +225,10 @@ func TestWebSocketInboundCommand(t *testing.T) {
 		{
 			name:     "a text frame reaches the agent",
 			mt:       websocket.TextMessage,
-			payload:  getOptionsJSON,
+			payload:  getStatusJSON,
 			command:  make(chan model.Command, 1),
 			wantRecv: true,
-			want:     model.Command{Action: "get-options"},
+			want:     model.Command{Action: "get-status"},
 		},
 		{
 			name:     "a legacy set-options frame decodes to the action name",
@@ -241,7 +241,7 @@ func TestWebSocketInboundCommand(t *testing.T) {
 		{
 			name:     "a binary frame is ignored",
 			mt:       websocket.BinaryMessage,
-			payload:  getOptionsJSON,
+			payload:  getStatusJSON,
 			command:  make(chan model.Command, 1),
 			wantRecv: false,
 		},
@@ -255,7 +255,7 @@ func TestWebSocketInboundCommand(t *testing.T) {
 		{
 			name:     "a command with no channel wired does not panic",
 			mt:       websocket.TextMessage,
-			payload:  getOptionsJSON,
+			payload:  getStatusJSON,
 			command:  nil,
 			wantRecv: false,
 		},
@@ -296,7 +296,7 @@ func TestWebSocketInboundCommand(t *testing.T) {
 				t.Fatalf("the agent received %+v, want nothing", got)
 			case <-time.After(200 * time.Millisecond):
 			}
-			if err := client.WriteMessage(websocket.TextMessage, []byte(getOptionsJSON)); err != nil {
+			if err := client.WriteMessage(websocket.TextMessage, []byte(getStatusJSON)); err != nil {
 				t.Errorf("the connection did not survive the ignored frame: %v", err)
 			}
 		})

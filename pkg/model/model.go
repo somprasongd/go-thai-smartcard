@@ -24,26 +24,15 @@ type Message struct {
 	Payload any    `json:"payload,omitempty"`
 }
 
-// Options is the wire form of the card reading options, broadcast as
-// smc-options so a client can see what the agent reads. The set itself
-// changes through /settings or the tray, never over the socket.
-//
-// It mirrors smc.Options instead of using it, because pkg/server must not
-// import pkg/smc: the transport layer should not depend on the card logic, and
-// a rename on the card side would otherwise silently change the wire format.
-type Options struct {
-	ShowFaceImage bool `json:"show_face_image"`
-	ShowNhsoData  bool `json:"show_nhso"`
-	ShowLaserData bool `json:"show_laser"`
-}
-
 // Command is a client request on the control channel, for example
-// {"action":"get-options"}.
+// {"action":"get-status"}.
 //
 // The card socket is read-only: settings change through /settings or the tray,
-// never over the socket. An action the agent does not know — including the
-// removed set-options and set-reader — is answered with an smc-error naming
-// the unknown action.
+// never over the socket, and the sockets carry no derived copy of the config —
+// a client that wants to know what the agent reads reads /api/settings. An
+// action the agent does not know — including the removed get-options,
+// set-options and set-reader — is answered with an smc-error naming the
+// unknown action.
 type Command struct {
 	Action string `json:"action"`
 }

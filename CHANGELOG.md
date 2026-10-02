@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Breaking:** the `smc-options` broadcast and the `get-options` action. What
+  the agent reads is configuration with one source of truth — `config.toml`,
+  read through `GET /api/settings` — and the card sockets no longer carry a
+  derived copy of it. A client that showed the reading options reads
+  `/api/settings` instead; the bundled page's "card data to read" display is
+  gone and its top bar links to `/settings`. The remaining control actions are
+  `get-status`, `refresh-readers` and `read-now`; anything else is answered
+  with an `smc-error` naming the unknown action.
+
 ## [3.0.1] - 2026-10-02
 
 ### Fixed
