@@ -57,6 +57,10 @@ type ServerConfig struct {
 	ApplySettings func(config.Config, string) (SettingsResult, error)
 	// InstanceID lets discovery reject a stale endpoint from another process.
 	InstanceID string
+	// Status is the cache the broadcast pump feeds and /api/readers serves.
+	// It may be nil, which leaves the route answering an empty list. Callers
+	// share one cache across listener generations on purpose.
+	Status *StatusCache
 }
 
 // SettingsResult delays retiring old connections until the response is flushed.
@@ -114,6 +118,7 @@ func newMux(cfg ServerConfig, done <-chan struct{}) *http.ServeMux {
 		onChange:      cfg.OnChange,
 		applySettings: cfg.ApplySettings,
 		instanceID:    cfg.InstanceID,
+		status:        cfg.Status,
 	}
 
 	var socketServer *socketIO
@@ -154,6 +159,7 @@ func newMux(cfg ServerConfig, done <-chan struct{}) *http.ServeMux {
 	if cfg.ConfigPath != "" {
 		mux.Handle("/api/info", settings.wrap(http.HandlerFunc(api.serveInfo)))
 		mux.Handle("/api/settings", settings.wrap(http.HandlerFunc(api.serveSettings)))
+		mux.Handle("/api/readers", settings.wrap(http.HandlerFunc(api.serveReaders)))
 		mux.Handle("/settings", settings.wrap(servePage(settingsPage)))
 	}
 	mux.HandleFunc("/", servePage(indexPage))
@@ -166,6 +172,12 @@ func newMux(cfg ServerConfig, done <-chan struct{}) *http.ServeMux {
 					return
 				case msg, ok := <-cfg.Broadcast:
 					if ok {
+						// The settings page reads the list from /api/readers,
+						// so remember what flows past even if no socket
+						// transport is enabled to carry it.
+						if api.status != nil {
+							api.status.Record(msg)
+						}
 						if socketServer != nil {
 							socketServer.Broadcast(msg)
 						}

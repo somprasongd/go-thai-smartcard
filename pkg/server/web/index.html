@@ -17,39 +17,44 @@
     -->
     <style>
       /* ---------------------------------------------------------------------
-         Design tokens. The card look borrows from the physical card: a warm
-         off-white stock, a deep red accent and a single hairline gold rule, so
-         the data area reads as "a card" rather than as a generic table.
+         Design system: "แผงควบคุมเครื่องอ่านบัตร" — a light admin console.
+         One white shell (app bar + sidebar) on a quiet mint-gray desk; a
+         single accent, the deep green of the Thai ID card itself, means
+         action or state. Gold survives only on the card document, where it
+         marks the identity band. The card is the one loud object; everything
+         around it is hairlines and whitespace. Thai-first system type; mono
+         only where the content is actually numeric.
          --------------------------------------------------------------------- */
       :root {
-        --bg: #0e1116;
-        --bg-elev: #161b23;
-        --bg-elev-2: #1d232d;
-        --line: #2a323e;
-        --line-soft: #222933;
-        --fg: #e6e9ef;
-        --fg-dim: #98a2b3;
-        --fg-faint: #667085;
-        --accent: #c8102e;
-        --accent-soft: rgba(200, 16, 46, 0.16);
-        --gold: #b08d4f;
-        --ok: #22c55e;
-        --warn: #f59e0b;
-        --danger: #ef4444;
-        --info: #3b82f6;
+        --bg: #f4f6f5;
+        --surface: #ffffff;
+        --surface-2: #f0f4f2;
+        --line: #e1e7e4;
+        --line-soft: #ebefed;
+        --fg: #17251f;
+        --fg-dim: #5a6b64;
+        --fg-faint: #8d9c95;
+        --accent: #0c7a5b;
+        --accent-deep: #095f47;
+        --accent-soft: #e2f1ea;
+        --gold: #c9a75c;
+        --ok: #17855c;
+        --warn: #b45309;
+        --danger: #d64550;
 
-        /* Card stock */
-        --card-bg: #f6f2e8;
-        --card-fg: #23201a;
-        --card-dim: #6b6455;
-        --card-line: #d8cfba;
-        --card-accent: #a3122a;
+        /* Card stock: the document itself, paper-white under a green band */
+        --card-bg: #ffffff;
+        --card-fg: #1c2b25;
+        --card-dim: #6b7c75;
+        --card-line: #e3e8e5;
+        --card-accent: #0a6b52;
 
         --radius: 12px;
         --radius-sm: 8px;
-        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans Thai",
-          "Leelawadee UI", "Sarabun", Roboto, sans-serif;
+        --appbar-h: 57px;
+        --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        --sans: "Sukhumvit Set", -apple-system, BlinkMacSystemFont, "Segoe UI",
+          "Noto Sans Thai", "Leelawadee UI", Sarabun, Roboto, sans-serif;
         --scale: 1;
       }
 
@@ -80,8 +85,14 @@
         color: var(--fg);
         font-family: var(--sans);
         font-size: calc(15px * var(--scale));
-        line-height: 1.5;
+        line-height: 1.55;
         -webkit-font-smoothing: antialiased;
+      }
+
+      :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+        border-radius: 4px;
       }
 
       .sr-only {
@@ -96,39 +107,44 @@
         border: 0;
       }
 
-      /* ----------------------------- top bar ----------------------------- */
-      .topbar {
+      /* ----------------------------- app bar ----------------------------- */
+      .appbar {
         position: sticky;
         top: 0;
         z-index: 20;
         display: flex;
         flex-wrap: wrap;
-        gap: 12px;
+        gap: 8px 14px;
         align-items: center;
-        padding: 10px 18px;
-        background: rgba(14, 17, 22, 0.92);
-        backdrop-filter: blur(8px);
+        min-height: var(--appbar-h);
+        padding: 8px 16px;
+        background: var(--surface);
         border-bottom: 1px solid var(--line);
       }
 
       .brand {
         display: flex;
         align-items: center;
-        gap: 9px;
-        font-weight: 650;
+        gap: 10px;
+        text-decoration: none;
+        color: var(--fg);
+        font-weight: 700;
         letter-spacing: 0.01em;
         margin-right: auto;
       }
 
+      /* The mark: a small green tile, the only strong colour up here. */
       .brand-mark {
-        width: 26px;
-        height: 26px;
-        border-radius: 6px;
-        background: linear-gradient(150deg, var(--accent), #8d0c22);
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
+        background: linear-gradient(135deg, #0d805f, #085c45);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
         display: grid;
         place-items: center;
-        font-size: 12px;
-        font-weight: 700;
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: 0.07em;
         color: #fff;
         flex: none;
       }
@@ -140,27 +156,14 @@
         align-items: center;
       }
 
-      .topbar-link {
-        margin-left: auto;
-        color: var(--fg-dim);
-        text-decoration: none;
-        font-size: 14px;
-        white-space: nowrap;
-      }
-
-      .topbar-link:hover {
-        color: var(--fg);
-        text-decoration: underline;
-      }
-
       .pill {
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        padding: 4px 10px;
+        padding: 4px 11px;
         border-radius: 999px;
         border: 1px solid var(--line);
-        background: var(--bg-elev);
+        background: var(--surface-2);
         font-size: 12px;
         color: var(--fg-dim);
         white-space: nowrap;
@@ -181,12 +184,12 @@
 
       .dot.on {
         background: var(--ok);
-        box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.16);
+        box-shadow: 0 0 0 3px rgba(23, 133, 92, 0.16);
       }
 
       .dot.off {
         background: var(--danger);
-        box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.16);
+        box-shadow: 0 0 0 3px rgba(214, 69, 80, 0.14);
       }
 
       .dot.wait {
@@ -204,36 +207,202 @@
         }
       }
 
-      /* ------------------------------ layout ----------------------------- */
-      .layout {
+      .iconbtn {
+        display: inline-grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+        color: var(--fg-dim);
+        background: transparent;
+        border: 1px solid transparent;
+        flex: none;
+      }
+
+      .iconbtn:hover {
+        background: var(--surface-2);
+        color: var(--fg);
+        border-color: var(--line);
+      }
+
+      /* The app bar's interface-language toggle: a compact seg. */
+      .langseg {
+        grid-auto-columns: auto;
+        padding: 2px;
+        border-radius: 8px;
+      }
+
+      .langseg button {
+        font-size: 12px;
+        padding: 3px 10px;
+        border-radius: 6px;
+      }
+
+      /* Sidebar collapse: the hide button sits at the sidebar's top-right,
+         and once it is hidden the same icon appears in the app bar to bring
+         it back. The choice is a preference like the view. */
+      .side-top {
+        display: flex;
+        justify-content: flex-end;
+        padding: 6px 10px 0;
+      }
+
+      .side-open {
+        display: none;
+        margin-right: 2px;
+      }
+
+      html.side-hidden .side-open {
+        display: inline-grid;
+      }
+
+      html.side-hidden .sidebar {
+        display: none !important;
+      }
+
+      html.side-hidden .shell {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      /* ------------------------------ shell ------------------------------ */
+      .shell {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 340px;
-        gap: 18px;
-        padding: 18px;
+        grid-template-columns: 266px minmax(0, 1fr);
         align-items: start;
-        max-width: 1500px;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: var(--appbar-h);
+        height: calc(100vh - var(--appbar-h));
+        overflow-y: auto;
+        background: var(--surface);
+        border-right: 1px solid var(--line);
+        padding: 14px 0 28px;
+      }
+
+      .nav {
+        display: grid;
+        gap: 2px;
+        padding: 0 12px 14px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+
+      .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        border-radius: var(--radius-sm);
+        text-decoration: none;
+        color: var(--fg-dim);
+        font-size: 13.5px;
+        font-weight: 550;
+      }
+
+      .nav-item svg {
+        flex: none;
+        color: var(--fg-faint);
+      }
+
+      .nav-item:hover {
+        background: var(--surface-2);
+        color: var(--fg);
+      }
+
+      .nav-item:hover svg {
+        color: var(--fg-dim);
+      }
+
+      .nav-item.is-active {
+        background: var(--accent-soft);
+        color: var(--accent-deep);
+        font-weight: 650;
+      }
+
+      .nav-item.is-active svg {
+        color: var(--accent);
+      }
+
+      .side-sec {
+        padding: 16px 16px 4px;
+      }
+
+      .side-sec + .side-sec {
+        border-top: 1px solid var(--line-soft);
+        margin-top: 12px;
+      }
+
+      .side-label {
+        margin: 0 0 10px;
+        font-size: 12.5px;
+        font-weight: 650;
+        color: var(--fg);
+      }
+
+      .group {
+        margin: 0 0 14px;
+      }
+
+      .group-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--fg-faint);
+        margin: 0 0 8px;
+      }
+
+      /* ------------------------------- main ------------------------------ */
+      main {
+        display: grid;
+        gap: 18px;
+        align-content: start;
+        padding: 24px 28px 48px;
+        width: 100%;
+        max-width: 1360px;
         margin: 0 auto;
       }
 
-      @media (max-width: 1080px) {
-        .layout {
-          grid-template-columns: minmax(0, 1fr);
-        }
+      /* Work area: the card (and its blocks) beside a rail that keeps the
+         event log on screen while the page scrolls. */
+      .workarea {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 336px;
+        gap: 18px;
+        align-items: start;
+      }
+
+      /* The rail is only worth its width while the log is on. */
+      .workarea:has(#panel-log[hidden]) {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .work-main {
+        display: grid;
+        gap: 18px;
+        align-content: start;
+        min-width: 0;
+      }
+
+      #panel-log {
+        position: sticky;
+        top: calc(var(--appbar-h) + 18px);
+      }
+
+      #panel-log .log {
+        max-height: min(58vh, 560px);
       }
 
       .panel {
-        background: var(--bg-elev);
+        background: var(--surface);
         border: 1px solid var(--line);
         border-radius: var(--radius);
       }
 
       .panel > h2 {
         margin: 0;
-        padding: 11px 14px;
-        font-size: 12px;
+        padding: 12px 16px;
+        font-size: 13px;
         font-weight: 650;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
         color: var(--fg-dim);
         border-bottom: 1px solid var(--line-soft);
         display: flex;
@@ -243,19 +412,19 @@
 
       .panel > h2 .count {
         margin-left: auto;
-        text-transform: none;
-        letter-spacing: 0;
         font-weight: 500;
+        font-family: var(--mono);
+        font-size: 11.5px;
         color: var(--fg-faint);
       }
 
       .panel-body {
-        padding: 14px;
+        padding: 14px 16px;
       }
 
       /* --------------------------- empty state --------------------------- */
       .stage {
-        min-height: 60vh;
+        min-height: min(62vh, 640px);
         display: grid;
         place-items: center;
       }
@@ -266,21 +435,48 @@
         max-width: 520px;
       }
 
+      /* The reader slot: a card waiting above the mouth of the slot. The JS
+         writes an emoji in here for assistive tech; visually it is replaced
+         by the drawn slot. */
       .empty-icon {
-        width: 76px;
-        height: 76px;
-        margin: 0 auto 18px;
-        border-radius: 16px;
-        border: 2px dashed var(--line);
-        display: grid;
-        place-items: center;
-        font-size: 30px;
-        color: var(--fg-faint);
+        position: relative;
+        width: 132px;
+        height: 78px;
+        margin: 0 auto 20px;
+        font-size: 0;
+      }
+
+      .empty-icon::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 84px;
+        height: 54px;
+        border-radius: 8px;
+        background: linear-gradient(var(--accent) 0 9px, var(--card-bg) 9px);
+        border: 1px solid var(--card-line);
+        box-shadow: 0 16px 28px -14px rgba(23, 37, 31, 0.35);
+      }
+
+      .empty-icon::after {
+        content: "";
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 132px;
+        height: 14px;
+        border-radius: 999px;
+        background: #e6ebe8;
+        border: 1px solid var(--line);
+        box-shadow: inset 0 2px 5px rgba(23, 37, 31, 0.12);
       }
 
       .empty h3 {
         margin: 0 0 8px;
-        font-size: 19px;
+        font-size: 20px;
         font-weight: 650;
       }
 
@@ -299,15 +495,20 @@
       .empty code {
         font-family: var(--mono);
         font-size: 12.5px;
-        background: var(--bg-elev-2);
+        background: var(--surface-2);
         border: 1px solid var(--line);
         border-radius: 5px;
         padding: 1.5px 6px;
+        color: var(--accent-deep);
       }
 
-      .empty.is-error .empty-icon {
-        border-color: var(--danger);
-        color: var(--danger);
+      .empty.is-error .empty-icon::before {
+        background: linear-gradient(var(--danger) 0 9px, #fdf1f2 9px);
+        border-color: rgba(214, 69, 80, 0.5);
+      }
+
+      .empty.is-error .empty-icon::after {
+        border-color: rgba(214, 69, 80, 0.5);
       }
 
       /* ------------------------------ the card --------------------------- */
@@ -316,10 +517,10 @@
         max-width: 880px;
         background: var(--card-bg);
         color: var(--card-fg);
-        border-radius: 14px;
+        border-radius: 16px;
         border: 1px solid var(--card-line);
-        box-shadow: 0 20px 50px -18px rgba(0, 0, 0, 0.75),
-          inset 0 1px 0 rgba(255, 255, 255, 0.55);
+        box-shadow: 0 30px 60px -30px rgba(23, 37, 31, 0.3),
+          0 2px 6px -2px rgba(23, 37, 31, 0.08);
         position: relative;
         overflow: hidden;
       }
@@ -331,7 +532,7 @@
         inset: 0;
         background-image: repeating-linear-gradient(
           115deg,
-          rgba(0, 0, 0, 0.022) 0 2px,
+          rgba(12, 122, 91, 0.025) 0 2px,
           transparent 2px 7px
         );
         pointer-events: none;
@@ -341,18 +542,20 @@
         display: flex;
         align-items: center;
         gap: 10px;
-        padding: 12px 20px;
-        border-bottom: 1px solid var(--card-line);
-        background: rgba(163, 18, 42, 0.05);
+        padding: 12px 22px;
+        background: linear-gradient(120deg, #0d805f, #085c45);
+        border-bottom: 2px solid var(--gold);
+        color: #fff;
         position: relative;
       }
 
       .idcard-top .emblem {
-        width: 30px;
-        height: 30px;
+        width: 32px;
+        height: 32px;
         border-radius: 50%;
-        background: var(--card-accent);
-        color: #fff;
+        background: rgba(255, 255, 255, 0.13);
+        box-shadow: 0 0 0 1.5px var(--gold);
+        color: #f3e6c8;
         display: grid;
         place-items: center;
         font-size: 14px;
@@ -360,25 +563,23 @@
       }
 
       .idcard-title {
-        font-size: 12.5px;
-        font-weight: 700;
-        letter-spacing: 0.03em;
-        color: var(--card-accent);
-        text-transform: uppercase;
+        font-size: 13px;
+        font-weight: 750;
+        letter-spacing: 0.02em;
+        color: #fff;
       }
 
       .idcard-sub {
         font-size: 11px;
-        color: var(--card-dim);
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.72);
+        letter-spacing: 0.04em;
       }
 
       .idcard-body {
         display: grid;
-        grid-template-columns: 168px minmax(0, 1fr);
-        gap: 20px;
-        padding: 20px;
+        grid-template-columns: 172px minmax(0, 1fr);
+        gap: 22px;
+        padding: 22px;
         position: relative;
       }
 
@@ -389,9 +590,9 @@
       }
 
       html[data-privacy="counter"] .idcard-body {
-        grid-template-columns: 220px minmax(0, 1fr);
-        gap: 26px;
-        padding: 28px;
+        grid-template-columns: 224px minmax(0, 1fr);
+        gap: 28px;
+        padding: 30px;
       }
 
       .photo-wrap {
@@ -402,9 +603,9 @@
         width: 100%;
         aspect-ratio: 3 / 4;
         object-fit: cover;
-        border-radius: 6px;
+        border-radius: 8px;
         border: 1px solid var(--card-line);
-        background: #e6e0d2;
+        background: #eef1ef;
         display: block;
         cursor: zoom-in;
       }
@@ -412,9 +613,9 @@
       .photo-empty {
         width: 100%;
         aspect-ratio: 3 / 4;
-        border-radius: 6px;
+        border-radius: 8px;
         border: 1px dashed var(--card-line);
-        background: #ece6d8;
+        background: #f3f6f4;
         display: grid;
         place-items: center;
         color: var(--card-dim);
@@ -429,57 +630,58 @@
 
       .fields {
         display: grid;
-        gap: 11px;
+        gap: 12px;
         align-content: start;
         min-width: 0;
       }
 
       .f {
         display: grid;
-        grid-template-columns: 118px minmax(0, 1fr);
+        grid-template-columns: 122px minmax(0, 1fr);
         gap: 10px;
         align-items: baseline;
         min-width: 0;
       }
 
       .f-label {
-        font-size: 10.5px;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
+        font-size: 11.5px;
+        letter-spacing: 0.01em;
         color: var(--card-dim);
+        font-weight: 600;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
 
       html[data-privacy="counter"] .f-label {
-        font-size: 12.5px;
+        font-size: 13.5px;
       }
 
       /* Bigger type needs a wider label column or long Thai labels truncate. */
       html[data-privacy="counter"] .f {
-        grid-template-columns: 152px minmax(0, 1fr);
+        grid-template-columns: 156px minmax(0, 1fr);
       }
 
       .f-value {
-        font-size: 14px;
+        font-size: 15px;
         font-weight: 550;
         word-break: break-word;
         min-width: 0;
       }
 
       html[data-privacy="counter"] .f-value {
-        font-size: 18px;
+        font-size: 19px;
       }
 
       .f-value.mono {
         font-family: var(--mono);
-        letter-spacing: 0.06em;
+        letter-spacing: 0.05em;
         font-weight: 600;
+        font-variant-numeric: tabular-nums;
       }
 
       .f-value.big {
-        font-size: calc(19px * var(--scale));
+        font-size: calc(20px * var(--scale));
         font-weight: 700;
         line-height: 1.3;
       }
@@ -490,45 +692,60 @@
         font-style: italic;
       }
 
+      /* Chips the page works out itself: age, days left, checksum. */
       .f-value .derived {
         display: inline-block;
         margin-left: 8px;
-        padding: 1px 7px;
+        padding: 1px 8px;
         border-radius: 999px;
-        background: rgba(0, 0, 0, 0.06);
+        background: rgba(23, 37, 31, 0.05);
         border: 1px solid var(--card-line);
         font-size: 11px;
-        font-weight: 600;
+        font-weight: 650;
+        font-family: var(--sans);
         color: var(--card-dim);
         font-style: normal;
+        vertical-align: 1px;
       }
 
       .f-value .derived.ok {
-        color: #1d6f42;
-        border-color: #1d6f4233;
-        background: #1d6f4212;
+        color: #116b45;
+        border-color: rgba(17, 107, 69, 0.32);
+        background: rgba(17, 107, 69, 0.07);
       }
 
       .f-value .derived.warn {
         color: #8a5a06;
-        border-color: #8a5a0633;
-        background: #8a5a0612;
+        border-color: rgba(138, 90, 6, 0.32);
+        background: rgba(138, 90, 6, 0.07);
       }
 
       .f-value .derived.bad {
-        color: #9f1239;
-        border-color: #9f123933;
-        background: #9f123912;
+        color: #b4233a;
+        border-color: rgba(180, 35, 58, 0.32);
+        background: rgba(180, 35, 58, 0.07);
       }
 
       .f-value .copy-btn {
         margin-left: 8px;
-        padding: 2px 7px;
+        padding: 2px 8px;
         font-size: 11px;
         font-family: var(--sans);
+        background: transparent;
+        color: var(--card-dim);
+        border: 1px solid var(--card-line);
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 500;
         opacity: 0;
         transition: opacity 0.12s;
         vertical-align: baseline;
+      }
+
+      .f-value .copy-btn:hover {
+        background: var(--surface-2);
+        color: var(--card-fg);
+        border-color: var(--fg-faint);
       }
 
       .f:hover .copy-btn,
@@ -544,14 +761,13 @@
       }
 
       .idcard-foot {
-        padding: 12px 20px;
+        padding: 12px 22px;
         border-top: 1px solid var(--card-line);
         display: flex;
         flex-wrap: wrap;
         gap: 10px 20px;
         align-items: center;
         justify-content: space-between;
-        background: rgba(163, 18, 42, 0.05);
         position: relative;
       }
 
@@ -560,11 +776,26 @@
         color: var(--card-dim);
       }
 
+      /* The one orchestrated moment: the card answers an actual read. */
+      .flash {
+        animation: cardflash 0.9s ease-out;
+      }
+
+      @keyframes cardflash {
+        0% {
+          box-shadow: 0 0 0 4px rgba(12, 122, 91, 0.4),
+            0 30px 60px -30px rgba(23, 37, 31, 0.3);
+        }
+        100% {
+          box-shadow: 0 30px 60px -30px rgba(23, 37, 31, 0.3),
+            0 2px 6px -2px rgba(23, 37, 31, 0.08);
+        }
+      }
+
       /* --------------------------- extra blocks -------------------------- */
       .blocks {
         display: grid;
         gap: 18px;
-        margin-top: 18px;
       }
 
       .kv {
@@ -580,20 +811,21 @@
       }
 
       .kv .f-label {
-        text-transform: none;
-        letter-spacing: 0;
         font-size: 12.5px;
+        color: var(--fg-dim);
+        font-weight: 550;
       }
 
       .kv .f-value {
         font-size: 13.5px;
+        color: var(--fg);
       }
 
       .absent {
         padding: 12px 14px;
         border: 1px dashed var(--line);
         border-radius: var(--radius-sm);
-        background: var(--bg-elev-2);
+        background: var(--surface-2);
         color: var(--fg-dim);
         font-size: 13px;
       }
@@ -601,11 +833,18 @@
       .absent code {
         font-family: var(--mono);
         font-size: 12px;
-        background: var(--bg);
+        background: var(--surface);
         border: 1px solid var(--line);
         border-radius: 4px;
         padding: 1px 5px;
         color: var(--warn);
+      }
+
+      .absent a {
+        color: var(--accent-deep);
+        font-weight: 600;
+        text-decoration: underline;
+        text-underline-offset: 3px;
       }
 
       /* ------------------------------ table ------------------------------ */
@@ -625,11 +864,9 @@
 
       .fields-table th {
         color: var(--fg-dim);
-        font-weight: 600;
-        font-size: 11.5px;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        background: var(--bg-elev-2);
+        font-weight: 650;
+        font-size: 12px;
+        background: var(--surface-2);
       }
 
       .fields-table td.key {
@@ -647,6 +884,7 @@
 
       .fields-table td.val {
         font-family: var(--mono);
+        font-variant-numeric: tabular-nums;
         font-size: 12px;
         word-break: break-word;
       }
@@ -657,12 +895,10 @@
       }
 
       .fields-table tr.group-head td {
-        background: var(--bg-elev-2);
-        color: var(--accent);
+        background: var(--accent-soft);
+        color: var(--accent-deep);
         font-weight: 700;
-        font-size: 11.5px;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
+        font-size: 12px;
       }
 
       .table-scroll {
@@ -672,133 +908,104 @@
       }
 
       /* ----------------------------- controls ---------------------------- */
-      .group {
-        padding: 13px 14px;
-        border-bottom: 1px solid var(--line-soft);
-      }
-
-      .group:last-child {
-        border-bottom: none;
-      }
-
-      .group-title {
-        font-size: 11px;
-        font-weight: 650;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-        color: var(--fg-faint);
-        margin: 0 0 9px;
-      }
-
       .seg {
         display: grid;
         grid-auto-flow: column;
         grid-auto-columns: 1fr;
         gap: 3px;
         padding: 3px;
-        background: var(--bg);
+        background: var(--surface-2);
         border: 1px solid var(--line);
         border-radius: 9px;
       }
 
       .seg button {
-        border: none;
+        border: 0;
         background: transparent;
         color: var(--fg-dim);
-        font-family: inherit;
-        font-size: 12px;
-        font-weight: 600;
-        padding: 6px 4px;
+        font-family: var(--sans);
+        font-size: 13px;
+        font-weight: 550;
+        padding: 6px 8px;
         border-radius: 6px;
         cursor: pointer;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
       }
 
       .seg button:hover {
         color: var(--fg);
-        background: var(--bg-elev-2);
       }
 
       .seg button[aria-pressed="true"] {
-        background: var(--accent);
-        color: #fff;
-      }
-
-      .seg button:disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
+        background: var(--surface);
+        color: var(--accent-deep);
+        font-weight: 650;
+        box-shadow: 0 1px 2.5px rgba(23, 37, 31, 0.16);
       }
 
       .check {
         display: flex;
-        align-items: center;
         gap: 9px;
-        padding: 5px 0;
-        font-size: 13px;
+        align-items: baseline;
+        padding: 3px 0;
         cursor: pointer;
-        user-select: none;
       }
 
       .check input {
+        accent-color: var(--accent);
         width: 15px;
         height: 15px;
-        accent-color: var(--accent);
-        cursor: pointer;
         flex: none;
-        margin: 0;
-      }
-
-      .check.disabled {
-        opacity: 0.45;
-        cursor: not-allowed;
       }
 
       .check .sub {
         display: block;
-        font-size: 11px;
+        font-size: 12px;
         color: var(--fg-faint);
+        font-weight: 400;
       }
 
       .field-row {
         display: flex;
         align-items: center;
-        gap: 8px;
-        margin-bottom: 8px;
+        gap: 10px;
+        margin: 8px 0;
       }
 
       .field-row label {
-        font-size: 12.5px;
         color: var(--fg-dim);
-        flex: none;
-        min-width: 86px;
+        min-width: 110px;
       }
 
-      select,
-      .btn {
-        font-family: inherit;
-        font-size: 12.5px;
-        border-radius: var(--radius-sm);
-        border: 1px solid var(--line);
-        background: var(--bg);
+      .field-row select {
+        background: var(--surface);
         color: var(--fg);
+        border: 1px solid var(--line);
+        border-radius: 8px;
         padding: 6px 9px;
+        font-family: var(--sans);
+        font-size: 13.5px;
+      }
+
+      .note {
+        color: var(--fg-faint);
+        font-size: 12.5px;
+        margin: 6px 0 0;
+      }
+
+      .btn {
+        background: var(--surface);
+        color: var(--fg);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 14px;
+        font-family: var(--sans);
+        font-size: 13.5px;
+        font-weight: 550;
         cursor: pointer;
       }
 
-      select {
-        flex: 1;
-        min-width: 0;
-      }
-
-      select:disabled,
-      .btn:disabled {
-        opacity: 0.45;
-        cursor: not-allowed;
-      }
-
       .btn:hover {
+        background: var(--surface-2);
         border-color: var(--fg-faint);
       }
 
@@ -806,140 +1013,121 @@
         background: var(--accent);
         border-color: var(--accent);
         color: #fff;
-        font-weight: 600;
+        font-weight: 650;
       }
 
       .btn.primary:hover {
-        filter: brightness(1.12);
+        background: var(--accent-deep);
+        border-color: var(--accent-deep);
       }
 
       .btn.wide {
         width: 100%;
-        text-align: center;
       }
 
-      .note {
-        font-size: 11.5px;
-        color: var(--fg-faint);
-        margin: 7px 0 0;
-        line-height: 1.45;
+      .btn:disabled {
+        opacity: 0.45;
+        cursor: default;
       }
 
-      .note.warn {
-        color: var(--warn);
+      .btn.primary:disabled {
+        background: var(--accent);
       }
 
-      /* ------------------------------ log/json --------------------------- */
-      .log {
-        max-height: 260px;
-        overflow: auto;
+      /* The card's own copy button sits on the document: quiet ink on paper. */
+      .idcard-foot .btn {
+        background: transparent;
+        border-color: var(--card-line);
+        color: var(--card-fg);
+      }
+
+      .idcard-foot .btn:hover {
+        background: var(--surface-2);
+        border-color: var(--card-dim);
+      }
+
+      /* --------------------------- side panels --------------------------- */
+      pre.json {
+        margin: 0;
         font-family: var(--mono);
-        font-size: 11.5px;
+        font-size: 12px;
+        line-height: 1.55;
+        color: var(--fg-dim);
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .log {
+        max-height: 300px;
+        overflow-y: auto;
+        padding: 8px 0;
       }
 
       .log-row {
         display: grid;
-        grid-template-columns: 62px 108px minmax(0, 1fr);
+        grid-template-columns: 62px 92px minmax(0, 1fr);
         gap: 8px;
-        padding: 4px 6px;
-        border-bottom: 1px solid var(--line-soft);
-        align-items: baseline;
-      }
-
-      .log-row:last-child {
-        border-bottom: none;
+        padding: 3px 16px;
+        font-size: 12px;
       }
 
       .log-row .t {
+        font-family: var(--mono);
+        font-variant-numeric: tabular-nums;
         color: var(--fg-faint);
       }
 
       .log-row .ev {
-        font-weight: 600;
-      }
-
-      .log-row .ev.smc-inserted {
-        color: var(--info);
-      }
-
-      .log-row .ev.smc-data {
-        color: var(--ok);
-      }
-
-      .log-row .ev.sm-c-removed {
-        color: var(--fg-dim);
-      }
-
-      .log-row .ev.sm-c-error {
-        color: var(--danger);
-      }
-
-      .log-row .ev.sm-c-options {
-        color: var(--accent);
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--accent-deep);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .log-row .m {
         color: var(--fg-dim);
         word-break: break-word;
-        font-family: var(--sans);
-        font-size: 12px;
       }
 
-      pre.json {
-        margin: 0;
-        max-height: 320px;
-        overflow: auto;
-        font-family: var(--mono);
-        font-size: 11.5px;
-        line-height: 1.55;
-        background: var(--bg);
-        border: 1px solid var(--line);
-        border-radius: var(--radius-sm);
-        padding: 11px;
-        color: #cbd5e1;
-        white-space: pre;
-      }
-
-      /* ------------------------------ lightbox --------------------------- */
+      /* --------------------------- lightbox/toast ------------------------ */
       .lightbox {
         position: fixed;
         inset: 0;
-        z-index: 60;
-        background: rgba(6, 8, 11, 0.9);
+        z-index: 50;
+        background: rgba(13, 22, 18, 0.92);
         display: grid;
         place-items: center;
-        padding: 28px;
         cursor: zoom-out;
-      }
-
-      .lightbox[hidden] {
-        display: none;
+        padding: 24px;
       }
 
       .lightbox img {
-        max-width: 100%;
-        max-height: 100%;
-        border-radius: 8px;
-        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.7);
+        max-width: min(92vw, 560px);
+        max-height: 88vh;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.7);
       }
 
-      /* ------------------------------- toast ----------------------------- */
       .toast {
         position: fixed;
         left: 50%;
-        bottom: 22px;
-        transform: translateX(-50%) translateY(14px);
-        z-index: 70;
-        background: var(--bg-elev-2);
-        border: 1px solid var(--line);
-        color: var(--fg);
-        padding: 9px 16px;
-        border-radius: 999px;
-        font-size: 13px;
+        bottom: 26px;
+        transform: translateX(-50%) translateY(8px);
+        background: #1d2b25;
+        color: #f2f6f4;
+        border: 1px solid #31423b;
+        border-radius: 10px;
+        padding: 10px 16px;
+        font-size: 13.5px;
+        box-shadow: 0 18px 40px -16px rgba(13, 22, 18, 0.55);
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.18s, transform 0.18s;
-        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+        z-index: 60;
+        max-width: min(92vw, 480px);
       }
 
       .toast.show {
@@ -948,38 +1136,85 @@
       }
 
       .toast.err {
-        border-color: var(--danger);
-        color: #fecaca;
+        border-color: rgba(214, 69, 80, 0.6);
       }
 
-      .flash {
-        animation: flash 0.85s ease-out;
-      }
-
-      @keyframes flash {
-        from {
-          box-shadow: 0 0 0 0 var(--accent-soft);
+      /* ---------------------------- responsive --------------------------- */
+      @media (max-width: 1240px) {
+        .workarea {
+          grid-template-columns: minmax(0, 1fr);
         }
-        to {
-          box-shadow: 0 0 0 14px transparent;
+
+        #panel-log {
+          position: static;
+        }
+
+        #panel-log .log {
+          max-height: 300px;
+        }
+      }
+
+      @media (max-width: 1080px) {
+        .shell {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        /* The sidebar unpacks on mobile so the order becomes nav, then the
+           card, then the control groups — someone holding a phone should not
+           scroll past every control to reach the read. */
+        .sidebar {
+          display: contents;
+        }
+
+        .sidebar > .side-top {
+          order: -2;
+          padding: 4px 12px 0;
+        }
+
+        .sidebar > .nav {
+          order: -1;
+          background: var(--surface);
+          border-bottom: 1px solid var(--line);
+          padding: 12px;
+        }
+
+        .sidebar > .side-sec {
+          order: 1;
+          background: var(--surface);
+        }
+
+        main {
+          padding: 20px 16px 40px;
         }
       }
 
       @media (prefers-reduced-motion: reduce) {
         * {
-          animation: none !important;
           transition: none !important;
+          animation: none !important;
         }
       }
-    </style>
+      </style>
   </head>
 
-  <body>
-    <header class="topbar">
-      <div class="brand">
+    <body>
+    <header class="appbar">
+      <button
+        class="iconbtn side-open"
+        id="btn-side-show"
+        type="button"
+        aria-label="แสดงเมนูข้าง / Show sidebar"
+        title="แสดงเมนูข้าง / Show sidebar"
+      >
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+          <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" />
+          <path d="M6.25 2.75v10.5" />
+        </svg>
+      </button>
+      <a class="brand" href="/">
         <span class="brand-mark">SMC</span>
-        <span data-i18n="app.title">Thai ID Card Agent</span>
-      </div>
+        <span class="brand-name" data-i18n="app.title">ตัวอ่านบัตรประชาชน</span>
+      </a>
 
       <div class="pills">
         <span class="pill" id="pill-sio">
@@ -1007,33 +1242,68 @@
         </span>
       </div>
 
-      <a class="topbar-link" href="/settings" data-i18n="nav.settings">Settings</a>
+      <div class="seg langseg" id="seg-uilang" role="group" aria-label="ภาษาหน้าจอ / Interface language">
+        <button type="button" data-v="th">ไทย</button>
+        <button type="button" data-v="en">EN</button>
+      </div>
+
+      <a
+        class="iconbtn"
+        href="https://github.com/somprasongd/go-thai-smartcard"
+        target="_blank"
+        rel="noopener"
+        aria-label="GitHub repository"
+        title="GitHub"
+      >
+        <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true">
+          <path
+            d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"
+          />
+        </svg>
+      </a>
     </header>
 
-    <div class="layout">
-      <main>
-        <!-- stage: empty state or card/table -->
-        <section class="panel stage" id="stage">
-          <div class="empty" id="empty">
-            <div class="empty-icon" id="empty-icon">💳</div>
-            <h3 id="empty-title">…</h3>
-            <p id="empty-text"></p>
-            <p class="hint" id="empty-hint"></p>
-          </div>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="side-top">
+          <button
+            class="iconbtn"
+            id="btn-side-hide"
+            type="button"
+            aria-label="ซ่อนเมนูข้าง / Hide sidebar"
+            title="ซ่อนเมนูข้าง / Hide sidebar"
+          >
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+              <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" />
+              <path d="M6.25 2.75v10.5" />
+            </svg>
+          </button>
+        </div>
 
-          <div id="data" hidden></div>
-        </section>
+        <nav class="nav" aria-label="หน้าหลัก">
+          <a class="nav-item is-active" href="/" aria-current="page">
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+              <rect x="1.75" y="3.25" width="12.5" height="9.5" rx="1.8" />
+              <path d="M1.75 6.25h12.5" />
+              <path d="M4.25 9.75h3" />
+            </svg>
+            <span data-i18n="nav.home">อ่านบัตร</span>
+          </a>
+          <a class="nav-item" href="/settings">
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+              <path d="M2 4.5h4.2M9.6 4.5H14M2 11.5h1.9M7.3 11.5H14" />
+              <circle cx="8.4" cy="4.5" r="1.85" />
+              <circle cx="5.2" cy="11.5" r="1.85" />
+            </svg>
+            <span data-i18n="nav.settings">ตั้งค่า</span>
+          </a>
+        </nav>
 
-        <!-- address / laser / nhso blocks live under the card -->
-        <div class="blocks" id="blocks" hidden></div>
-      </main>
-
-      <aside>
-        <section class="panel">
-          <h2><span data-i18n="opt.display">Display</span></h2>
+        <section class="side-sec">
+          <h3 class="side-label" data-i18n="opt.display">การแสดงผล</h3>
 
           <div class="group">
-            <p class="group-title" data-i18n="opt.privacy">Mode</p>
+            <p class="group-title" data-i18n="opt.privacy">โหมด</p>
             <div class="seg" id="seg-privacy" role="group">
               <button type="button" data-v="kiosk" data-i18n="mode.kiosk">Kiosk</button>
               <button type="button" data-v="dev" data-i18n="mode.dev">Dev</button>
@@ -1043,7 +1313,7 @@
           </div>
 
           <div class="group">
-            <p class="group-title" data-i18n="opt.view">View</p>
+            <p class="group-title" data-i18n="opt.view">มุมมอง</p>
             <div class="seg" id="seg-view" role="group">
               <button type="button" data-v="card" data-i18n="view.card">Card</button>
               <button type="button" data-v="table" data-i18n="view.table">Table</button>
@@ -1051,7 +1321,7 @@
           </div>
 
           <div class="group">
-            <p class="group-title" data-i18n="opt.lang">Language</p>
+            <p class="group-title" data-i18n="opt.lang">ภาษา</p>
             <div class="seg" id="seg-lang" role="group">
               <button type="button" data-v="th">ไทย</button>
               <button type="button" data-v="en">EN</button>
@@ -1060,7 +1330,7 @@
           </div>
 
           <div class="group">
-            <p class="group-title" data-i18n="opt.toggles">Show</p>
+            <p class="group-title" data-i18n="opt.toggles">แสดง</p>
             <label class="check">
               <input type="checkbox" id="opt-photo" checked />
               <span data-i18n="opt.photo">Face photo</span>
@@ -1085,9 +1355,12 @@
               <span data-i18n="opt.log">Event log</span>
             </label>
           </div>
+        </section>
+
+        <section class="side-sec">
+          <h3 class="side-label" data-i18n="opt.privacy2">ความเป็นส่วนตัว</h3>
 
           <div class="group">
-            <p class="group-title" data-i18n="opt.privacy2">Privacy</p>
             <label class="check">
               <input type="checkbox" id="opt-mask" />
               <span data-i18n="opt.mask">Mask ID number</span>
@@ -1107,9 +1380,12 @@
               </select>
             </div>
           </div>
+        </section>
+
+        <section class="side-sec">
+          <h3 class="side-label" data-i18n="opt.reader">เครื่องอ่าน</h3>
 
           <div class="group">
-            <p class="group-title" data-i18n="opt.reader">Reader</p>
             <div class="field-row">
               <!-- The group title already names the field on screen; the label
                    stays for the accessible name, which is what the tab order
@@ -1137,25 +1413,49 @@
             </button>
           </div>
         </section>
-
-        <section class="panel" id="panel-json" style="margin-top: 18px" hidden>
-          <h2>
-            <span data-i18n="panel.json">Payload</span>
-            <span class="count" id="json-count"></span>
-          </h2>
-          <div class="panel-body">
-            <pre class="json" id="json-out"></pre>
-          </div>
-        </section>
-
-        <section class="panel" id="panel-log" style="margin-top: 18px">
-          <h2>
-            <span data-i18n="panel.log">Events</span>
-            <span class="count" id="log-count">0</span>
-          </h2>
-          <div class="log" id="log"></div>
-        </section>
       </aside>
+
+      <main>
+        <div class="workarea">
+          <div class="work-main">
+            <!-- stage: empty state or card/table -->
+            <section class="panel stage" id="stage">
+              <div class="empty" id="empty">
+                <div class="empty-icon" id="empty-icon">💳</div>
+                <h3 id="empty-title">…</h3>
+                <p id="empty-text"></p>
+                <p class="hint" id="empty-hint"></p>
+              </div>
+
+              <div id="data" hidden></div>
+            </section>
+
+            <!-- address / laser / nhso blocks live under the card -->
+            <div class="blocks" id="blocks" hidden></div>
+
+            <section class="panel" id="panel-json" hidden>
+              <h2>
+                <span data-i18n="panel.json">Payload</span>
+                <span class="count" id="json-count"></span>
+              </h2>
+              <div class="panel-body">
+                <pre class="json" id="json-out"></pre>
+              </div>
+            </section>
+          </div>
+
+          <!-- The events rail sits beside the card so a read answers "what
+               just happened" without scrolling; the rail collapses when the
+               event log is switched off. -->
+          <section class="panel" id="panel-log">
+            <h2>
+              <span data-i18n="panel.log">Events</span>
+              <span class="count" id="log-count">0</span>
+            </h2>
+            <div class="log" id="log"></div>
+          </section>
+        </div>
+      </main>
     </div>
 
     <div class="lightbox" id="lightbox" hidden>
@@ -1216,7 +1516,7 @@
             "opt.display": "การแสดงผล",
             "opt.privacy": "โหมด",
             "opt.view": "มุมมอง",
-            "opt.lang": "ภาษา",
+            "opt.lang": "ภาษาข้อมูลบัตร",
             "opt.toggles": "แสดง",
             "opt.privacy2": "ความเป็นส่วนตัว",
             "opt.photo": "รูปหน้า",
@@ -1247,16 +1547,17 @@
             "act.copied": "คัดลอกแล้ว",
             "panel.json": "ข้อมูลดิบ",
             "panel.log": "Event",
-            "nav.settings": "ตั้งค่าที่ /settings",
+            "nav.home": "อ่านบัตร",
+            "nav.settings": "ตั้งค่า",
             "reader.note.none": "ไม่พบเครื่องอ่าน — เสียบเครื่องแล้วกดรีเฟรช",
             "reader.note.reading": "กำลังอ่านบัตรอยู่ รอสักครู่",
             "reader.note.ready": "อ่านบัตรแล้ว กด “อ่านซ้ำ” เพื่ออ่านอีกครั้ง",
             "privacy.kiosk": "ปิดบังเลขประชาชนและรูปหน้า และล้างข้อมูลเมื่อถอดบัตร เหมาะกับจอที่คนยืนดูข้างๆ",
             "privacy.dev": "แสดงข้อมูลทุกอย่าง ไม่ล้างอัตโนมัติ เปิด JSON ดิบไว้",
             "privacy.counter": "ตัวอักษรและรูปใหญ่ขึ้น ลดรายละเอียดรอง เหมาะกับหน้าร้าน",
-            "hint.laser": "ยังไม่ได้เปิดอ่านเลเซอร์ไอดี — ตั้ง <code>SMC_SHOW_LASER=true</code> แล้ว restart agent หรือเปิดสวิตช์ด้านข้าง",
-            "hint.nhso": "ยังไม่ได้เปิดอ่านข้อมูลสิทธิการรักษาพยาบาล — ตั้ง <code>SMC_SHOW_NHSO=true</code> แล้ว restart agent หรือเปิดสวิตช์ด้านข้าง",
-            "hint.photo": "ไม่ได้อ่านรูปหน้า — เปิดสวิตช์ “รูปหน้า” ด้านข้างแล้วใส่บัตรใหม่",
+            "hint.laser": "ยังไม่ได้เปิดอ่านเลขหลังบัตร — เปิด “อ่านเลขหลังบัตร” ในหน้า <settings>ตั้งค่า</settings> แล้วใส่บัตรใหม่",
+            "hint.nhso": "ยังไม่ได้เปิดอ่านสิทธิการรักษาพยาบาล — เปิด “อ่านสิทธิการรักษา” ในหน้า <settings>ตั้งค่า</settings> แล้วใส่บัตรใหม่",
+            "hint.photo": "ไม่ได้อ่านรูปหน้า — เปิด “อ่านรูปหน้า” ในหน้า ตั้งค่า แล้วใส่บัตรใหม่",
             "card.title": "บัตรประชาชน",
             "card.sub": "พ.ศ. 2535 – 2568",
             "card.cid": "เลขประจำตัวประชาชน",
@@ -1338,7 +1639,7 @@
             "opt.display": "Display",
             "opt.privacy": "Mode",
             "opt.view": "View",
-            "opt.lang": "Language",
+            "opt.lang": "Card language",
             "opt.toggles": "Show",
             "opt.privacy2": "Privacy",
             "opt.photo": "Face photo",
@@ -1369,16 +1670,17 @@
             "act.copied": "Copied",
             "panel.json": "Payload",
             "panel.log": "Events",
-            "nav.settings": "Change in settings",
+            "nav.home": "Card reader",
+            "nav.settings": "Settings",
             "reader.note.none": "No reader found — plug one in and press refresh.",
             "reader.note.reading": "Reading the card, hold on a moment.",
             "reader.note.ready": "Card read — press “Read again” for another pass.",
             "privacy.kiosk": "Masks the ID number and the portrait, and clears data on removal. Suited to a screen people stand and look at.",
             "privacy.dev": "Shows everything, never auto-clears, keeps the raw JSON open.",
             "privacy.counter": "Larger type and photo, less secondary detail. Suited to a counter.",
-            "hint.laser": "Laser ID reading is off — set <code>SMC_SHOW_LASER=true</code> and restart the agent, or flip the switch beside this.",
-            "hint.nhso": "Hospital treatment reading is off — set <code>SMC_SHOW_NHSO=true</code> and restart the agent, or flip the switch beside this.",
-            "hint.photo": "No face image was read — enable the “Face image” switch beside this and re-insert the card.",
+            "hint.laser": "Laser ID reading is off — turn on “Read laser ID” in <settings>Settings</settings>, then re-insert the card.",
+            "hint.nhso": "NHSO entitlement reading is off — turn on “Read NHSO entitlement” in <settings>Settings</settings>, then re-insert the card.",
+            "hint.photo": "No face image was read — turn on “Read face image” in Settings, then re-insert the card.",
             "card.title": "National Identity Card",
             "card.sub": "B.E. 2535 – 2568",
             "card.cid": "ID number",
@@ -1511,6 +1813,10 @@
           privacy: "kiosk",
           view: "card",
           lang: "th",
+          // dataLang is which card fields are shown: th, en, or both. The
+          // interface language (lang) is a separate th/en switch in the app
+          // bar — one screen cannot be "both".
+          dataLang: "th",
           photo: true,
           parts: true,
           nameparts: true,
@@ -1518,7 +1824,8 @@
           log: true,
           mask: false,
           maskphoto: false,
-          autoclear: 0
+          autoclear: 0,
+          sideHidden: false
         };
 
         // mask hides digits of the ID number, maskphoto blurs the portrait.
@@ -1567,6 +1874,14 @@
                 if (Object.prototype.hasOwnProperty.call(base, j)) base[j] = saved[j];
               }
               hadStoredPrefs = true;
+              // Older builds kept one switch for both the interface and the
+              // card display. Split it so neither choice is lost: th/en prefs
+              // agree with the old behaviour, and "both" becomes UI Thai with
+              // the card showing both names.
+              if (saved.lang) {
+                base.dataLang = saved.lang;
+                if (saved.lang === "both") base.lang = "th";
+              }
             }
           } catch (e) {
             /* private mode, or a corrupt entry — defaults are fine */
@@ -1707,9 +2022,13 @@
           return check === Number(cid.charAt(12));
         }
 
+        // The laser code is printed on the card as AA0-0000000-00 (3-7-2),
+        // so that is how the page shows it. A length that is not 12 is shown
+        // raw rather than cut to fit the pattern.
         function groupLaser(s) {
           if (!s) return "";
-          return (s.match(/.{1,4}/g) || []).join(" ");
+          var m = s.match(/^(.{3})(.{7})(.{2})$/);
+          return m ? m[1] + "-" + m[2] + "-" + m[3] : s;
         }
 
         /* ----------------------------- rendering --------------------------- */
@@ -1798,7 +2117,7 @@
         function renderCard() {
           var d = store.data;
           var p = (d && d.personal) || {};
-          var lang = store.ui.lang;
+          var lang = store.ui.dataLang;
 
           var wrap = make("div", "idcard");
 
@@ -2065,12 +2384,36 @@
 
         // An absent applet is a configuration fact, not a mystery: say which
         // env var turns it on.
+        // Hint text is mostly plain, but may carry <code>…</code> chips and a
+        // <settings>…</settings> link to the settings page, where the read
+        // toggles live; everything else becomes a plain text node.
         function hintBox(i18nKey) {
           var box = make("div", "absent");
-          var parts = t(i18nKey).split(/<code>|<\/code>/);
-          box.appendChild(document.createTextNode(parts[0] || ""));
-          if (parts[1]) box.appendChild(make("code", null, parts[1]));
-          if (parts[2]) box.appendChild(document.createTextNode(parts[2]));
+          var code = null;
+          var link = null;
+          t(i18nKey)
+            .split(/(<code>|<\/code>|<settings>|<\/settings>)/)
+            .forEach(function (part) {
+              if (!part) return;
+              if (part === "<code>") {
+                code = make("code");
+                box.appendChild(code);
+              } else if (part === "</code>") {
+                code = null;
+              } else if (part === "<settings>") {
+                link = make("a");
+                link.href = "/settings";
+                box.appendChild(link);
+              } else if (part === "</settings>") {
+                link = null;
+              } else if (code) {
+                code.textContent += part;
+              } else if (link) {
+                link.textContent += part;
+              } else {
+                box.appendChild(document.createTextNode(part));
+              }
+            });
           return box;
         }
 
@@ -2131,8 +2474,8 @@
             clear(dataHost);
             dataHost.hidden = true;
             // With no card read, an applet is not "switched off" — it simply
-            // has nothing to report. Saying SMC_SHOW_LASER here would send
-            // someone to reconfigure an agent that is working fine.
+            // has nothing to report. Sending someone to Settings here would
+            // reconfigure an agent that is working fine.
             $("blocks").hidden = true;
             applySidebars();
             return;
@@ -2588,6 +2931,14 @@
           document.documentElement.setAttribute("data-privacy", store.ui.privacy);
           document.documentElement.setAttribute("data-view", store.ui.view);
           document.documentElement.setAttribute("data-lang", store.ui.lang);
+
+          // The segs live here, not only in applyI18n: the view click path
+          // runs syncControls without applyI18n, and a seg that only re-syncs
+          // on a language change would highlight the old view.
+          markSeg("seg-privacy", store.ui.privacy);
+          markSeg("seg-view", store.ui.view);
+          markSeg("seg-lang", store.ui.dataLang);
+          markSeg("seg-uilang", store.ui.lang);
         }
 
         function markSeg(segId, value) {
@@ -2605,7 +2956,8 @@
           $("privacy-note").textContent = t("privacy." + store.ui.privacy);
           markSeg("seg-privacy", store.ui.privacy);
           markSeg("seg-view", store.ui.view);
-          markSeg("seg-lang", store.ui.lang);
+          markSeg("seg-lang", store.ui.dataLang);
+          markSeg("seg-uilang", store.ui.lang);
           // The read-again label and the note are written by syncReaderUI, so a
           // language switch has to run it again.
           renderStatePill();
@@ -2647,9 +2999,20 @@
           $("seg-lang").addEventListener("click", function (e) {
             var b = e.target.closest("button");
             if (!b) return;
-            store.ui.lang = b.dataset.v;
+            // This seg is the card data language, not the interface language —
+            // the app bar's seg-uilang owns that one.
+            store.ui.dataLang = b.dataset.v;
             syncControls();
             savePrefs();
+            render();
+          });
+
+          $("seg-uilang").addEventListener("click", function (e) {
+            var b = e.target.closest("button");
+            if (!b) return;
+            store.ui.lang = b.dataset.v;
+            savePrefs();
+            syncControls();
             applyI18n();
             render();
           });
@@ -2703,6 +3066,19 @@
             render();
           });
 
+          // Sidebar collapse is a shell preference, so it is saved with the
+          // rest and both pages follow it.
+          $("btn-side-hide").addEventListener("click", function () {
+            store.ui.sideHidden = true;
+            savePrefs();
+            document.documentElement.classList.add("side-hidden");
+          });
+          $("btn-side-show").addEventListener("click", function () {
+            store.ui.sideHidden = false;
+            savePrefs();
+            document.documentElement.classList.remove("side-hidden");
+          });
+
           $("lightbox").addEventListener("click", function () {
             $("lightbox").hidden = true;
             $("lightbox-img").removeAttribute("src");
@@ -2721,6 +3097,7 @@
           // On a first visit the toggles have to follow the mode, otherwise the
           // panel claims "masks the ID number" while the box is unticked.
           if (!hadStoredPrefs) applyPrivacyPreset(store.ui.privacy);
+          document.documentElement.classList.toggle("side-hidden", !!store.ui.sideHidden);
           syncControls();
           applyI18n();
           wireControls();

@@ -113,9 +113,14 @@ func runAgentMode(ctx context.Context, configPath string, managed bool) {
 		}
 		return discovery.Open(path, instance, managed)
 	}
+	// One status cache for the whole process: the broadcast pump keeps the
+	// newest reader list in it, and /api/readers serves that to the settings
+	// page. Listener generations come and go; the cache survives them.
+	statusCache := &server.StatusCache{}
 	runtimeSettings.serverConfig = func(next config.Config) server.ServerConfig {
 		result := serverCfg(next, configPath, broadcast, command, nil)
 		result.InstanceID = instance
+		result.Status = statusCache
 		result.ApplySettings = runtimeSettings.apply
 		return result
 	}

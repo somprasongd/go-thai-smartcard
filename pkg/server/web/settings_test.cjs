@@ -16,13 +16,22 @@ async function scenario(response, status = 200, alreadyRevealed = false) {
   const element = id => {
     if (!elements.has(id)) elements.set(id, {
       value: '', checked: false, hidden: true, textContent: '', listeners: {},
-      addEventListener(type, callback) { this.listeners[type] = callback; }
+      childNodes: [],
+      addEventListener(type, callback) { this.listeners[type] = callback; },
+      appendChild(child) { this.childNodes.push(child); },
+      querySelectorAll: () => []
     });
     return elements.get(id);
   };
   const navigations = [];
   const context = {
-    document: { getElementById: element }, URL,
+    document: {
+      getElementById: element,
+      documentElement: { setAttribute: () => {}, classList: { toggle: () => {}, add: () => {}, remove: () => {} } },
+      querySelectorAll: () => [],
+      // loadReaders builds <option>s for the reader dropdown.
+      createElement: tag => ({ tag, value: '', textContent: '' })
+    }, URL,
     window: { location: { origin: 'http://127.0.0.1:9898', assign: url => navigations.push(url) }, confirm: () => true },
     navigator: { clipboard: { writeText: async () => {} } },
     fetch: async (_url, options) => options ? {
@@ -64,13 +73,21 @@ async function scenario(response, status = 200, alreadyRevealed = false) {
     const element = id => {
       if (!elements.has(id)) elements.set(id, {
         value: '', checked: false, hidden: true, textContent: '', listeners: {},
-        addEventListener(type, callback) { this.listeners[type] = callback; }
+        childNodes: [],
+        addEventListener(type, callback) { this.listeners[type] = callback; },
+        appendChild(child) { this.childNodes.push(child); },
+        querySelectorAll: () => []
       });
       return elements.get(id);
     };
     const sent = [];
     const context = {
-      document: { getElementById: element }, URL,
+      document: {
+        getElementById: element,
+        documentElement: { setAttribute: () => {}, classList: { toggle: () => {}, add: () => {}, remove: () => {} } },
+        querySelectorAll: () => [],
+        createElement: tag => ({ tag, value: '', textContent: '' })
+      }, URL,
       window: { location: { origin: 'http://127.0.0.1:9898', assign: () => {} }, confirm: () => true },
       navigator: { clipboard: { writeText: async () => {} } },
       fetch: async (_url, options) => options

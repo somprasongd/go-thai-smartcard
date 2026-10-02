@@ -7,8 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The interface language moved to a ไทย/EN toggle in both pages' app bar, and
+  both pages follow it — /settings now speaks one language instead of
+  printing Thai and English on every line. The Language segment on the card
+  page keeps its three options but now means the card data only: which
+  fields the read shows (Thai, English, or both), independent of the
+  interface. A preference saved by an older build migrates — "both" becomes
+  a Thai interface with the card still showing both names; th and en stay
+  as they were.
+- Both pages' shell carries a sidebar toggle: a small button at the
+  sidebar's top right hides it — the same icon then appears at the app bar's
+  left edge to bring it back — and the choice persists with the rest of the
+  preferences, across both pages.
+- The laser ID is displayed the way the card prints it — `AA0-0000000-00` —
+  in the card page's data block and the table view. The payload keeps the raw
+  value.
+- The settings form is quieter and easier to save: the long paragraphs under
+  each field moved into ⓘ tooltips (hover, focus or tap), and live warnings
+  such as the wildcard-origin one stay inline. The reader is a dropdown fed
+  by `/api/readers` with a refresh button and "all readers" as the default;
+  a saved reader that is not attached right now stays selectable — the
+  setting never changes silently — but is labelled "not attached" with a
+  note under the field. The page header lost its redundant "Settings" label
+  and the sidebar its config.toml note.
+- Both bundled pages were redesigned into a light admin console: a white app
+  bar (with a GitHub repository link at its right) and a sidebar menu — page
+  navigation on top, then the display, privacy and reader controls grouped
+  beneath it — sit over a quiet mint-gray desk with a single accent, the deep
+  green of the Thai ID card itself. The card data still renders as the paper
+  document with the gold identity band, and it stays the one loud object; the
+  event log keeps to a rail beside the card and table views — sticky while
+  the page scrolls, so a read answers "what just happened" without scrolling
+  away — and the rail collapses when the log is switched off or the window
+  is narrow. On phones the sidebar unpacks so the order becomes navigation,
+  card, controls. The empty state draws the reader slot with a card waiting
+  above it. No behaviour changes: every control, state and page script test
+  is the same.
+
 ### Added
 
+- `GET /api/readers` — the reader list as of the newest status broadcast,
+  loopback-only like the other `/api` routes. The agent's read loop publishes
+  the list on the card sockets only, so the broadcast pump now keeps the
+  latest one in a cache that survives listener restarts. The settings page
+  uses it for the reader dropdown below.
 - An "Expose to network" checkbox on /settings in place of the raw `listen`
   field, in the shape of Ollama's switch. The free text invited values whose
   exposure was hard to predict — `localhost` and `127.0.0.1` mean the same
@@ -59,6 +103,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The "not reading this" hints on the card page no longer send people to
+  `SMC_SHOW_LASER` / `SMC_SHOW_NHSO` environment variables the agent stopped
+  reading versions ago. The laser, NHSO and face-photo hints now name the
+  matching toggle and link it to /settings, where the card read switches live;
+  card options apply on the next insert, so no restart is mentioned either.
 - A card that macOS CryptoTokenKit was holding no longer blocks the read
   until the card is pulled and re-seated. The session was opened exclusive,
   which PC/SC refuses the moment any other handle exists — and CryptoTokenKit
