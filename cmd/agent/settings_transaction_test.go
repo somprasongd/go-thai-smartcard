@@ -70,6 +70,14 @@ func coordinatorFixture(t *testing.T) (*settingsCoordinator, string, chan model.
 
 func TestSettingsPortMigrationReturnsCompleteResponseAndBroadcasts(t *testing.T) {
 	c, path, broadcast := coordinatorFixture(t)
+	command := make(chan model.Command, 1)
+	buildConfig := c.serverConfig
+	c.serverConfig = func(next config.Config) server.ServerConfig {
+		cfg := buildConfig(next)
+		cfg.Command = command
+		return cfg
+	}
+
 	old := c.manager.PlainAddr()
 	oldSocket, _, err := websocket.DefaultDialer.Dial("ws://"+old+"/ws", nil)
 	if err != nil {
@@ -115,6 +123,17 @@ func TestSettingsPortMigrationReturnsCompleteResponseAndBroadcasts(t *testing.T)
 		t.Fatal(err)
 	}
 	defer conn.Close()
+	// Receiving a command proves the new handler registered its subscriber;
+	// the completed upgrade alone does not guarantee broadcast readiness.
+	if err := conn.WriteJSON(model.Command{Action: "get-status"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-command:
+	case <-time.After(time.Second):
+		t.Fatal("migrated websocket handler was not ready")
+	}
+
 	msg := model.Message{Event: "smc-status", Payload: map[string]any{"state": model.StateCardPresent}}
 	select {
 	case broadcast <- msg:
