@@ -37,6 +37,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `service status` prints a readable state (`running` / `stopped`) instead of
   the underlying library's raw number.
 
+### Removed
+
+- **Breaking:** `util.DecodeHex`. It had no callers left once the portrait
+  stopped going through a hex string, and it was a wrapper around
+  `encoding/hex`. A caller who used it replaces it with `hex.DecodeString` or
+  `hex.Decode`. This is a removal from the public API inside a patch release,
+  which does not meet the versioning policy in `AGENTS.md`; it is called out
+  here rather than left to be discovered, and if that policy matters to you,
+  say so and it moves to the next major.
+
 ## [4.0.1] - 2026-10-02
 
 A tray-only UI change: the icon stands alone in the macOS menu bar, and the
