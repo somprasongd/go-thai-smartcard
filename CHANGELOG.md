@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The laser ID is displayed the way the card prints it — `AA0-0000000-00` —
   in the card page's data block and the table view. The payload keeps the raw
   value.
+- The settings form is quieter and easier to save: the long paragraphs under
+  each field moved into ⓘ tooltips (hover, focus or tap), and live warnings
+  such as the wildcard-origin one stay inline. The reader is a dropdown fed
+  by `/api/readers` with a refresh button and "all readers" as the default;
+  a saved reader that is not attached right now stays selectable — the
+  setting never changes silently — but is labelled "not attached" with a
+  note under the field. The page header lost its redundant "Settings" label
+  and the sidebar its config.toml note.
 - Both bundled pages were redesigned into a light admin console: a white app
   bar (with a GitHub repository link at its right) and a sidebar menu — page
   navigation on top, then the display, privacy and reader controls grouped
@@ -28,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `GET /api/readers` — the reader list as of the newest status broadcast,
+  loopback-only like the other `/api` routes. The agent's read loop publishes
+  the list on the card sockets only, so the broadcast pump now keeps the
+  latest one in a cache that survives listener restarts. The settings page
+  uses it for the reader dropdown below.
 - An "Expose to network" checkbox on /settings in place of the raw `listen`
   field, in the shape of Ollama's switch. The free text invited values whose
   exposure was hard to predict — `localhost` and `127.0.0.1` mean the same

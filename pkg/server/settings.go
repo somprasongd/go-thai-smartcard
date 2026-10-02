@@ -129,6 +129,9 @@ type settingsAPI struct {
 	onChange      func(config.Config)
 	applySettings func(config.Config, string) (SettingsResult, error)
 	instanceID    string
+	// status is the broadcast-pump cache behind /api/readers. It may be nil,
+	// which leaves the endpoint answering an empty list.
+	status *StatusCache
 }
 
 // servedConfig is the config as a client sees it: everything but the token,
@@ -147,6 +150,33 @@ func (api *settingsAPI) serveInfo(w http.ResponseWriter, r *http.Request) {
 		"transports":  api.transports,
 		"tls":         api.tlsEnabled,
 		"instance_id": api.instanceID,
+	})
+}
+
+// serveReaders answers /api/readers with the reader list as of the newest
+// status broadcast. An agent that has not reported yet answers an empty list,
+// and the bundled page says so rather than pretending it asked the hardware.
+func (api *settingsAPI) serveReaders(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	readers := []string{}
+	selected, state := "", ""
+	if api.status != nil {
+		if st, ok := api.status.Snapshot(); ok {
+			if st.Readers != nil {
+				readers = st.Readers
+			}
+			selected = st.Selected
+			state = st.State
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"readers":  readers,
+		"selected": selected,
+		"state":    state,
 	})
 }
 

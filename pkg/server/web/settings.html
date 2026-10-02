@@ -155,12 +155,6 @@
       }
       .nav-item.is-active svg { color: var(--accent); }
 
-      .side-sec { padding: 16px 16px 4px; }
-      .side-sec + .side-sec { border-top: 1px solid var(--line-soft); margin-top: 12px; }
-      .side-label { margin: 0 0 8px; font-size: 12.5px; font-weight: 650; color: var(--fg); }
-      .side-note { margin: 0; color: var(--fg-faint); font-size: 12.5px; }
-      .side-note code { font-family: var(--mono); font-size: 11.5px; color: var(--accent-deep); }
-
       main {
         padding: 24px 28px 48px;
         width: 100%;
@@ -204,11 +198,66 @@
       input[type="text"] { width: 220px; }
       input[type="number"] { width: 110px; }
       textarea { width: 100%; resize: vertical; line-height: 1.6; }
-      input:focus, textarea:focus {
+      input:focus, textarea:focus, select:focus {
         outline: none;
         border-color: var(--accent);
         box-shadow: 0 0 0 3px rgba(12, 122, 91, 0.16);
       }
+      select {
+        background: var(--surface);
+        color: var(--fg);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 7px 10px;
+        font-family: var(--sans);
+        font-size: 14px;
+        max-width: 100%;
+      }
+      .reader-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .reader-line select { min-width: 260px; }
+
+      /* The ⓘ tip: the long explanation lives here instead of a paragraph
+         under every row. Keyboard users get it on focus, touch users on tap. */
+      .tipwrap { position: relative; display: inline-flex; }
+      .tip {
+        display: inline-grid;
+        place-items: center;
+        width: 17px;
+        height: 17px;
+        padding: 0;
+        border: 1px solid var(--line);
+        border-radius: 50%;
+        background: var(--surface-2);
+        color: var(--fg-dim);
+        font-family: var(--mono);
+        font-size: 10.5px;
+        font-weight: 600;
+        font-style: italic;
+        line-height: 1;
+        cursor: help;
+      }
+      .tip:hover, .tip:focus { border-color: var(--accent); color: var(--accent-deep); background: var(--accent-soft); }
+      .tipbox {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: -6px;
+        width: min(300px, 76vw);
+        background: #1d2b25;
+        color: #f2f6f4;
+        border-radius: 8px;
+        padding: 9px 12px;
+        font-size: 12.5px;
+        line-height: 1.55;
+        font-weight: 400;
+        text-align: left;
+        box-shadow: 0 12px 28px -12px rgba(13, 22, 18, 0.5);
+        opacity: 0;
+        transform: translateY(-2px);
+        pointer-events: none;
+        transition: opacity 0.12s, transform 0.12s;
+        z-index: 30;
+      }
+      .tip:hover + .tipbox, .tip:focus + .tipbox { opacity: 1; transform: none; }
       .checks { display: grid; gap: 7px; }
       .checks label { display: flex; gap: 8px; align-items: baseline; }
       input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; }
@@ -283,11 +332,11 @@
       }
       </style>
   </head>
-  <body>
+    <body>
     <header class="appbar">
       <a class="brand" href="/">
         <span class="brand-mark">SMC</span>
-        <span class="brand-name">Thai ID Card Agent <small>ตั้งค่า — Settings</small></span>
+        <span class="brand-name">Thai ID Card Agent</span>
       </a>
 
       <a
@@ -326,39 +375,44 @@
             <span>ตั้งค่า / Settings</span>
           </a>
         </nav>
-
-        <section class="side-sec">
-          <h3 class="side-label">config.toml</h3>
-          <p class="side-note">
-            ทุกค่าในหน้านี้เขียนลงไฟล์ config เดียวของ agent — ส่วนอื่นของระบบอ่านจากไฟล์นี้เท่านั้น
-          </p>
-        </section>
       </aside>
 
       <main>
         <div class="error" id="boot-error" hidden></div>
 
         <section id="sec-server">
-          <h2>Server <small>[server]</small></h2>
-          <p class="hint">
-            การแก้ค่า server จะย้าย listener ให้เอง หากเปิด port ใหม่ไม่ได้จะคงค่าเดิม / server changes apply without restarting the agent.
-          </p>
+          <h2>
+            Server <small>[server]</small>
+            <span class="tipwrap">
+              <button type="button" class="tip" aria-label="คำอธิบายหัวข้อ Server">i</button>
+              <span class="tipbox" role="tooltip">
+                การแก้ค่า server จะย้าย listener ให้เอง หากเปิด port ใหม่ไม่ได้จะคงค่าเดิม / server
+                changes apply without restarting the agent.
+              </span>
+            </span>
+          </h2>
           <div class="row" id="expose-row">
             <label>listen</label>
             <span class="checks" style="display: flex; gap: 16px">
               <label><input type="checkbox" id="expose" /> เปิดให้เครือข่ายเข้าถึง / Expose to network</label>
             </span>
-            <span class="hint">
-              เครื่องอื่นบนเครือข่ายเข้าถึง agent ได้ (listen = 0.0.0.0) — ต้องมี token ดูหัวข้อถัดไป /
-              other devices can reach the agent; a token is required, see below.
+            <span class="tipwrap">
+              <button type="button" class="tip" aria-label="คำอธิบาย expose">i</button>
+              <span class="tipbox" role="tooltip">
+                เครื่องอื่นบนเครือข่ายเข้าถึง agent ได้ (listen = 0.0.0.0) — ต้องมี token ดูหัวข้อถัดไป /
+                other devices can reach the agent; a token is required, see below.
+              </span>
             </span>
           </div>
           <div class="row" id="listen-row" hidden>
             <label for="listen">listen <small>(กำหนดเอง / custom)</small></label>
             <input type="text" id="listen" spellcheck="false" />
-            <span class="hint">
-              bind เฉพาะ interface ได้ เช่น 192.168.1.10 — ค่าอื่นที่ไม่ใช่ loopback ถือว่าเปิดเครือข่ายเช่นกัน /
-              a specific interface; anything beyond loopback counts as exposed too.
+            <span class="tipwrap">
+              <button type="button" class="tip" aria-label="คำอธิบาย listen แบบกำหนดเอง">i</button>
+              <span class="tipbox" role="tooltip">
+                bind เฉพาะ interface ได้ เช่น 192.168.1.10 — ค่าอื่นที่ไม่ใช่ loopback ถือว่าเปิดเครือข่ายเช่นกัน /
+                a specific interface; anything beyond loopback counts as exposed too.
+              </span>
             </span>
           </div>
           <div class="row">
@@ -374,8 +428,13 @@
           </div>
           <div class="row" style="display: block">
             <label for="origins">allowed_origins — หนึ่ง origin ต่อบรรทัด / one per line</label>
+            <span class="tipwrap" style="vertical-align: -3px">
+              <button type="button" class="tip" aria-label="คำอธิบาย allowed_origins">i</button>
+              <span class="tipbox" role="tooltip">
+                * อนุญาตทุก origin / <b>*</b> allows any origin.
+              </span>
+            </span>
             <textarea id="origins" rows="3" spellcheck="false"></textarea>
-            <p class="hint">* อนุญาตทุก origin / <b>*</b> allows any origin</p>
             <p class="warning" id="wildcard-warning" hidden>
               ⚠ ตอนนี้อนุญาตทุก origin: เว็บไซต์อื่นที่คุณเปิดก็อ่านบัตรได้ / any site you visit can read the card.
             </p>
@@ -385,12 +444,17 @@
         <!-- A loopback token is inert: the guard enforces it only beyond
              loopback, so the whole section hides until exposure is on. -->
         <section id="token-section" hidden>
-          <h2>Socket token <small>[server] token</small></h2>
-          <p class="hint">
-            ต้องมีเมื่อเปิดให้เครือข่ายภายนอกเข้าถึง / required when the agent listens beyond localhost.
-            ส่งผ่าน <code>?token=</code> บน URL ของ socket หรือ <code>Authorization: Bearer</code> —
-            โชว์ครั้งเดียวตอนสร้าง / shown once when generated.
-          </p>
+          <h2>
+            Socket token <small>[server] token</small>
+            <span class="tipwrap">
+              <button type="button" class="tip" aria-label="คำอธิบาย socket token">i</button>
+              <span class="tipbox" role="tooltip">
+                ต้องมีเมื่อเปิดให้เครือข่ายภายนอกเข้าถึง / required when the agent listens beyond localhost.
+                ส่งผ่าน ?token= บน URL ของ socket หรือ Authorization: Bearer — โชว์ครั้งเดียวตอนสร้าง / shown
+                once when generated.
+              </span>
+            </span>
+          </h2>
           <div class="row">
             <span>สถานะ / status:</span>
             <span id="token-state" class="note"></span>
@@ -406,26 +470,45 @@
         </section>
 
         <section id="sec-card">
-          <h2>Card <small>[card]</small></h2>
-          <p class="hint">มีผลตั้งแต่บัตรใบถัดไป / applies on the next card insert — ไม่ต้องรีสตาร์ท</p>
+          <h2>
+            Card <small>[card]</small>
+            <span class="tipwrap">
+              <button type="button" class="tip" aria-label="คำอธิบายหัวข้อ Card">i</button>
+              <span class="tipbox" role="tooltip">
+                มีผลตั้งแต่บัตรใบถัดไป / applies on the next card insert — ไม่ต้องรีสตาร์ท / no restart needed.
+              </span>
+            </span>
+          </h2>
           <div class="checks">
             <label><input type="checkbox" id="c-face" /> อ่านรูปหน้า / read face image</label>
             <label><input type="checkbox" id="c-laser" /> อ่านเลขหลังบัตร / read laser ID</label>
             <label><input type="checkbox" id="c-nhso" /> อ่านสิทธิการรักษา / read NHSO entitlement</label>
           </div>
-          <div class="row" style="margin-top: 10px">
-            <label for="reader">reader</label>
-            <input type="text" id="reader" spellcheck="false" />
-            <span class="hint">เว้นว่าง = ทุกเครื่องอ่าน / empty watches every reader</span>
+          <div class="row" style="display: block">
+            <div class="reader-line">
+              <label for="reader">reader</label>
+              <!-- The list is the newest reader status the agent broadcast;
+                   a saved reader that is not attached stays selectable so the
+                   setting never changes silently, labelled as unavailable. -->
+              <select id="reader" spellcheck="false"></select>
+              <button class="secondary" id="btn-reader-refresh" type="button">รีเฟรช / refresh</button>
+            </div>
+            <p class="note" id="reader-status"></p>
           </div>
         </section>
 
         <section id="sec-tls">
-          <h2>TLS <small>[tls]</small></h2>
-          <p class="hint">
-            จำเป็นเมื่อหน้าเว็บภายนอกเป็น https แล้วคุยกับ agent / needed when an https page talks to the agent.
-            ใบรับรองต้องเชื่อถือได้โดยเครื่องที่รันเบราว์เซอร์ / the certificate must be trusted by the machine running the browser.
-          </p>
+          <h2>
+            TLS <small>[tls]</small>
+            <span class="tipwrap">
+              <button type="button" class="tip" aria-label="คำอธิบายหัวข้อ TLS">i</button>
+              <span class="tipbox" role="tooltip">
+                จำเป็นเมื่อหน้าเว็บภายนอกเป็น https แล้วคุยกับ agent / needed when an https page talks to the
+                agent. ใบรับรองต้องเชื่อถือได้โดยเครื่องที่รันเบราว์เซอร์ / the certificate must be trusted by
+                the machine running the browser.
+              </span>
+            </span>
+          </h2>
           <div class="checks">
             <label><input type="checkbox" id="tls-enabled" /> เปิด HTTPS / enable</label>
           </div>
@@ -444,16 +527,19 @@
         </section>
 
         <div class="savebar">
-          <p class="warning">
-            การบันทึกเขียน config.toml ใหม่ทั้งไฟล์: comment ที่เพิ่มเองจะหาย / saving rewrites
-            config.toml from a template — comments added by hand are lost.
-            การแก้ไฟล์เองมีผลหลังรีสตาร์ท / hand edits take effect after a restart.
-          </p>
           <div class="actions">
             <button id="btn-save">บันทึก / save</button>
             <button class="secondary" id="btn-reload" hidden>โหลดใหม่ / reload</button>
             <span id="save-status"></span>
-			<span id="endpoint-moved" hidden>คัดลอก token ก่อนย้ายหน้า / copy the token before moving:
+            <span class="tipwrap">
+              <button type="button" class="tip" aria-label="เกี่ยวกับการบันทึก">i</button>
+              <span class="tipbox" role="tooltip">
+                การบันทึกเขียน config.toml ใหม่ทั้งไฟล์: comment ที่เพิ่มเองจะหาย / saving rewrites
+                config.toml from a template — comments added by hand are lost. การแก้ไฟล์เองมีผลหลังรีสตาร์ท /
+                hand edits take effect after a restart.
+              </span>
+            </span>
+            <span id="endpoint-moved" hidden>คัดลอก token ก่อนย้ายหน้า / copy the token before moving:
               <a id="endpoint-link">เปิด Settings ใหม่ / open new Settings</a>
             </span>
           </div>
@@ -465,7 +551,7 @@
       (function () {
         "use strict";
 
-        var state = { version: "", tokenSet: false };
+        var state = { version: "", tokenSet: false, reader: "" };
 
         function $(id) {
           return document.getElementById(id);
@@ -527,6 +613,7 @@
           $("c-laser").checked = config.card.read_laser_id;
           $("c-nhso").checked = config.card.read_nhso;
           $("reader").value = config.card.reader;
+          state.reader = config.card.reader;
           $("tls-enabled").checked = config.tls.enabled;
           $("tls-port").value = config.tls.port;
           $("tls-cert").value = config.tls.cert_file;
@@ -594,6 +681,55 @@
           showTokenSet();
         }
 
+        // The reader list is the newest reader status the agent broadcast
+        // (GET /api/readers); the settings page has no card socket of its
+        // own. A saved reader that is not in the list stays selectable —
+        // dropping it would make the setting change silently — but it is
+        // labelled and the note says it is not attached right now.
+        function readerOption(value, label) {
+          var o = document.createElement("option");
+          o.value = value;
+          o.textContent = label;
+          return o;
+        }
+
+        async function loadReaders() {
+          var sel = $("reader");
+          var status = $("reader-status");
+          var current = sel.value || state.reader || "";
+          var readers = null; // null: the agent did not answer
+          try {
+            var res = await fetch("/api/readers");
+            if (res.ok) {
+              readers = (await res.json()).readers || [];
+            }
+          } catch (e) {}
+          var names = readers || [];
+          sel.textContent = "";
+          sel.appendChild(readerOption("", "ทุกเครื่องอ่าน / all readers"));
+          names.forEach(function (n) {
+            sel.appendChild(readerOption(n, n));
+          });
+          var missing = current !== "" && names.indexOf(current) === -1;
+          if (missing) {
+            sel.appendChild(readerOption(current, current + " — ไม่พบ / not attached"));
+          }
+          sel.value = current;
+          if (readers === null) {
+            status.textContent = "ยังไม่ทราบรายชื่อ — agent ยังไม่เคยรายงานสถานะ / no reader report yet";
+            status.className = "note";
+          } else if (missing) {
+            status.textContent = "เครื่องอ่านที่บันทึกไว้ไม่อยู่ในรายการ — เสียบตัวเดิมหรือเลือกใหม่ / the saved reader is not attached";
+            status.className = "warning";
+          } else if (names.length === 0) {
+            status.textContent = "ไม่พบเครื่องอ่าน — เสียบแล้วกดรีเฟรช / none attached, plug one in and refresh";
+            status.className = "note";
+          } else {
+            status.textContent = "พบ " + names.length + " เครื่องอ่าน / found";
+            status.className = "note";
+          }
+        }
+
         async function load() {
           try {
             var res = await fetch("/api/settings");
@@ -604,6 +740,7 @@
             var data = await res.json();
             state.version = data.version;
             fill(data.config, data.token_set);
+            loadReaders();
           } catch (e) {
             bootError("ติดต่อ agent ไม่ได้ / cannot reach the agent: " + e);
           }
@@ -673,6 +810,7 @@
         $("origins").addEventListener("input", syncWarnings);
         $("expose").addEventListener("change", syncTokenSection);
         $("listen").addEventListener("input", syncTokenSection);
+        $("btn-reader-refresh").addEventListener("click", loadReaders);
 
         load();
       })();
