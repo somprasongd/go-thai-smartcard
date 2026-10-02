@@ -7,13 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.2] - 2026-10-02
+
 ### Fixed
 
+- The portrait lost bytes and sometimes came back truncated. Every field went
+  through one read path that ended in `strings.TrimSpace`, which is right for a
+  fixed width text field and wrong for a JPEG: a `0x20` is ordinary data inside
+  the image, and trimming it misaligned every byte after it. A chunk that was
+  nothing but `0x20` came back empty, which the face image reader took as the
+  end of the image and stopped reading there ([#2](https://github.com/somprasongd/go-thai-smartcard/issues/2)).
 - The Windows uninstaller tried to `net stop` a tray service that does not
   exist; it now force-closes the tray process.
 
 ### Changed
 
+- `reader.payload` is the new binary-safe half of the read path: it performs the
+  exchange and returns the card's bytes with the status word stripped,
+  interpreting nothing. `readData`, `readDataThai` and `readLaserData` are thin
+  wrappers over it and keep trimming exactly as before, so text fields are
+  unaffected. `ReadFaceImage` is now the first caller, and no longer routes the
+  portrait through a hex string and back.
+- The portrait is cut at its JPEG end-of-image marker. The card pads the last
+  chunk out to the chunk width, so the payload runs past the end of the image;
+  cutting at `FFD9` removes that padding without having to guess which byte the
+  card pads with — the laser code, for one, is padded with NUL rather than
+  spaces — and it also ends the image early on a card that used fewer chunks than
+  were asked for. Output is unchanged for a card whose padding is all at the end.
 - `service status` prints a readable state (`running` / `stopped`) instead of
   the underlying library's raw number.
 

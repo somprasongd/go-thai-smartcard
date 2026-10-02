@@ -58,7 +58,11 @@ func (r *reader) readData(cmd []byte) (string, error) {
 	if len(cmd) == 0 {
 		return "", errors.New("readData: empty apdu")
 	}
-	return r.read(cmd, cmd[len(cmd)-1], false, false)
+	payload, err := r.payload(cmd, cmd[len(cmd)-1])
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(payload)), nil
 }
 
 // readDataThai reads a TIS-620 encoded field and converts it to UTF-8.
@@ -66,7 +70,11 @@ func (r *reader) readDataThai(cmd []byte) (string, error) {
 	if len(cmd) == 0 {
 		return "", errors.New("readDataThai: empty apdu")
 	}
-	return r.read(cmd, cmd[len(cmd)-1], true, false)
+	payload, err := r.payload(cmd, cmd[len(cmd)-1])
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(tis620.ToUTF8(payload))), nil
 }
 
 // readLaserData reads the laser code, which has its own GET RESPONSE length
@@ -75,38 +83,41 @@ func (r *reader) readLaserData(cmd []byte) (string, error) {
 	if len(cmd) == 0 {
 		return "", errors.New("readLaserData: empty apdu")
 	}
-	return r.read(cmd, laserGetResponseLen, false, true)
-}
-
-// read performs the two step exchange the applet uses: request the field, then
-// fetch the payload with GET RESPONSE.
-func (r *reader) read(cmd []byte, getResponseLen byte, isThai, isLaser bool) (string, error) {
-	if err := r.status(); err != nil {
+	payload, err := r.payload(cmd, laserGetResponseLen)
+	if err != nil {
 		return "", err
 	}
+	return strings.TrimSpace(string(bytes.Trim(payload, "\x00"))), nil
+}
+
+// payload performs the two step exchange the applet uses — request the field,
+// then fetch it with GET RESPONSE — and returns the bytes the card sent, minus
+// the status word.
+//
+// It interprets nothing. The text readers above trim what a human would call
+// padding, which is right for a fixed width text field and wrong for anything
+// binary: a 0x20 is an ordinary data byte in a JPEG, and trimming it misaligns
+// every byte that follows. A payload that happens to be all whitespace would
+// even come back empty, which the face image reader takes as end of image.
+func (r *reader) payload(cmd []byte, getResponseLen byte) ([]byte, error) {
+	if err := r.status(); err != nil {
+		return nil, err
+	}
 	if _, err := r.card.Transmit(cmd); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	rsp, err := r.card.Transmit(r.getResponseAPDU(getResponseLen))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	// A successful response always carries SW1/SW2. A shorter one is a
 	// protocol violation, not an empty field, and used to panic here.
 	if len(rsp) < statusWordLength {
-		return "", fmt.Errorf("read: response too short (%d bytes, want at least %d)", len(rsp), statusWordLength)
+		return nil, fmt.Errorf("read: response too short (%d bytes, want at least %d)", len(rsp), statusWordLength)
 	}
-	payload := rsp[:len(rsp)-statusWordLength]
-
-	if isThai {
-		payload = tis620.ToUTF8(payload)
-	}
-	if isLaser {
-		payload = bytes.Trim(payload, "\x00")
-	}
-	return strings.TrimSpace(string(payload)), nil
+	return rsp[:len(rsp)-statusWordLength], nil
 }
 
 // getResponseAPDU builds 00 C0 00 <p2> <le> into a fresh slice. Copying rather

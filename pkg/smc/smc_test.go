@@ -1,7 +1,9 @@
 package smc_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"os"
@@ -278,6 +280,97 @@ func TestReadPersonalWithFaceImage(t *testing.T) {
 	}
 	if !strings.HasPrefix(data.Personal.FaceImage, chunkB64) {
 		t.Errorf("FaceImage = %q, want it to start with %q", data.Personal.FaceImage, chunkB64)
+	}
+}
+
+// imageChunksWhitespace carries a portrait that puts whitespace exactly where
+// the old text read path trimmed it: one chunk ends on a 0x20, the next starts
+// on one, and the one after is nothing but 0x20. The image ends at FFD9, which
+// is followed by the padding the card adds to fill the chunk, and then by a
+// chunk the card never really sent.
+//
+// Under strings.TrimSpace the trailing byte of the first chunk and the leading
+// byte of the second are eaten, which misaligns everything after them, and the
+// all-space chunk comes back empty, which ReadFaceImage takes as the end of the
+// image. The result no longer decodes.
+var imageChunksWhitespace = []string{
+	"ffd8aabb",   // start of image
+	"ccdd20",     // ends on a space that is data
+	"2020ee",     // starts on a space that is data
+	"202020",     // entirely spaces, and still inside the image
+	"1122ffd9",   // end of image
+	"20202020",   // padding the card adds to fill out the chunk
+	"9999999999", // past the end of the image
+}
+
+// imageWhitespace is the portrait those chunks carry: everything up to and
+// including FFD9, with the padding and the chunk past it left out.
+const imageWhitespace = "ffd8aabbccdd202020ee2020201122ffd9"
+
+// faceImageTrace emits a personal read whose face image chunks are the given
+// ones. Any chunk beyond the list returns a single 00, standing in for a card
+// that has already finished sending and pads the remaining chunks.
+func faceImageTrace(chunks ...string) *transport.Trace {
+	b := newTraceBuilder()
+	b.selectApplet(apdu.PersonalCMD.Select)
+	b.readField(apdu.PersonalCMD.Cid, payloadCID)
+	b.readField(apdu.PersonalCMD.NameThai, payloadNameThai)
+	b.readField(apdu.PersonalCMD.NameEng, payloadNameEng)
+	b.readField(apdu.PersonalCMD.Dob, payloadDob)
+	b.readField(apdu.PersonalCMD.Gender, payloadGender)
+	b.readField(apdu.PersonalCMD.CardIssuer, payloadIssuer)
+	b.readField(apdu.PersonalCMD.IssueDate, payloadIssueDate)
+	b.readField(apdu.PersonalCMD.ExpireDate, payloadExpireDate)
+	b.readField(apdu.PersonalCMD.Address, payloadAddress)
+	for i, cmd := range apdu.PersonalCMD.FaceImage {
+		chunk := "00"
+		if i < len(chunks) {
+			chunk = chunks[i]
+		}
+		b.readField(cmd, chunk)
+	}
+	return b.trace
+}
+
+// TestReadFaceImageKeepsWhitespaceBytes is the regression test for the portrait
+// losing bytes: every 0x20 that is part of the image has to survive, and only
+// the padding after the end of image may be dropped.
+func TestReadFaceImageKeepsWhitespaceBytes(t *testing.T) {
+	reader, _ := newTestReader(t, faceImageTrace(imageChunksWhitespace...))
+
+	data, err := reader.Read(nil, &smc.Options{ShowFaceImage: true})
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	got, err := base64.StdEncoding.DecodeString(data.Personal.FaceImage)
+	if err != nil {
+		t.Fatalf("FaceImage is not valid base64: %v", err)
+	}
+	want := mustDecodeHex(imageWhitespace)
+	if !bytes.Equal(got, want) {
+		t.Errorf("FaceImage = %x\n want  %x", got, want)
+	}
+}
+
+// TestReadFaceImageStopsAtEndOfImage covers a card that sends fewer chunks than
+// the library asks for. The image ends partway through, and the chunk after it
+// carries data as well as padding: neither may reach the result. A read that
+// merely trimmed trailing whitespace would swallow the padding, keep the data
+// and carry on, so the two are told apart by that byte.
+func TestReadFaceImageStopsAtEndOfImage(t *testing.T) {
+	reader, _ := newTestReader(t, faceImageTrace("ffd8aabb", "ccddffd9", "ee20"))
+
+	data, err := reader.Read(nil, &smc.Options{ShowFaceImage: true})
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	got, err := base64.StdEncoding.DecodeString(data.Personal.FaceImage)
+	if err != nil {
+		t.Fatalf("FaceImage is not valid base64: %v", err)
+	}
+	want := mustDecodeHex("ffd8aabbccddffd9")
+	if !bytes.Equal(got, want) {
+		t.Errorf("FaceImage = %x, want %x", got, want)
 	}
 }
 
@@ -632,8 +725,20 @@ func TestReadFromRecordedTrace(t *testing.T) {
 	if data.Personal.Address.Province == "" {
 		t.Error("province is empty")
 	}
+	// Decode the portrait rather than only checking that it is non-empty: a
+	// portrait that lost a byte is still a non-empty string. The recorded card
+	// pads the last chunk with 0x20, so a read that is merely too eager about
+	// trimming shows up as a missing EOI marker here.
 	if data.Personal.FaceImage == "" {
 		t.Error("face image is empty")
+	} else if raw, err := base64.StdEncoding.DecodeString(data.Personal.FaceImage); err != nil {
+		t.Errorf("face image is not valid base64: %v", err)
+	} else if len(raw) < 2 {
+		t.Errorf("face image is %d bytes, too short to be a JPEG", len(raw))
+	} else if !bytes.HasPrefix(raw, []byte{0xff, 0xd8}) {
+		t.Errorf("face image starts with % x, want the JPEG SOI marker ff d8", raw[:2])
+	} else if !bytes.HasSuffix(raw, []byte{0xff, 0xd9}) {
+		t.Errorf("face image ends with % x, want the JPEG EOI marker ff d9", raw[len(raw)-2:])
 	}
 
 	if withLaser {
