@@ -1529,8 +1529,11 @@
         // anyone can walk up to, a readable face is the bigger exposure. Both
         // stay separate switches, so an operator who needs the face for a check
         // can turn just that one off.
+        // Kiosk clears the moment the card leaves: nothing on the screen is
+        // worth a stranger reading after the person has walked away. Operators
+        // who want a grace period pick one in the Auto-clear select.
         var PRIVACY = {
-          kiosk: { mask: true, maskphoto: true, photo: true, json: false, autoclear: 5, nameparts: false, parts: false },
+          kiosk: { mask: true, maskphoto: true, photo: true, json: false, autoclear: 0, nameparts: false, parts: false },
           dev: { mask: false, maskphoto: false, photo: true, json: true, autoclear: 0, nameparts: true, parts: true },
           counter: { mask: false, maskphoto: false, photo: true, json: false, autoclear: 0, nameparts: false, parts: false }
         };

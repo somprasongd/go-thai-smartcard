@@ -66,7 +66,7 @@ Three presets set the display switches together:
 
 | Preset | ID number | Portrait | Screen after removal | Type |
 | :----- | :-------- | :------- | :------------------- | :--- |
-| **kiosk** | masked | blurred | cleared after a few seconds | normal |
+| **kiosk** | masked | blurred | cleared the moment the card leaves | normal |
 | **dev** | shown | shown | kept | normal, raw payload open |
 | **counter** | shown | shown | kept | enlarged |
 
