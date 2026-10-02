@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Run PR/main test CI on Linux, macOS and Windows, with Node behavior tests,
+  wasm builds and native Linux/macOS race detection.
+
 - Edit log mode/retention in Settings, display disk usage and distinguish applied
   limits from configuration waiting for restart; preserve older clients.
 

@@ -2,7 +2,7 @@
 # GitHub Actions on GitHub-hosted runners — one workflow, one job per OS,
 # triggered by the release tags the manual release workflow pushes. CI adds
 # packages to the hand-cut GitHub release; it never cuts a release, and it
-# does not run tests: the gate for a PR stays local (AGENTS.md).
+# does not run tests: test.yml handles PR/main verification (AGENTS.md).
 
 name: package
 

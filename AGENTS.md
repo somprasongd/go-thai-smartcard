@@ -115,12 +115,15 @@ file, or the whole module stops building there.
   commit only. A change too large for one PR uses an integration branch (the
   v3 work uses `v3`, see `docs/plan/`): each PR targets it, and it merges into
   `main` once, so `main` never holds half of a breaking change
-- There is no CI yet, so this is the gate to run locally before a PR — or
+- Test CI runs on PRs and main on Linux, macOS and Windows. Keep this local gate
+  before a PR — or
   `make check`, which wraps it including the wasm build:
   `go build ./... && go test ./... && go vet ./... && test -z "$(gofmt -l .)"`,
   plus `go test -race ./pkg/server/` when you touch the server
-- There is no test CI, and the gate for a PR stays local (above). The one
-  workflow (`.github/workflows/package.yml`) is packaging only: triggered by a
+- `.github/workflows/test.yml` runs build/tests/vet/format, Node behavior tests
+  and wasm on all three OSes, plus race checks on Linux/macOS. It uses synthetic
+  reader tests, not physical hardware. Merge only after the exact PR revision
+  passes. `.github/workflows/package.yml` remains packaging only: triggered by a
   pushed release tag, one job per OS on hosted runners, attaching the packages
   to the hand-cut GitHub release. It never cuts a release and never runs tests
 - Commit messages in this repo are short, lowercase and imperative, without
@@ -134,7 +137,8 @@ file, or the whole module stops building there.
 Order matters: **changelog → commit → tag → release**. Tag the commit that
 already contains the versioned changelog, so the tag always describes the whole
 release and never points at a commit whose changelog still reads `[Unreleased]`.
-There is no CI, so every step is run by hand and each one has to be checked.
+Release steps remain manual. Verify the intended revision in test CI before
+tagging, then check the packaging workflow and uploaded assets.
 
 ### 1. Pick the version
 

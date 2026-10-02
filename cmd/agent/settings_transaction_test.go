@@ -180,11 +180,9 @@ func TestSettingsFailuresPreserveConfigEndpointAndRuntime(t *testing.T) {
 				c.path = filepath.Join(c.path, "not-a-directory")
 				version = ""
 			case "endpoint-prepare":
-				runtimeDir := filepath.Dir(path)
-				if err := os.Rename(runtimeDir, runtimeDir+".moved"); err != nil {
-					t.Fatal(err)
+				c.preparePublication = func(*discovery.Publisher, string) (*discovery.Publication, error) {
+					return nil, errors.New("injected endpoint prepare failure")
 				}
-				defer os.Rename(runtimeDir+".moved", runtimeDir)
 			}
 			if result, err := c.apply(next, version); err == nil {
 				if result.AfterResponse != nil {
@@ -201,7 +199,7 @@ func TestSettingsFailuresPreserveConfigEndpointAndRuntime(t *testing.T) {
 					t.Fatal("failed save changed config bytes")
 				}
 			}
-			if kind != "endpoint-prepare" {
+			{
 				raw, _ := os.ReadFile(path)
 				if !bytes.Equal(raw, endpoint) {
 					t.Fatal("failed save changed endpoint")

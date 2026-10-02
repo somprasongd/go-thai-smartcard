@@ -741,3 +741,11 @@ and cut the release from that section. The tags differ only by their
 changelog commits, because the code lands on `main` together.
 
 Option 3 needs no commands: PR #11 stays open for review.
+
+## Revision 2026-10-02: PR test CI
+
+Decision 20 is extended by user approval: test.yml runs on PRs to main and main
+pushes, with native Linux/macOS/Windows gates, Node tests and wasm. Race checks
+run on Linux/macOS. package.yml still builds and attaches packages on release
+tags. The earlier local-only test gate is superseded; physical-reader/service
+installation and reboot proof remain separate from test CI.

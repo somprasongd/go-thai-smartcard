@@ -908,3 +908,12 @@ exported by an old Makefile but never read by the agent.)
 สนับสนุนได้ผ่านทาง Promptpay
 
 <img src="https://bit.ly/3gusiz8">
+
+### Automated verification
+
+PRs targeting main and pushes to main run `.github/workflows/test.yml` on Linux,
+macOS and Windows: native build/unit tests/vet/format, Node page behavior tests
+and wasm builds. Linux/macOS additionally run race checks. Tests use fake readers;
+physical-card and installer/reboot acceptance remain separate. Local `make check`
+remains useful before pushing. The release-tag workflow builds installers only;
+release after verification of the intended commit, then verify its package jobs.

@@ -1,0 +1,64 @@
+name: test
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install Linux native dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libpcsclite-dev libayatana-appindicator3-dev libgtk-3-dev
+      - name: Use native Windows bindings
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo 'CGO_ENABLED=0' >> "$GITHUB_ENV"
+      - name: Build, tests, vet and formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          go build ./...
+          go test ./...
+          go vet ./...
+          unformattedFiles="$(gofmt -l .)"
+          if [ -n "$unformattedFiles" ]; then
+            printf '%s\n' "$unformattedFiles"
+            exit 1
+          fi
+          node pkg/server/web/settings_test.cjs
+          node pkg/server/web/index_test.cjs
+      - name: Windows atomic replacement stress
+        if: runner.os == 'Windows'
+        run: go test ./internal/atomicfile/ -run TestReadersNeverSeePartialReplacement -count=10
+      - name: Race detector
+        if: runner.os != 'Windows'
+        run: go test -race ./pkg/server/ ./cmd/tray/ ./cmd/agent/ ./pkg/smc/ ./pkg/ctl/
+      - name: WebAssembly build
+        shell: bash
+        run: |
+          GOOS=js GOARCH=wasm go build ./pkg/smc/
+          GOOS=js GOARCH=wasm go build -o bin/agent-ci.wasm ./cmd/agent
