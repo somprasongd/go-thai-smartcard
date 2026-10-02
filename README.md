@@ -572,9 +572,12 @@ pm2 save
 
 ## Tray
 
-`thai-smartcard-tray` is an optional menu-bar / system-tray app: the reader and
-card state, shortcuts to the test and settings pages, the "expose to network"
-toggle, and the read image / laser ID / NHSO switches. It is a **thin client**
+`thai-smartcard-tray` is an optional menu-bar / system-tray app: the icon
+stands alone in the menu bar, and the menu holds the reader and card state,
+shortcuts to the test and settings pages, and the "expose to network" toggle.
+The read image / laser ID / NHSO switches are not in the menu — what the agent
+reads is configuration with one source of truth, changed in
+[settings](#settings). It is a **thin client**
 of the agent's `/api` — it never touches the config file and never starts the
 agent. When it cannot reach the agent it shows "agent is not running" with the
 command to start it for your platform, and keeps polling.
