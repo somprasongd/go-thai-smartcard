@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The interface language moved to a ไทย/EN toggle in both pages' app bar, and
+  both pages follow it — /settings now speaks one language instead of
+  printing Thai and English on every line. The Language segment on the card
+  page keeps its three options but now means the card data only: which
+  fields the read shows (Thai, English, or both), independent of the
+  interface. A preference saved by an older build migrates — "both" becomes
+  a Thai interface with the card still showing both names; th and en stay
+  as they were.
 - The laser ID is displayed the way the card prints it — `AA0-0000000-00` —
   in the card page's data block and the table view. The payload keeps the raw
   value.

@@ -225,6 +225,19 @@
         border-color: var(--line);
       }
 
+      /* The app bar's interface-language toggle: a compact seg. */
+      .langseg {
+        grid-auto-columns: auto;
+        padding: 2px;
+        border-radius: 8px;
+      }
+
+      .langseg button {
+        font-size: 12px;
+        padding: 3px 10px;
+        border-radius: 6px;
+      }
+
       /* ------------------------------ shell ------------------------------ */
       .shell {
         display: grid;
@@ -1186,6 +1199,11 @@
         </span>
       </div>
 
+      <div class="seg langseg" id="seg-uilang" role="group" aria-label="ภาษาหน้าจอ / Interface language">
+        <button type="button" data-v="th">ไทย</button>
+        <button type="button" data-v="en">EN</button>
+      </div>
+
       <a
         class="iconbtn"
         href="https://github.com/somprasongd/go-thai-smartcard"
@@ -1440,7 +1458,7 @@
             "opt.display": "การแสดงผล",
             "opt.privacy": "โหมด",
             "opt.view": "มุมมอง",
-            "opt.lang": "ภาษา",
+            "opt.lang": "ภาษาข้อมูลบัตร",
             "opt.toggles": "แสดง",
             "opt.privacy2": "ความเป็นส่วนตัว",
             "opt.photo": "รูปหน้า",
@@ -1563,7 +1581,7 @@
             "opt.display": "Display",
             "opt.privacy": "Mode",
             "opt.view": "View",
-            "opt.lang": "Language",
+            "opt.lang": "Card language",
             "opt.toggles": "Show",
             "opt.privacy2": "Privacy",
             "opt.photo": "Face photo",
@@ -1737,6 +1755,10 @@
           privacy: "kiosk",
           view: "card",
           lang: "th",
+          // dataLang is which card fields are shown: th, en, or both. The
+          // interface language (lang) is a separate th/en switch in the app
+          // bar — one screen cannot be "both".
+          dataLang: "th",
           photo: true,
           parts: true,
           nameparts: true,
@@ -1793,6 +1815,14 @@
                 if (Object.prototype.hasOwnProperty.call(base, j)) base[j] = saved[j];
               }
               hadStoredPrefs = true;
+              // Older builds kept one switch for both the interface and the
+              // card display. Split it so neither choice is lost: th/en prefs
+              // agree with the old behaviour, and "both" becomes UI Thai with
+              // the card showing both names.
+              if (saved.lang) {
+                base.dataLang = saved.lang;
+                if (saved.lang === "both") base.lang = "th";
+              }
             }
           } catch (e) {
             /* private mode, or a corrupt entry — defaults are fine */
@@ -2028,7 +2058,7 @@
         function renderCard() {
           var d = store.data;
           var p = (d && d.personal) || {};
-          var lang = store.ui.lang;
+          var lang = store.ui.dataLang;
 
           var wrap = make("div", "idcard");
 
@@ -2848,7 +2878,8 @@
           // on a language change would highlight the old view.
           markSeg("seg-privacy", store.ui.privacy);
           markSeg("seg-view", store.ui.view);
-          markSeg("seg-lang", store.ui.lang);
+          markSeg("seg-lang", store.ui.dataLang);
+          markSeg("seg-uilang", store.ui.lang);
         }
 
         function markSeg(segId, value) {
@@ -2866,7 +2897,8 @@
           $("privacy-note").textContent = t("privacy." + store.ui.privacy);
           markSeg("seg-privacy", store.ui.privacy);
           markSeg("seg-view", store.ui.view);
-          markSeg("seg-lang", store.ui.lang);
+          markSeg("seg-lang", store.ui.dataLang);
+          markSeg("seg-uilang", store.ui.lang);
           // The read-again label and the note are written by syncReaderUI, so a
           // language switch has to run it again.
           renderStatePill();
@@ -2908,9 +2940,20 @@
           $("seg-lang").addEventListener("click", function (e) {
             var b = e.target.closest("button");
             if (!b) return;
-            store.ui.lang = b.dataset.v;
+            // This seg is the card data language, not the interface language —
+            // the app bar's seg-uilang owns that one.
+            store.ui.dataLang = b.dataset.v;
             syncControls();
             savePrefs();
+            render();
+          });
+
+          $("seg-uilang").addEventListener("click", function (e) {
+            var b = e.target.closest("button");
+            if (!b) return;
+            store.ui.lang = b.dataset.v;
+            savePrefs();
+            syncControls();
             applyI18n();
             render();
           });

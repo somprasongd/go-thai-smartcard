@@ -18,7 +18,8 @@ async function scenario(response, status = 200, alreadyRevealed = false) {
       value: '', checked: false, hidden: true, textContent: '', listeners: {},
       childNodes: [],
       addEventListener(type, callback) { this.listeners[type] = callback; },
-      appendChild(child) { this.childNodes.push(child); }
+      appendChild(child) { this.childNodes.push(child); },
+      querySelectorAll: () => []
     });
     return elements.get(id);
   };
@@ -26,6 +27,8 @@ async function scenario(response, status = 200, alreadyRevealed = false) {
   const context = {
     document: {
       getElementById: element,
+      documentElement: { setAttribute: () => {} },
+      querySelectorAll: () => [],
       // loadReaders builds <option>s for the reader dropdown.
       createElement: tag => ({ tag, value: '', textContent: '' })
     }, URL,
@@ -72,7 +75,8 @@ async function scenario(response, status = 200, alreadyRevealed = false) {
         value: '', checked: false, hidden: true, textContent: '', listeners: {},
         childNodes: [],
         addEventListener(type, callback) { this.listeners[type] = callback; },
-        appendChild(child) { this.childNodes.push(child); }
+        appendChild(child) { this.childNodes.push(child); },
+        querySelectorAll: () => []
       });
       return elements.get(id);
     };
@@ -80,6 +84,8 @@ async function scenario(response, status = 200, alreadyRevealed = false) {
     const context = {
       document: {
         getElementById: element,
+        documentElement: { setAttribute: () => {} },
+        querySelectorAll: () => [],
         createElement: tag => ({ tag, value: '', textContent: '' })
       }, URL,
       window: { location: { origin: 'http://127.0.0.1:9898', assign: () => {} }, confirm: () => true },
