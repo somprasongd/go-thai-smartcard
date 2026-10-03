@@ -1,0 +1,40 @@
+name: publish SDK
+
+on:
+  push:
+    tags: ['sdk-v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-sdk-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/javascript
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require a revision merged into main
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+      - run: npm install --global npm@11.12.1
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: npm ci
+      - run: npm run check
+      - run: npm run test:integration
+      - run: node scripts/check-release.mjs
+      - name: Publish with npm trusted publishing
+        run: npm run publish:release

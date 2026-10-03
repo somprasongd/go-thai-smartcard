@@ -8,7 +8,6 @@ import (
 
 	"github.com/somprasongd/go-thai-smartcard/pkg/transport"
 	"github.com/somprasongd/go-thai-smartcard/pkg/util"
-	"github.com/varokas/tis620"
 )
 
 // ErrCardNil is returned when a reader is asked to read without a card.
@@ -84,7 +83,7 @@ func (r *reader) readDataThai(cmd []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(string(tis620.ToUTF8(payload))), nil
+	return strings.TrimSpace(decodeTIS620(payload)), nil
 }
 
 // readLaserData reads the laser code, which has its own GET RESPONSE length

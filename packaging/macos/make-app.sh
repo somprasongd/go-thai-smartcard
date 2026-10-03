@@ -10,6 +10,8 @@ APP=build/ThaiSmartcardTray.app
 
 rm -rf build
 mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/Resources"
+cp LICENSE NOTICE THIRD_PARTY_LICENSES.txt "$APP/Contents/Resources/"
 
 # Universal: both architectures, lipo-ed. cgo compiles against the runner's
 # Xcode for each arch (decision 20).

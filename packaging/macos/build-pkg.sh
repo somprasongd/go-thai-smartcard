@@ -18,6 +18,8 @@ packaging/macos/make-app.sh
 
 rm -rf build/pkgroot
 mkdir -p build/pkgroot/usr/local/bin build/pkgroot/Applications
+mkdir -p build/pkgroot/usr/local/share/doc/thai-smartcard-agent
+cp LICENSE NOTICE THIRD_PARTY_LICENSES.txt build/pkgroot/usr/local/share/doc/thai-smartcard-agent/
 
 go build -trimpath -ldflags "-s -w -X main.version=$VERSION" \
     -o build/pkgroot/usr/local/bin/thai-smartcard-agent ./cmd/agent

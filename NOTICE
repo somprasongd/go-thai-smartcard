@@ -1,0 +1,8 @@
+go-thai-smartcard
+Copyright 2022-2026 Somprasong Damyos
+
+Licensed under the Apache License, Version 2.0.
+Third-party components retain their own licenses; see THIRD_PARTY_LICENSES.txt.
+
+The tray icons (cmd/tray/icon.png and icon.ico) were generated with ChatGPT,
+as confirmed by the repository owner.

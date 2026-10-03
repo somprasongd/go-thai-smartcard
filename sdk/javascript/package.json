@@ -1,0 +1,48 @@
+{
+  "name": "@somprasongd/thai-smartcard-client",
+  "version": "0.1.0",
+  "description": "Typed WebSocket client for the native Thai smartcard agent",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "somprasongd",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/somprasongd/go-thai-smartcard.git",
+    "directory": "sdk/javascript"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "scripts": {
+    "publish:release": "node scripts/check-release.mjs && node scripts/publish.mjs",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "test:integration": "npm run build && node --test tests/protocol.integration.mjs",
+    "check": "npm run typecheck && npm test && node scripts/pack-smoke.mjs",
+    "prepack": "npm run build",
+    "prepublishOnly": "node scripts/check-release.mjs && npm run check"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}

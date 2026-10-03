@@ -34,6 +34,9 @@ WizardStyle=modern
 Name: "traylogin"; Description: "เริ่ม tray ตอนล็อกอิน (ทุกผู้ใช้) / Start the tray at login (all users)"; GroupDescription: "Tray:"; Flags: checkedonce
 
 [Files]
+Source: "..\..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\NOTICE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\THIRD_PARTY_LICENSES.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\bin\thai-smartcard-agent.windows-amd64.exe"; DestDir: "{app}"; DestName: "{#AppExeName}"; Flags: ignoreversion
 Source: "..\..\bin\thai-smartcard-tray.exe"; DestDir: "{app}"; DestName: "{#TrayExeName}"; Flags: ignoreversion
 

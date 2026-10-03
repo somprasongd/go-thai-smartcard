@@ -12,7 +12,5 @@ github.com/kardianos/service v1.3.0 h1:/LGy+xPP2TM+GLTiCZ2di7cy0Jd/qrawlTUfqKYFd
 github.com/kardianos/service v1.3.0/go.mod h1:E4V9ufUuY82F7Ztlu1eN9VXWIQxg8NoLQlmFe0MtrXc=
 github.com/somprasongd/go-socketio-v4 v0.3.1 h1:dX5W34SKGo8QxZL8cMZi7XpplLco7efQQHZskNLCHtQ=
 github.com/somprasongd/go-socketio-v4 v0.3.1/go.mod h1:RBhh0zxZ2ql+lvei9RrkCdOx5fLOEVMd3GRJ+irl3XY=
-github.com/varokas/tis620 v0.0.0-20150423070520-3d162af2a2ad h1:xiqDjs3zgPBqXwEtjQQv6mk2+QrD1LRHBuRQ0oOi7dQ=
-github.com/varokas/tis620 v0.0.0-20150423070520-3d162af2a2ad/go.mod h1:amyplNIeBZWBeULsZWF9mwQUq+k2ua1sMHhvZjHDyrY=
 golang.org/x/sys v0.48.0 h1:bbX/i/6MgT9BVLM9RT1thmxL04yeTAhbEz4SyadbXoo=
 golang.org/x/sys v0.48.0/go.mod h1:hNLxWAXmnKAxqDtdwIYC4bM9oQPEecfsnNMuSxOs3og=
