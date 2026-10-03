@@ -13,12 +13,18 @@ description: |-
   settings pages, and toggles what the agent reads. Requires the
   thai-smartcard-agent package.
 homepage: https://github.com/somprasongd/go-thai-smartcard
-license: MIT
+license: Apache-2.0
 
 depends:
   - thai-smartcard-agent
 
 contents:
+  - src: LICENSE
+    dst: /usr/share/doc/thai-smartcard-tray/LICENSE
+  - src: NOTICE
+    dst: /usr/share/doc/thai-smartcard-tray/NOTICE
+  - src: THIRD_PARTY_LICENSES.txt
+    dst: /usr/share/doc/thai-smartcard-tray/THIRD_PARTY_LICENSES.txt
   - src: ./bin/thai-smartcard-tray.linux-amd64
     dst: /usr/bin/thai-smartcard-tray
   # The installer registers the tray at login (decision 15): every user can

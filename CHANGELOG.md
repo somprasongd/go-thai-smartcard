@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- License the project and JavaScript SDK under Apache-2.0; include project
+  attribution and third-party license texts in the platform installers.
+
+- Add a JavaScript/TypeScript WebSocket client SDK with reconnect, command
+  timeouts and request-ID results, integration examples and npm release CI.
+
 ### Changed
+
+- Decode TIS-620 card text internally without the unlicensed external decoder;
+  replace undefined bytes with `�` so decoded text remains valid UTF-8.
 
 - Simplify the README around installation and web integration, add a deployment
   diagram, and move detailed usage and operations guides into `docs/`.

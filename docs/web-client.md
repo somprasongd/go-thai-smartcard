@@ -2,6 +2,11 @@
 
 ## Connect a client
 
+For a reusable typed client with reconnect and command promises, see the
+[JavaScript SDK](../sdk/javascript/README.md) and
+[runnable examples](../examples/web-client/README.md). Local examples can use the SDK build
+without installing the npm package.
+
 The agent broadcasts card and status events. `smc-data` carries the card; the rest say what
 happened around it.
 

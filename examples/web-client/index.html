@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Thai smartcard SDK example</title>
+<h1>Thai smartcard SDK example</h1>
+<p>Connection: <output id="connection">disconnected</output></p>
+<p>Reader: <output id="reader">unknown</output></p>
+<p>Card: <output id="card">No card data</output></p>
+<p role="status" id="message"></p>
+<button id="read" disabled>Read again</button>
+<script type="module">
+  // Local build, with no CDN or npm publication required.
+  import { SmartCardClient } from '../../sdk/javascript/dist/index.js';
+
+  const client = new SmartCardClient({url: 'ws://127.0.0.1:9898/ws'});
+  const output = id => document.getElementById(id);
+  let readerState;
+  const updateButton = () => {
+    output('read').disabled = client.state !== 'connected' || readerState !== 'card-present';
+  };
+  client.on('connection', ({state}) => {
+    output('connection').textContent = state;
+    if (state !== 'connected') {
+      readerState = undefined;
+      output('card').textContent = 'No current card data';
+    }
+    updateButton();
+  });
+  client.on('status', status => {
+    readerState = status.state;
+    output('reader').textContent = `${status.selected || 'No reader'}: ${status.state}`;
+    updateButton();
+  });
+  client.on('card', data => {
+    output('card').textContent = data.personal?.name.full_name || 'No personal data';
+  });
+  client.on('removed', () => { output('card').textContent = 'Card removed'; });
+  client.on('error', error => { output('message').textContent = error.code; });
+  client.on('agent-error', error => { output('message').textContent = error.message; });
+  output('read').addEventListener('click', async () => {
+    output('read').disabled = true;
+    try {
+      await client.readNow();
+      output('message').textContent = 'Read completed';
+    } catch (error) {
+      output('message').textContent = `${error.code}: ${error.outcome}`;
+    } finally { updateButton(); }
+  });
+  window.addEventListener('pagehide', () => client.destroy(), {once: true});
+  client.connect().catch(error => { output('message').textContent = error.code; });
+</script>
+</html>

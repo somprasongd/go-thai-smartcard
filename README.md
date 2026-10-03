@@ -126,3 +126,10 @@ Other implementations: [Java](https://github.com/somprasongd/jThaiSmartCard) ·
 [Node.js](https://github.com/somprasongd/thai-smartcard-nodejs)
 
 Support via PromptPay: [QR code](https://bit.ly/3gusiz8)
+
+## License
+
+Copyright 2022-2026 Somprasong Damyos. Licensed under [Apache-2.0](LICENSE),
+including the Go library and JavaScript SDK. See [NOTICE](NOTICE) for project
+attribution and [third-party licenses](THIRD_PARTY_LICENSES.txt) for dependencies
+that retain their own terms.

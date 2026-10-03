@@ -17,7 +17,7 @@ description: |-
   connected clients over WebSockets. Installs and starts a system service
   running as the dedicated thai-smartcard user.
 homepage: https://github.com/somprasongd/go-thai-smartcard
-license: MIT
+license: Apache-2.0
 
 # Runtime names differ between Debian and RPM distributions.
 overrides:
@@ -31,6 +31,12 @@ overrides:
       - pcsc-lite
 
 contents:
+  - src: LICENSE
+    dst: /usr/share/doc/thai-smartcard-agent/LICENSE
+  - src: NOTICE
+    dst: /usr/share/doc/thai-smartcard-agent/NOTICE
+  - src: THIRD_PARTY_LICENSES.txt
+    dst: /usr/share/doc/thai-smartcard-agent/THIRD_PARTY_LICENSES.txt
   # Public endpoint metadata is separate from the private configuration.
   - type: dir
     dst: /var/lib/thai-smartcard

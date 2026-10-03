@@ -10,6 +10,5 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/kardianos/service v1.3.0
 	github.com/somprasongd/go-socketio-v4 v0.3.1
-	github.com/varokas/tis620 v0.0.0-20150423070520-3d162af2a2ad
 	golang.org/x/sys v0.48.0
 )
