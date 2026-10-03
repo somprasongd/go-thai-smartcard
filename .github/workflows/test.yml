@@ -57,8 +57,3 @@ jobs:
       - name: Race detector
         if: runner.os != 'Windows'
         run: go test -race ./pkg/server/ ./cmd/tray/ ./cmd/agent/ ./pkg/smc/ ./pkg/ctl/
-      - name: WebAssembly build
-        shell: bash
-        run: |
-          GOOS=js GOARCH=wasm go build ./pkg/smc/
-          GOOS=js GOARCH=wasm go build -o bin/agent-ci.wasm ./cmd/agent

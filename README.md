@@ -512,23 +512,8 @@ type Transport interface {
 Only `cmd/*` reads the config file: `pkg/config` is the loader, and everything
 below it receives plain values.
 
-Because `pkg/transport/pcsc` is behind a `!js` build constraint and the default
-constructor is split across build constraints too, the card logic builds for
-`js/wasm`:
-
-```sh
-GOOS=js GOARCH=wasm go build ./pkg/smc/
-```
-
-A browser build supplies its own transport. Note that WebUSB cannot actually
-deliver one: Chrome blocks the Smart Card USB interface class (`0x0B`) from
-`navigator.usb.requestDevice()`, in a plain page and in a regular extension
-alike; only Google's allowlisted privileged extensions bypass the blocklist.
-Web NFC does not help either, since a Thai ID card has a contact chip rather
-than a contactless one. Browsers on mobile are narrower still, so an agent
-remains the only backend that works everywhere. The interface is what makes it
-worth retrying if a browser ever exposes PC/SC properly; see issue
-[#5](https://github.com/somprasongd/go-thai-smartcard/issues/5).
+Run the native agent on Linux, macOS or Windows to read cards through PC/SC.
+Browser clients receive card data from the agent over WebSocket or socket.io.
 
 ## Reader requirements
 
@@ -932,8 +917,7 @@ exported by an old Makefile but never read by the agent.)
 ### Automated verification
 
 PRs targeting main and pushes to main run `.github/workflows/test.yml` on Linux,
-macOS and Windows: native build/unit tests/vet/format, Node page behavior tests
-and wasm builds. Linux/macOS additionally run race checks. Tests use fake readers;
+macOS and Windows: native build/unit tests/vet/format, Node page behavior tests. Linux/macOS additionally run race checks. Tests use fake readers;
 physical-card and installer/reboot acceptance remain separate. Local `make check`
 remains useful before pushing. The release-tag workflow builds installers only;
 release after verification of the intended commit, then verify its package jobs.

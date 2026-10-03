@@ -1,5 +1,3 @@
-//go:build !js
-
 // Command record captures a real card session into a trace file.
 //
 // Run it once against a reader and a physical Thai ID card. The resulting

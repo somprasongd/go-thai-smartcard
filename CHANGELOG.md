@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Breaking:** remove the unsupported js/wasm build path, browser-only stubs,
+  `build-wasm` target and Wasm CI checks. The Wasm agent had no card-reading
+  transport; browser clients continue to use the native agent.
+
 ## [5.0.1] - 2026-10-03
 
 ### Updated

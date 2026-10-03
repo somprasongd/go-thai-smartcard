@@ -13,10 +13,9 @@ vet:
 fmt-check:
 	test -z "$(gofmt -l .)"
 
-# The whole local gate from AGENTS.md, including the wasm build of the card
-# logic. Run it before opening a PR.
+# The whole local gate from AGENTS.md. Run it before opening a PR.
 check:
-	go build ./... && go test ./... && go vet ./... && test -z "$(gofmt -l .)" && GOOS=js GOARCH=wasm go build ./pkg/smc/
+	go build ./... && go test ./... && go vet ./... && test -z "$(gofmt -l .)"
 
 build-linux:
 	go build -o ./bin/thai-smartcard-agent.linux-amd64 ./cmd/agent
@@ -28,9 +27,6 @@ build-mac:
 
 build-win:
 	go build -o ./bin/thai-smartcard-agent.windows-amd64.exe ./cmd/agent
-
-build-wasm:
-	GOOS=js GOARCH=wasm go build -o bin/wasm/thai-smartcard-agent.wasm ./cmd/agent
 
 # The .deb/.rpm are built by the packaging workflow on a release tag, and
 # locally by these targets when nfpm is installed. One config serves both.

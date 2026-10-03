@@ -1,5 +1,3 @@
-//go:build !js
-
 // The service subcommand, built on kardianos/service: it registers, starts and
 // stops the agent as a system service on Windows (Service), Linux (systemd,
 // Upstart, SysV) and macOS (launchd). Decision 12: the agent is always a

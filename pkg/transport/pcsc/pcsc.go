@@ -1,10 +1,7 @@
-//go:build !js
-
 // Package pcsc implements transport.Transport on top of the PC/SC API.
 //
 // This is the only package in the module that depends on ebfe/scard, which is
-// a cgo binding. The build constraint keeps it out of js/wasm builds, where
-// cgo does not exist.
+// a native binding that requires the operating system's PC/SC service.
 package pcsc
 
 import (

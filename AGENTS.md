@@ -14,12 +14,11 @@ image) to clients over socket.io and WebSockets.
   file; without it the service config directory is used. `make dev` runs with a
   git-ignored `config.dev.toml`, written with the defaults on first run.
   `go run ./cmd/agent service install|uninstall|start|stop|restart|status`
-  manages the system service (`service.go`, hidden behind `!js`)
+  manages the system service (`service_desktop.go`)
 - Library demo: `go run ./cmd/example`
 
 Go 1.27+ per `go.mod`. `make dev`, `make example`, the `build-*` targets and
-`make check` (the whole local gate, including the wasm build) wrap the same
-commands; `build-wasm` targets `cmd/agent`.
+`make check` (the whole local gate) wrap the same commands.
 
 ## Project layout
 
@@ -33,7 +32,7 @@ commands; `build-wasm` targets `cmd/agent`.
 - `internal/atomicfile` — staged file replacement, including Windows share/delete and private-file ACL handling
 - `pkg/smc` — card logic only: applet selection, command/GET RESPONSE, TIS-620, parsing
 - `pkg/transport` — the `Transport`/`Card`/`Status` interface `pkg/smc` talks to
-- `pkg/transport/pcsc` — the PC/SC backend (`//go:build !js`)
+- `pkg/transport/pcsc` — the PC/SC backend (native PC/SC)
 - `pkg/apdu` — command APDU constants
 - `pkg/model` — response types and raw-field parsers
 - `pkg/ctl` — the tray's start/stop/restart of the agent service: systemctl (Linux, polkit-authorised), the Windows SCM (ACL-authorised), and the macOS control-helper socket
@@ -65,15 +64,9 @@ apply restores original config bytes unless a later hand edit prevents rollback;
 that conflict must be reported, never overwritten. Keep legacy `OnChange` callers
 working when the transactional callback is absent.
 
-The backend is behind build constraints (`transport_default.go` `!js`,
-`transport_js.go` `js`, `pcsc.go` `!js`), so `pkg/smc` still builds for wasm:
+The agent supports native Linux, macOS and Windows. Browser clients connect
+to the native agent; there is no WebAssembly card-reading backend.
 
-```sh
-GOOS=js GOARCH=wasm go build ./pkg/smc/
-```
-
-Adding a `pcsc.go` path to a new platform means adding the matching build-tagged
-file, or the whole module stops building there.
 
 ## Code style
 
@@ -117,11 +110,11 @@ file, or the whole module stops building there.
   `main` once, so `main` never holds half of a breaking change
 - Test CI runs on PRs and main on Linux, macOS and Windows. Keep this local gate
   before a PR — or
-  `make check`, which wraps it including the wasm build:
+  `make check`, which wraps it:
   `go build ./... && go test ./... && go vet ./... && test -z "$(gofmt -l .)"`,
   plus `go test -race ./pkg/server/` when you touch the server
 - `.github/workflows/test.yml` runs build/tests/vet/format, Node behavior tests
-  and wasm on all three OSes, plus race checks on Linux/macOS. It uses synthetic
+  on all three OSes, plus race checks on Linux/macOS. It uses synthetic
   reader tests, not physical hardware. Merge only after the exact PR revision
   passes. `.github/workflows/package.yml` remains packaging only: triggered by a
   pushed release tag, one job per OS on hosted runners, attaching the packages
