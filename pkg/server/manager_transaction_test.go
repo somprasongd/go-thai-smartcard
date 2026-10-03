@@ -3,6 +3,7 @@ package server
 import (
 	"net"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -99,12 +100,30 @@ func TestManagerRetiresSocketIOConnections(t *testing.T) {
 	}
 	defer conn.Close()
 	// v4 handshake: engine.io OPEN from the server, then the client joins
-	// the default namespace and gets its ack back.
-	readFrameUntil(t, conn, "0", 15*time.Second)
-	if err := conn.WriteMessage(websocket.TextMessage, []byte("40")); err != nil {
-		t.Fatal("socket.io handshake", err)
+	// the default namespace and gets its ack back. The connect re-sends
+	// until acked — the server ignores a repeated CONNECT.
+	readFrameUntil(t, conn, "0", 30*time.Second)
+	handshakeDeadline := time.Now().Add(30 * time.Second)
+	lastSend := time.Now()
+	for {
+		if !time.Now().Before(handshakeDeadline) {
+			t.Fatal("socket.io handshake: no namespace connect ack within 30s")
+		}
+		if time.Since(lastSend) >= 2*time.Second {
+			if err := conn.WriteMessage(websocket.TextMessage, []byte("40")); err != nil {
+				t.Fatal("socket.io handshake", err)
+			}
+			lastSend = time.Now()
+		}
+		_ = conn.SetReadDeadline(handshakeDeadline)
+		_, payload, err := conn.ReadMessage()
+		if err != nil {
+			t.Fatal("socket.io handshake", err)
+		}
+		if strings.HasPrefix(string(payload), "40") {
+			break
+		}
 	}
-	readFrameUntil(t, conn, "40", 15*time.Second)
 	cfg.Port = freePort(t)
 	if err = mgr.Replace(cfg); err != nil {
 		t.Fatal(err)
