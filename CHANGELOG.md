@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Updated
+
+- Bump the socket.io engine to
+  [go-socketio-v4 v0.2.0](https://github.com/somprasongd/go-socketio-v4/releases/tag/v0.2.0).
+  No behaviour change: the wire protocol, the guard's origin/token enforcement
+  and the bundled page stay as they are. The new capabilities (connect
+  middleware with auth payload, origin allow-list in the engine, volatile
+  emits, Redis adapter, connection-state recovery) are available to the
+  transport but deliberately not enabled — the card socket stays
+  drop-nothing by design and the agent is single-instance.
+
 ## [5.0.0] - 2026-10-03
 
 ### Changed

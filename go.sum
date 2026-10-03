@@ -10,8 +10,8 @@ github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aN
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/kardianos/service v1.2.2 h1:ZvePhAHfvo0A7Mftk/tEzqEZ7Q4lgnR8sGz4xu1YX60=
 github.com/kardianos/service v1.2.2/go.mod h1:CIMRFEJVL+0DS1a3Nx06NaMn4Dz63Ng6O7dl0qH0zVM=
-github.com/somprasongd/go-socketio-v4 v0.1.0 h1:MBdWiuv/sCBYXNgDQ7a3ZVR+LQwMkWPtrOh5sBMHMdo=
-github.com/somprasongd/go-socketio-v4 v0.1.0/go.mod h1:ftwGN1WGdeXhkSH/bbtInPDPg6pP5YAYCbzcd90MqCk=
+github.com/somprasongd/go-socketio-v4 v0.2.0 h1:6DjHtfnSQ9kPHDGimg92jvXvMuYq0bESbbAh9yjvtkc=
+github.com/somprasongd/go-socketio-v4 v0.2.0/go.mod h1:RBhh0zxZ2ql+lvei9RrkCdOx5fLOEVMd3GRJ+irl3XY=
 github.com/varokas/tis620 v0.0.0-20150423070520-3d162af2a2ad h1:xiqDjs3zgPBqXwEtjQQv6mk2+QrD1LRHBuRQ0oOi7dQ=
 github.com/varokas/tis620 v0.0.0-20150423070520-3d162af2a2ad/go.mod h1:amyplNIeBZWBeULsZWF9mwQUq+k2ua1sMHhvZjHDyrY=
 golang.org/x/sys v0.0.0-20201015000850-e3ed0017c211/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
