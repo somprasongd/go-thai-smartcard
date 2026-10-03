@@ -9,14 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Updated
 
-- Bump the socket.io engine to
-  [go-socketio-v4 v0.2.0](https://github.com/somprasongd/go-socketio-v4/releases/tag/v0.2.0).
-  No behaviour change: the wire protocol, the guard's origin/token enforcement
-  and the bundled page stay as they are. The new capabilities (connect
-  middleware with auth payload, origin allow-list in the engine, volatile
-  emits, Redis adapter, connection-state recovery) are available to the
-  transport but deliberately not enabled — the card socket stays
-  drop-nothing by design and the agent is single-instance.
+- Update the socket.io engine from v0.1.0 (shipped in v5.0.0) to
+  [go-socketio-v4 v0.3.1](https://github.com/somprasongd/go-socketio-v4/releases/tag/v0.3.1).
+- Update BurntSushi/toml to v1.6.0, ebfe/scard to revision 7af069cabc25,
+  godbus/dbus/v5 to v5.2.2 and kardianos/service to v1.3.0.
 
 ## [5.0.0] - 2026-10-03
 
