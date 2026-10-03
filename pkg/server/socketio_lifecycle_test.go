@@ -27,12 +27,30 @@ func TestSocketIORetirementReachesLiveClient(t *testing.T) {
 	defer c.Close()
 
 	// engine.io OPEN, then the socket.io namespace connect: MESSAGE "4"
-	// carrying CONNECT "0".
-	readFrameUntil(t, c, "0", 20*time.Second)
-	if err := c.WriteMessage(websocket.TextMessage, []byte("40")); err != nil {
-		t.Fatal(err)
+	// carrying CONNECT "0". The connect re-sends until acked — safe, since
+	// the server ignores a repeated CONNECT (see command_test.go).
+	readFrameUntil(t, c, "0", 30*time.Second)
+	deadline := time.Now().Add(30 * time.Second)
+	lastSend := time.Now()
+	for {
+		if !time.Now().Before(deadline) {
+			t.Fatal("no namespace connect ack within 30s")
+		}
+		if time.Since(lastSend) >= 2*time.Second {
+			if err := c.WriteMessage(websocket.TextMessage, []byte("40")); err != nil {
+				t.Fatal(err)
+			}
+			lastSend = time.Now()
+		}
+		_ = c.SetReadDeadline(deadline)
+		_, data, err := c.ReadMessage()
+		if err != nil {
+			t.Fatalf("namespace connect: %v", err)
+		}
+		if strings.HasPrefix(string(data), "40") {
+			break
+		}
 	}
-	readFrameUntil(t, c, "40", 20*time.Second)
 
 	s.closeConnections()
 

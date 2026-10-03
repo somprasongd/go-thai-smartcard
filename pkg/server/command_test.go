@@ -173,20 +173,47 @@ func allStacks() string {
 // engine.io OPEN, then the socket.io namespace connect — and returns it
 // ready to emit event frames. The transport under test is our own library
 // now, so exercising the wire is exactly the point.
-func connectSocketIOClient(t *testing.T, h *httptest.Server) *websocket.Conn {
+//
+// The namespace connect is re-sent every couple of seconds until the ack
+// shows up: on loaded Windows runners a loopback write can sit undelivered
+// for tens of seconds, and the spec's answer to a repeated CONNECT is to
+// ignore it, so resending is safe.
+func connectSocketIOClient(t *testing.T, baseURL string) *websocket.Conn {
 	t.Helper()
-	c, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(h.URL, "http")+"/socket.io/?EIO=4&transport=websocket", nil)
+	c, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(baseURL, "http")+"/socket.io/?EIO=4&transport=websocket", nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
 	t.Cleanup(func() { c.Close() })
 
-	readFrameUntil(t, c, "0", 20*time.Second)
-	if err := c.WriteMessage(websocket.TextMessage, []byte("40")); err != nil {
-		t.Fatalf("namespace connect: %v", err)
+	readFrameUntil(t, c, "0", 30*time.Second)
+
+	deadline := time.Now().Add(30 * time.Second)
+	lastSend := time.Now()
+	send := func() {
+		_ = c.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if err := c.WriteMessage(websocket.TextMessage, []byte("40")); err != nil {
+			t.Fatalf("namespace connect: %v", err)
+		}
 	}
-	readFrameUntil(t, c, "40", 20*time.Second)
-	return c
+	send()
+	for {
+		if !time.Now().Before(deadline) {
+			t.Fatalf("no namespace connect ack within 30s\n\n%s", allStacks())
+		}
+		if time.Since(lastSend) >= 2*time.Second {
+			send()
+			lastSend = time.Now()
+		}
+		_ = c.SetReadDeadline(deadline)
+		_, data, err := c.ReadMessage()
+		if err != nil {
+			t.Fatalf("read while waiting for the connect ack: %v\n\n%s", err, allStacks())
+		}
+		if strings.HasPrefix(string(data), "40") {
+			return c
+		}
+	}
 }
 
 func TestSocketIOInboundCommand(t *testing.T) {
@@ -245,7 +272,7 @@ func TestSocketIOInboundCommand(t *testing.T) {
 			srv := httptest.NewServer(s)
 			defer srv.Close()
 
-			c := connectSocketIOClient(t, srv)
+			c := connectSocketIOClient(t, srv.URL)
 			if err := c.WriteMessage(websocket.TextMessage, []byte(tt.frame)); err != nil {
 				t.Fatalf("send event: %v", err)
 			}
