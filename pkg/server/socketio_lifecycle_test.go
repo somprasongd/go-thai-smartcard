@@ -31,6 +31,9 @@ func TestSocketIORetirementReachesLiveClient(t *testing.T) {
 	// the server ignores a repeated CONNECT (see command_test.go).
 	readFrameUntil(t, c, "0", 30*time.Second)
 	deadline := time.Now().Add(30 * time.Second)
+	if err := c.WriteMessage(websocket.TextMessage, []byte("40")); err != nil {
+		t.Fatal("socket.io handshake", err)
+	}
 	lastSend := time.Now()
 	for {
 		if !time.Now().Before(deadline) {

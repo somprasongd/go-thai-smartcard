@@ -104,6 +104,9 @@ func TestManagerRetiresSocketIOConnections(t *testing.T) {
 	// until acked — the server ignores a repeated CONNECT.
 	readFrameUntil(t, conn, "0", 30*time.Second)
 	handshakeDeadline := time.Now().Add(30 * time.Second)
+	if err := conn.WriteMessage(websocket.TextMessage, []byte("40")); err != nil {
+		t.Fatal("socket.io handshake", err)
+	}
 	lastSend := time.Now()
 	for {
 		if !time.Now().Before(handshakeDeadline) {
