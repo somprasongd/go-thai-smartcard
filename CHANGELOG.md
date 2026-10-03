@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Simplify the README around installation and web integration, add a deployment
+  diagram, and move detailed usage and operations guides into `docs/`.
+
 - Move the library demo to a standalone `examples/read-card` module with a
   pinned remote dependency, transport cleanup and error handling; document
   library installation and native prerequisites.
