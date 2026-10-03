@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-03
+
+### Fixed
+
+- Verify already published archives across Node gzip implementations without
+  accepting changes to package contents or invalid registry integrity.
+
 ## [0.1.0] - 2026-10-03
 
 ### Added
@@ -13,3 +20,4 @@
   packed-package installation checks.
 
 [0.1.0]: https://github.com/somprasongd/go-thai-smartcard/tree/sdk-v0.1.0/sdk/javascript
+[0.1.1]: https://github.com/somprasongd/go-thai-smartcard/compare/sdk-v0.1.0...sdk-v0.1.1
