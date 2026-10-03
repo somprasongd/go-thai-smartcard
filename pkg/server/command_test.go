@@ -150,19 +150,23 @@ func readFrameUntil(t *testing.T, c *websocket.Conn, prefix string, budget time.
 	deadline := time.Now().Add(budget)
 	for {
 		if !time.Now().Before(deadline) {
-			buf := make([]byte, 4<<20)
-			n := runtime.Stack(buf, true)
-			t.Fatalf("no frame with prefix %q within %s\n\n%s", prefix, budget, buf[:n])
+			t.Fatalf("no frame with prefix %q within %s\n\n%s", prefix, budget, allStacks())
 		}
 		_ = c.SetReadDeadline(deadline)
 		_, data, err := c.ReadMessage()
 		if err != nil {
-			t.Fatalf("read while waiting for %q: %v", prefix, err)
+			t.Fatalf("read while waiting for %q: %v\n\n%s", prefix, err, allStacks())
 		}
 		if strings.HasPrefix(string(data), prefix) {
 			return string(data)
 		}
 	}
+}
+
+func allStacks() string {
+	buf := make([]byte, 4<<20)
+	n := runtime.Stack(buf, true)
+	return string(buf[:n])
 }
 
 // connectSocketIOClient walks one raw client through the v4 handshake —
