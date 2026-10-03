@@ -15,7 +15,7 @@ image) to clients over socket.io and WebSockets.
   git-ignored `config.dev.toml`, written with the defaults on first run.
   `go run ./cmd/agent service install|uninstall|start|stop|restart|status`
   manages the system service (`service_desktop.go`)
-- Library demo: `go run ./cmd/example`
+- Library demo: `cd examples/read-card && GOWORK=off go run .`
 
 Go 1.27+ per `go.mod`. `make dev`, `make example`, the `build-*` targets and
 `make check` (the whole local gate) wrap the same commands.
@@ -25,7 +25,7 @@ Go 1.27+ per `go.mod`. `make dev`, `make example`, the `build-*` targets and
 - `cmd/agent` — the daemon: resolves the transport, reads cards on a loop, broadcasts events; `service.go` manages the system service
 - `cmd/tray` — the tray app, a thin client of the agent's `/api`; needs cgo (fyne-io/systray), kept out of the agent so the agent stays cross-compilable
 - `cmd/record` — captures a real card session to a trace file, for tests and for checking readers
-- `cmd/example` — minimal library usage, doubles as the README's example
+- `examples/read-card` — standalone library consumer with its own go.mod; uses a pinned remote dependency without replace
 - `pkg/config` — the config.toml loader: defaults, strict validation, the templated writer, the fingerprint the settings API round-trips
 - `internal/discovery` — public local endpoint metadata, instance verification and publisher locks; no config or token data
 - `internal/logfile` — private bounded logs with size/count/age retention, daily rotation, idle cleanup and process exclusion

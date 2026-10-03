@@ -2,7 +2,7 @@ dev:
 	go run ./cmd/agent --config ./config.dev.toml
 
 example:
-	go run ./cmd/example
+	cd examples/read-card && GOWORK=off go run .
 
 test:
 	go test -race ./...
@@ -16,6 +16,7 @@ fmt-check:
 # The whole local gate from AGENTS.md. Run it before opening a PR.
 check:
 	go build ./... && go test ./... && go vet ./... && test -z "$(gofmt -l .)"
+	cd examples/read-card && GOWORK=off go build ./... && GOWORK=off go vet ./...
 
 build-linux:
 	go build -o ./bin/thai-smartcard-agent.linux-amd64 ./cmd/agent
