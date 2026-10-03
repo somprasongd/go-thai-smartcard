@@ -69,7 +69,9 @@ https://docs.npmjs.com/trusted-publishers/.
 
 After the initial interactive publish, configure trusted publishing and push
 the annotated `sdk-v0.1.0` tag. The workflow skips publication only if the
-registry already has the exact same tarball integrity. A version with different
-contents fails instead of claiming success. Subsequent versions publish by OIDC.
+registered tarball matches the local artifact. If gzip implementations differ,
+it verifies the downloaded registry integrity and compares every uncompressed
+tar byte. Different contents fail instead of claiming success. Subsequent
+versions publish by OIDC.
 Prereleases need an explicit npm dist-tag such as `next`; the current workflow
 is for stable SDK versions only.
