@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Move the library demo to a standalone `examples/read-card` module with a
+  pinned remote dependency, transport cleanup and error handling; document
+  library installation and native prerequisites.
+
 ### Removed
 
 - **Breaking:** remove the unsupported js/wasm build path, browser-only stubs,

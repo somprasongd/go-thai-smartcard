@@ -1,0 +1,8 @@
+github.com/ebfe/scard v0.0.0-20241214075232-7af069cabc25 h1:vXmXuiy1tgifTqWAAaU+ESu1goRp4B3fdhemWMMrS4g=
+github.com/ebfe/scard v0.0.0-20241214075232-7af069cabc25/go.mod h1:BkYEeWL6FbT4Ek+TcOBnPzEKnL7kOq2g19tTQXkorHY=
+github.com/somprasongd/go-thai-smartcard v1.3.2-0.20261003055604-c49ac0a1a9f2 h1:R9Gz1c8dAP0DBE8wuulKb0GKFpdKXPawvOXEgIYnYPA=
+github.com/somprasongd/go-thai-smartcard v1.3.2-0.20261003055604-c49ac0a1a9f2/go.mod h1:Ns8gW31AmuHbSsVWH6VUQs2B4hzaXEHx4GcuYTW4VSM=
+github.com/varokas/tis620 v0.0.0-20150423070520-3d162af2a2ad h1:xiqDjs3zgPBqXwEtjQQv6mk2+QrD1LRHBuRQ0oOi7dQ=
+github.com/varokas/tis620 v0.0.0-20150423070520-3d162af2a2ad/go.mod h1:amyplNIeBZWBeULsZWF9mwQUq+k2ua1sMHhvZjHDyrY=
+golang.org/x/sys v0.48.0 h1:bbX/i/6MgT9BVLM9RT1thmxL04yeTAhbEz4SyadbXoo=
+golang.org/x/sys v0.48.0/go.mod h1:hNLxWAXmnKAxqDtdwIYC4bM9oQPEecfsnNMuSxOs3og=
