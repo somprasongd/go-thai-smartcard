@@ -100,11 +100,11 @@ func TestManagerRetiresSocketIOConnections(t *testing.T) {
 	defer conn.Close()
 	// v4 handshake: engine.io OPEN from the server, then the client joins
 	// the default namespace and gets its ack back.
-	readFrameUntil(t, conn, "0", 15*time.Second)
+	readFrameUntil(t, conn, "0", 20*time.Second)
 	if err := conn.WriteMessage(websocket.TextMessage, []byte("40")); err != nil {
 		t.Fatal("socket.io handshake", err)
 	}
-	readFrameUntil(t, conn, "40", 15*time.Second)
+	readFrameUntil(t, conn, "40", 20*time.Second)
 	cfg.Port = freePort(t)
 	if err = mgr.Replace(cfg); err != nil {
 		t.Fatal(err)

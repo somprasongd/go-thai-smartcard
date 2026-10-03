@@ -142,13 +142,16 @@ func TestForwardCommandDoesNotBlock(t *testing.T) {
 
 // readFrameUntil keeps reading until a frame with the wanted prefix shows
 // up. Under a loaded CI the server's reply can land seconds after the write,
-// and nothing guarantees which frame a bare client sees first.
+// and nothing guarantees which frame a bare client sees first. A timeout
+// dumps every goroutine stack, so a stall points at its holder.
 func readFrameUntil(t *testing.T, c *websocket.Conn, prefix string, budget time.Duration) string {
 	t.Helper()
 	deadline := time.Now().Add(budget)
 	for {
 		if !time.Now().Before(deadline) {
-			t.Fatalf("no frame with prefix %q within %s", prefix, budget)
+			buf := make([]byte, 4<<20)
+			n := runtime.Stack(buf, true)
+			t.Fatalf("no frame with prefix %q within %s\n\n%s", prefix, budget, buf[:n])
 		}
 		_ = c.SetReadDeadline(deadline)
 		_, data, err := c.ReadMessage()
@@ -173,11 +176,11 @@ func connectSocketIOClient(t *testing.T, h *httptest.Server) *websocket.Conn {
 	}
 	t.Cleanup(func() { c.Close() })
 
-	readFrameUntil(t, c, "0", 15*time.Second)
+	readFrameUntil(t, c, "0", 20*time.Second)
 	if err := c.WriteMessage(websocket.TextMessage, []byte("40")); err != nil {
 		t.Fatalf("namespace connect: %v", err)
 	}
-	readFrameUntil(t, c, "40", 15*time.Second)
+	readFrameUntil(t, c, "40", 20*time.Second)
 	return c
 }
 

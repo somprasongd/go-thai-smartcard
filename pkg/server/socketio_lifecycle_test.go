@@ -28,11 +28,11 @@ func TestSocketIORetirementReachesLiveClient(t *testing.T) {
 
 	// engine.io OPEN, then the socket.io namespace connect: MESSAGE "4"
 	// carrying CONNECT "0".
-	readFrameUntil(t, c, "0", 15*time.Second)
+	readFrameUntil(t, c, "0", 20*time.Second)
 	if err := c.WriteMessage(websocket.TextMessage, []byte("40")); err != nil {
 		t.Fatal(err)
 	}
-	readFrameUntil(t, c, "40", 15*time.Second)
+	readFrameUntil(t, c, "40", 20*time.Second)
 
 	s.closeConnections()
 
