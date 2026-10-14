@@ -41,7 +41,8 @@ func main() {
 				}}
 			case "read-now":
 				broadcast <- model.Message{Event: "smc-data", Payload: model.Data{
-					Reader: "synthetic-reader", Personal: &model.Personal{Name: model.Name{FullName: "SYNTHETIC CARD"}},
+					Reader: "synthetic-reader", RequestID: cmd.RequestID,
+					Personal: &model.Personal{Name: model.Name{FullName: "SYNTHETIC CARD"}},
 				}}
 			}
 			cmd.Reply.Send("completed", "")

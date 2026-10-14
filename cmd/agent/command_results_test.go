@@ -19,6 +19,18 @@ func TestCommandAcceptedBeforeTerminalAndOnlyOnce(t *testing.T) {
 		t.Fatalf("results %v", got)
 	}
 }
+
+func TestReadNowRequestIDIsPassedToTheReadLoop(t *testing.T) {
+	queue := make(chan smc.Control, 1)
+	c := &optionsController{control: queue}
+	cmd := model.Command{Action: "read-now", RequestID: "synthetic-read-1", Reply: &model.CommandReply{Send: func(string, string) {}}}
+	c.handle(cmd)
+	ctl := <-queue
+	if ctl.RequestID != cmd.RequestID {
+		t.Fatalf("Control.RequestID = %q, want %q", ctl.RequestID, cmd.RequestID)
+	}
+}
+
 func TestReaderQueueFullReportsBusy(t *testing.T) {
 	c := &optionsController{control: make(chan smc.Control)}
 	var got string

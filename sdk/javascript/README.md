@@ -51,8 +51,12 @@ example and a TypeScript consumer are in `examples/web-client/` in the source re
   result. `accepted` only means queued. `failed` and `busy` reject with
   `SmartCardClientError`, including the agent's `result.code`.
 - Results are matched by request ID on the same connection. Card and status
-  payloads are broadcasts, delivered through `card` and `status` events. They
-  are not correlated with your command. `readNow()` does not return card data.
+  payloads are broadcasts, delivered through `card` and `status` events. The
+  additive `readCard()` method resolves with `{command, data}` only after the
+  matching `smc-data.request_id` arrives. It works with agent source containing
+  this protocol extension; use agent v6.2.0 or later.
+  `readNow()` stays command-only and works with earlier agents. `readCard()` is
+  included in the published npm `0.2.0` package.
 - Command timeout and loss of a connection give `outcome: 'unknown'`: the
   agent may have completed the command. The SDK never queues offline commands,
   replays commands after reconnect, or automatically retries busy commands.

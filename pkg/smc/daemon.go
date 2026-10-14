@@ -34,9 +34,12 @@ const (
 // model.Command and the host translates, so pkg/smc does not depend on the
 // server.
 type Control struct {
-	Kind     ControlKind
-	Reader   string
-	Complete *ControlResult
+	Kind   ControlKind
+	Reader string
+	// RequestID correlates data from a client-triggered re-read. It stays in
+	// the card layer so the read loop can tag the exact result it produced.
+	RequestID string
+	Complete  *ControlResult
 }
 
 // DaemonConfig is what a read loop runs with.
@@ -93,8 +96,9 @@ type daemon struct {
 	// pendingRead is a read request that arrived with no card in the reader.
 	// It is answered with an error rather than dropped, so the client that
 	// pressed the button learns why nothing happened.
-	pendingRead     bool
-	pendingComplete *ControlResult
+	pendingRead      bool
+	pendingComplete  *ControlResult
+	pendingRequestID string
 
 	// held is the session left open after a read. It stays open until the
 	// removal is observed, as it always has. A re-read has to close it first,
@@ -361,6 +365,7 @@ func (d *daemon) read(ctx context.Context, reader string) bool {
 	} else if data != nil {
 		d.health = "ready"
 		data.Reader = reader
+		data.RequestID = d.pendingRequestID
 		d.publish(model.Message{Event: "smc-data", Payload: data})
 	}
 
@@ -464,6 +469,7 @@ func (d *daemon) applyControl(cmd Control) {
 		} else {
 			d.pendingRead = true
 			d.pendingComplete = cmd.Complete
+			d.pendingRequestID = cmd.RequestID
 		}
 	case ControlReportStatus:
 		d.broadcastStatus()
@@ -681,6 +687,7 @@ func (d *daemon) completeRead(err error) {
 		d.pendingComplete = nil
 		f.Finish(err)
 	}
+	d.pendingRequestID = ""
 }
 
 // ControlResult lets a host observe completion without binding card logic to a transport.

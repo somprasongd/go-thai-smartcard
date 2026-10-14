@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.2.0] - 2026-10-14
+
+### Added
+
+- Correlate a client-requested card re-read with its `request_id` in the
+  `smc-data` payload while leaving automatic card-insertion broadcasts unchanged.
+
 ## [6.1.0] - 2026-10-14
 
 ### Added
@@ -756,7 +763,8 @@ First release.
   and a fix for waiting on readers in macOS.
 - PM2 and systemd run instructions in the README.
 
-[unreleased]: https://github.com/somprasongd/go-thai-smartcard/compare/v6.1.0...HEAD
+[unreleased]: https://github.com/somprasongd/go-thai-smartcard/compare/v6.2.0...HEAD
+[6.2.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v6.1.0...v6.2.0
 [6.1.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v6.0.0...v6.1.0
 [6.0.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v5.0.1...v6.0.0
 [5.0.1]: https://github.com/somprasongd/go-thai-smartcard/compare/v5.0.0...v5.0.1
