@@ -52,6 +52,7 @@ func main() {
 type tray struct {
 	mStatus          *systray.MenuItem
 	mTest            *systray.MenuItem
+	mUpdate          *systray.MenuItem
 	mTroubleshoot    *systray.MenuItem
 	mDiagnostics     *systray.MenuItem
 	mCopyDiagnostics *systray.MenuItem
@@ -72,6 +73,9 @@ type tray struct {
 	manualControl    bool
 	manager          ctl.Manager
 	serviceUI        sync.Mutex
+	updateMu         sync.RWMutex
+	updateOps        sync.Mutex
+	updateTarget     *updateTarget
 	serviceState     func() (ctl.State, error)
 	mu               sync.RWMutex
 	url              string
@@ -99,6 +103,8 @@ func onReady() {
 	systray.AddSeparator()
 	t.mTest = systray.AddMenuItem(l.text("เปิดหน้าทดสอบ", "Open test page"), l.text("เปิดหน้าทดสอบการอ่านบัตร", "Open the agent's test page"))
 	t.mConfig = systray.AddMenuItem(l.text("ตั้งค่า", "Settings"), l.text("เปิดหน้าตั้งค่า", "Open settings"))
+	t.mUpdate = systray.AddMenuItem(l.text("รอเชื่อมต่อเพื่อตรวจอัปเดต", "Waiting to check for updates"), l.text("ตรวจ GitHub Releases เมื่อเชื่อมต่อ agent", "Check GitHub Releases after connecting to the agent"))
+	t.mUpdate.Disable()
 
 	t.mTroubleshoot = systray.AddMenuItem(l.text("แก้ไขปัญหา", "Troubleshoot"), l.text("ตรวจสถานะและบันทึกการทำงาน", "Inspect operational diagnostics"))
 	t.mDiagnostics = t.mTroubleshoot.AddSubMenuItem(l.text("เปิดหน้าวิเคราะห์ปัญหา", "Open diagnostics"), "")
@@ -122,7 +128,13 @@ func onReady() {
 	defer cancel()
 	client := newAgentClient(*agentURL)
 	go func() { t.autoStart(ctx, client); t.pollService(ctx) }()
-	go client.run(ctx, t.setEndpoint, t.connectionState, func(msg model.Message) {
+	var updateCheck sync.Once
+	go client.run(ctx, t.setEndpoint, func(state string) {
+		t.connectionState(state)
+		if (state == "connected" || state == "unsupported" || state == "unauthorized") && client.override == "" {
+			updateCheck.Do(func() { go t.checkForUpdate(ctx) })
+		}
+	}, func(msg model.Message) {
 		if msg.Event == "smc-status" {
 			if status, ok := msg.Payload.(map[string]any); ok {
 				t.applyStatus(status)
@@ -136,6 +148,8 @@ func onReady() {
 			openBrowser(t.baseURL())
 		case <-t.mConfig.ClickedCh:
 			openBrowser(t.baseURL() + "/settings")
+		case <-t.mUpdate.ClickedCh:
+			go t.openUpdate(ctx)
 
 		case <-t.mDiagnostics.ClickedCh:
 			openBrowser(t.baseURL() + "/diagnostics?lang=" + t.lang.text("th", "en"))
