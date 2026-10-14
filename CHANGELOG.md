@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Check GitHub Releases from the tray and let the user download and open the
+  matching OS installer after verifying the published SHA-256 digest.
+
 ## [6.0.0] - 2026-10-03
 
 ### Added

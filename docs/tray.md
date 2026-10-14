@@ -29,6 +29,19 @@ explicit `--url` never automatically starts a local service. Automatic startup
 never asks for an administrator password on macOS; manual service actions retain
 the password fallback. An intentional Stop is not undone by background polling.
 
+### Update notices
+
+After reaching the default local agent, the tray checks its version against the
+latest public GitHub release. If a newer version is available, it
+shows a notice and enables **Install update**. Selecting it downloads the
+matching Windows, macOS or Linux agent package, verifies its SHA-256 digest
+against GitHub's release metadata, and opens it with the operating system's
+installer. The OS may ask for administrator approval. If the platform or Linux
+package type has no matching asset, the menu opens the release page instead.
+An explicit `--url` skips update checks so a tray pointed at another agent does
+not offer to update the local installation. This is a user-started installer,
+not a silent background update.
+
 Menu labels, status messages and tooltips use the logged-in user's primary UI
 language: Thai for `th`, English for all other languages. The language is selected
 when the tray opens. This is independent of the browser page's language and card
