@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -130,13 +132,27 @@ func TestDownloadVerifiedInstaller(t *testing.T) {
 	if got, err := os.ReadFile(path); err != nil || string(got) != content {
 		t.Fatalf("downloaded content = %q, %v", got, err)
 	}
-	if mode := fileMode(t, path); mode.Perm() != 0600 {
+	if mode := fileMode(t, path); runtime.GOOS != "windows" && mode.Perm() != 0600 {
 		t.Fatalf("installer cache mode = %o, want 600", mode.Perm())
 	}
 
 	asset.Digest = "sha256:" + strings.Repeat("0", sha256.Size*2)
 	if _, err := downloadVerifiedInstaller(context.Background(), client, "v6.1.0", asset, t.TempDir()); err == nil {
 		t.Fatal("accepted an installer with a mismatched digest")
+	}
+}
+
+func TestInstallerOpenerReportsProcessFailure(t *testing.T) {
+	cmd := exec.Command(os.Args[0], "-test.run=^TestInstallerOpenerHelperProcess$")
+	cmd.Env = append(os.Environ(), "THAI_SMARTCARD_TEST_INSTALLER_HELPER=1")
+	if err := runInstallerOpener(cmd); err == nil {
+		t.Fatal("did not report an opener process that exited unsuccessfully")
+	}
+}
+
+func TestInstallerOpenerHelperProcess(t *testing.T) {
+	if os.Getenv("THAI_SMARTCARD_TEST_INSTALLER_HELPER") == "1" {
+		os.Exit(17)
 	}
 }
 

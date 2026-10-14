@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -145,6 +146,10 @@ func releaseMenuTitle(l language, version string, hasInstaller bool) string {
 		return l.text("ติดตั้งอัปเดต "+version+"…", "Install update "+version+"…")
 	}
 	return l.text("ดูอัปเดต "+version+"…", "View update "+version+"…")
+}
+
+func runInstallerOpener(cmd *exec.Cmd) error {
+	return cmd.Run()
 }
 
 func readAgentVersion(ctx context.Context, baseURL string, client *http.Client) (string, error) {
