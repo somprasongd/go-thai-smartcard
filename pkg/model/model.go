@@ -9,6 +9,9 @@ type Data struct {
 	Personal *Personal `json:"personal"`
 	Card     *Card     `json:"card,omitempty"`
 	Nhso     *Nhso     `json:"nhso,omitempty"`
+	// RequestID links a requested re-read to its command result. Automatic
+	// insertion reads leave it empty, preserving the existing broadcast flow.
+	RequestID string `json:"request_id,omitempty"`
 	// Reader names the reader this card came from.
 	//
 	// With several readers attached, smc-inserted only says a card arrived and

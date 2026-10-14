@@ -32,6 +32,7 @@ export interface Personal {
 
 export interface CardData {
   personal: Personal | null;
+  request_id?: string;
   reader?: string;
   card?: { laser_id: string };
   nhso?: {
@@ -62,10 +63,15 @@ export interface CommandResult {
   code?: string;
 }
 export type CompletedCommand = CommandResult & { status: "completed" };
+export interface CardReadResult {
+  command: CompletedCommand;
+  data: CardData;
+}
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected";
 
 export type ClientErrorCode = "NOT_CONNECTED" | "DESTROYED" | "CONNECT_TIMEOUT"
   | "CONNECT_FAILED" | "CONNECTION_LOST" | "CONNECTION_CLOSED" | "COMMAND_TIMEOUT"
+  | "CARD_DATA_TIMEOUT" | "CARD_DATA_MISSING"
   | "COMMAND_FAILED" | "COMMAND_BUSY" | "PENDING_LIMIT" | "SEND_FAILED"
   | "PROTOCOL_ERROR" | "LISTENER_ERROR";
 

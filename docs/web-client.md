@@ -54,8 +54,11 @@ Commands may include an optional `request_id` (at most 128 bytes). Such requests
 receive `smc-command-result` **only on the requesting connection**, with
 `{request_id, action, status, code}`. Status is `accepted` followed by
 `completed` or `failed`, or `busy` when a queue/reader cannot accept the work.
-Accepted means queued, not successfully read. A completed read means the read
-finished successfully; card data continues to use the existing broadcast.
+Accepted means queued, not successfully read. A completed `read-now` means the
+read finished successfully; when the request has an ID, the corresponding
+`smc-data` broadcast contains the same `request_id`. Automatic insertion reads
+omit it. The card payload remains a broadcast to every connected client; clients
+must match `request_id` before using it as the result of a requested re-read.
 Unknown actions fail. Requests without an ID keep the legacy event contract.
 Clients should use a timeout and avoid submitting the same command through both
 transports. The bundled page sends on one transport and times out after 30s.
@@ -155,13 +158,15 @@ that page.
             "sub_hospital": "…", "paid_type": "…", "issue_date": "…",
             "expire_date": "…", "update_date": "…",
             "change_hospital_amount": "…" },
-  "reader": "Identive CLOUD 2700 R"  // which reader it was read from
+  "reader": "Identive CLOUD 2700 R", // which reader it was read from
+  "request_id": "client-generated-id" // present only for a correlated read-now
 }
 ```
 
 Text off the card is TIS-620 and is decoded on the way out, so it arrives as
 UTF-8. Dates are converted from the Thai calendar. `reader` is additive: a
-client reading `data.personal` works without it.
+client reading `data.personal` works without it. `request_id` is also additive
+and is available in agent v6.2.0 and later.
 
 ## Browsers
 

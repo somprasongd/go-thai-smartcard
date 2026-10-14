@@ -303,6 +303,9 @@ func (c *optionsController) sendCommandControl(cmd model.Command, kind smc.Contr
 	gate := make(chan struct{})
 	var once sync.Once
 	ctl := smc.Control{Kind: kind}
+	if kind == smc.ControlReadNow {
+		ctl.RequestID = cmd.RequestID
+	}
 	if cmd.Reply != nil {
 		ctl.Complete = &smc.ControlResult{Finish: func(err error) {
 			<-gate

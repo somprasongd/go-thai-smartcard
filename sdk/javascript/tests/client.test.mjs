@@ -56,6 +56,40 @@ test('accepted is intermediate; concurrent terminal results match request IDs', 
   assert.equal((await first).request_id, a.request_id);
 });
 
+test('readCard joins only the card payload for its request ID, in either arrival order', async t => {
+  const {client, socket} = await connected(t);
+  const first = client.readCard();
+  const command = socket.sent.at(-1);
+  socket.result(command, 'accepted');
+  socket.result(command, 'completed');
+  let settled = false;
+  first.then(() => { settled = true; });
+  await Promise.resolve();
+  assert.equal(settled, false);
+  socket.receive('smc-data', {request_id: 'another-read', personal: {name: {full_name: 'SYNTHETIC OTHER'}}});
+  await Promise.resolve();
+  assert.equal(settled, false);
+  socket.receive('smc-data', {request_id: command.request_id, personal: {name: {full_name: 'SYNTHETIC MATCH'}}});
+  const result = await first;
+  assert.equal(result.command.request_id, command.request_id);
+  assert.equal(result.data.request_id, command.request_id);
+  assert.equal(result.data.personal.name.full_name, 'SYNTHETIC MATCH');
+
+  const second = client.readCard();
+  const next = socket.sent.at(-1);
+  socket.receive('smc-data', {request_id: next.request_id, personal: {name: {full_name: 'SYNTHETIC EARLY'}}});
+  socket.result(next, 'completed');
+  assert.equal((await second).data.personal.name.full_name, 'SYNTHETIC EARLY');
+});
+
+test('completed read without correlated data is a data failure, not an unknown command outcome', async t => {
+  const {client, socket} = await connected(t, {commandTimeoutMs: 15});
+  const promise = client.readCard();
+  socket.result(socket.sent.at(-1), 'completed');
+  await assert.rejects(promise, error => error.code === 'CARD_DATA_TIMEOUT'
+    && error.outcome === 'failed' && error.result.status === 'completed');
+});
+
 test('busy and failed preserve machine readable agent codes', async t => {
   const {client, socket} = await connected(t);
   for (const [status, code, errorCode] of [

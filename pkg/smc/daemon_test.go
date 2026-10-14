@@ -347,7 +347,7 @@ func TestDaemonReadNowReadsACardThatStaysInserted(t *testing.T) {
 
 	h.settleReads(1)
 
-	h.control <- smc.Control{Kind: smc.ControlReadNow}
+	h.control <- smc.Control{Kind: smc.ControlReadNow, RequestID: "synthetic-read-1"}
 
 	reads := h.settleReads(2)
 	if len(reads) != 2 {
@@ -358,6 +358,12 @@ func TestDaemonReadNowReadsACardThatStaysInserted(t *testing.T) {
 	}
 	if reads[1].Reader != "Reader A" {
 		t.Errorf("second read Reader = %q, want %q", reads[1].Reader, "Reader A")
+	}
+	if reads[0].RequestID != "" {
+		t.Errorf("automatic first read RequestID = %q, want empty", reads[0].RequestID)
+	}
+	if reads[1].RequestID != "synthetic-read-1" {
+		t.Errorf("requested re-read RequestID = %q, want %q", reads[1].RequestID, "synthetic-read-1")
 	}
 	if got := h.counts()["smc-removed"]; got != 0 {
 		t.Errorf("a re-read reported %d removal(s)", got)
@@ -377,7 +383,7 @@ func TestDaemonReadNowReadsACardThatStaysInserted(t *testing.T) {
 func TestDaemonReadNowWithNoCardAnswersWithAnError(t *testing.T) {
 	h := newHarness(t, time.Millisecond, "Reader A")
 
-	h.control <- smc.Control{Kind: smc.ControlReadNow}
+	h.control <- smc.Control{Kind: smc.ControlReadNow, RequestID: "synthetic-empty-read"}
 
 	h.settle("an error for the empty reader", func() bool {
 		for _, message := range h.errorMessages() {
@@ -389,6 +395,11 @@ func TestDaemonReadNowWithNoCardAnswersWithAnError(t *testing.T) {
 	})
 	if got := len(h.reads()); got != 0 {
 		t.Errorf("read %d cards with nothing inserted", got)
+	}
+	h.transport.setPresent("Reader A", true)
+	reads := h.settleReads(1)
+	if reads[0].RequestID != "" {
+		t.Errorf("automatic read after an empty request retained RequestID %q", reads[0].RequestID)
 	}
 }
 

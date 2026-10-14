@@ -11,10 +11,12 @@ three command methods and explicit cleanup. Commands settle only on terminal
 request-ID results. A timeout or connection loss leaves the outcome unknown;
 never replay commands. Synchronize status on every successful open.
 
-Keep card data as independent broadcasts. The existing protocol cannot correlate
-card payloads to command IDs; do not make `readNow()` return card data. Do not
-cache, persist or log personal data in the SDK. Applications decide their own
-display/freshness policy.
+Keep card data as independent broadcasts. The original protocol could not
+correlate card payloads to command IDs. The additive source change now tags a
+client-requested re-read with the same `request_id`; `readNow()` remains
+command-only, and `readCard()` joins the matching broadcast without caching,
+persisting or logging personal data. Automatic insertion reads remain untagged.
+The v6.2.0 agent release carries this protocol extension.
 
 Checks cover synthetic connection failures, accepted/terminal responses,
 concurrency, stale sockets, retries, listener cleanup and package installation.

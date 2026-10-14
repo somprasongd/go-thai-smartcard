@@ -2,12 +2,16 @@ import {
   SmartCardClientError,
   type ClientOptions, type ClientEvents, type ConnectionState,
   type CommandAction, type CommandResult, type CompletedCommand, type WebSocketLike,
+  type CardData, type CardReadResult,
 } from "./types.js";
 export * from "./types.js";
 
 type Pending = {
   action: CommandAction;
-  resolve: (result: CompletedCommand) => void;
+  requireCard: boolean;
+  result?: CompletedCommand;
+  data?: CardData;
+  resolve: (result: CompletedCommand | CardReadResult) => void;
   reject: (error: SmartCardClientError) => void;
   timer: ReturnType<typeof setTimeout>;
 };
@@ -95,6 +99,9 @@ export class SmartCardClient {
   getStatus(): Promise<CompletedCommand> { return this.command("get-status"); }
   refreshReaders(): Promise<CompletedCommand> { return this.command("refresh-readers"); }
   readNow(): Promise<CompletedCommand> { return this.command("read-now"); }
+  // Resolves only after the command completes and its exact correlated card
+  // payload arrives. readNow() remains a command-only API.
+  readCard(): Promise<CardReadResult> { return this.sendCommand("read-now", true) as Promise<CardReadResult>; }
 
   // Stops retries but leaves subscriptions usable for a later connect().
   close(): void {
@@ -117,6 +124,10 @@ export class SmartCardClient {
   }
 
   private command(action: CommandAction): Promise<CompletedCommand> {
+    return this.sendCommand(action, false) as Promise<CompletedCommand>;
+  }
+
+  private sendCommand(action: CommandAction, requireCard: boolean): Promise<CompletedCommand | CardReadResult> {
     if (this.destroyed) return Promise.reject(new SmartCardClientError("DESTROYED", "Client is destroyed"));
     const socket = this.socket;
     if (!socket || socket.readyState !== 1) {
@@ -126,12 +137,17 @@ export class SmartCardClient {
       return Promise.reject(new SmartCardClientError("PENDING_LIMIT", "Too many pending commands"));
     }
     const request_id = `${this.prefix}-${++this.sequence}`;
-    return new Promise((resolve, reject) => {
+    return new Promise<CompletedCommand | CardReadResult>((resolve, reject) => {
       const timer = setTimeout(() => {
+        const pending = this.pending.get(request_id);
         this.pending.delete(request_id);
-        reject(new SmartCardClientError("COMMAND_TIMEOUT", "Command result timed out; outcome is unknown", "unknown"));
+        if (requireCard && pending?.result) {
+          reject(new SmartCardClientError("CARD_DATA_TIMEOUT", "Agent completed the read but correlated card data did not arrive", "failed", pending.result));
+        } else {
+          reject(new SmartCardClientError("COMMAND_TIMEOUT", "Command result timed out; outcome is unknown", "unknown"));
+        }
       }, this.options.commandTimeoutMs);
-      this.pending.set(request_id, { action, timer, resolve, reject });
+      this.pending.set(request_id, { action, requireCard, timer, resolve, reject });
       try {
         socket.send(JSON.stringify({ action, request_id }));
       } catch {
@@ -140,6 +156,13 @@ export class SmartCardClient {
         reject(new SmartCardClientError("SEND_FAILED", "Could not send command; outcome is unknown", "unknown"));
       }
     });
+  }
+
+  private settleCardRead(requestId: string, pending: Pending): void {
+    if (!pending.result || !pending.data) return;
+    clearTimeout(pending.timer);
+    this.pending.delete(requestId);
+    pending.resolve({command: pending.result, data: pending.data});
   }
 
   private startAttempt(): void {
@@ -219,11 +242,13 @@ export class SmartCardClient {
   }
 
   private rejectPending(error: SmartCardClientError): void {
-    for (const entry of this.pending.values()) {
+    for (const [requestId, entry] of this.pending) {
       clearTimeout(entry.timer);
-      entry.reject(error);
+      entry.reject(entry.requireCard && entry.result
+        ? new SmartCardClientError("CARD_DATA_MISSING", "Connection ended after the read completed but before correlated card data arrived", "failed", entry.result)
+        : error);
+      this.pending.delete(requestId);
     }
-    this.pending.clear();
   }
 
   private receive(data: unknown): void {
@@ -243,17 +268,30 @@ export class SmartCardClient {
           if (payload.action !== pending.action) throw new Error();
           const result = payload as unknown as CommandResult;
           if (result.status !== "accepted") {
-            clearTimeout(pending.timer);
-            this.pending.delete(result.request_id);
-            if (result.status === "completed") pending.resolve(result as CompletedCommand);
-            else pending.reject(new SmartCardClientError(result.status === "busy" ? "COMMAND_BUSY" : "COMMAND_FAILED",
-              "Agent did not complete command", result.status, result));
+            if (result.status === "completed" && pending.requireCard) {
+              pending.result = result as CompletedCommand;
+              this.settleCardRead(result.request_id, pending);
+            } else {
+              clearTimeout(pending.timer);
+              this.pending.delete(result.request_id);
+              if (result.status === "completed") pending.resolve(result as CompletedCommand);
+              else pending.reject(new SmartCardClientError(result.status === "busy" ? "COMMAND_BUSY" : "COMMAND_FAILED",
+                "Agent did not complete command", result.status, result));
+            }
           }
           this.emit("command-result", result);
           break;
         }
         case "smc-data":
-          if (!record(payload) || !(payload.personal === null || record(payload.personal))) throw new Error();
+          if (!record(payload) || !(payload.personal === null || record(payload.personal))
+            || (payload.request_id !== undefined && typeof payload.request_id !== "string")) throw new Error();
+          if (typeof payload.request_id === "string") {
+            const pending = this.pending.get(payload.request_id);
+            if (pending?.requireCard && pending.action === "read-now") {
+              pending.data = payload as unknown as CardData;
+              this.settleCardRead(payload.request_id, pending);
+            }
+          }
           this.emit("card", payload as unknown as ClientEvents["card"]);
           break;
         case "smc-status":
