@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.1.0] - 2026-10-14
+
 ### Added
 
 - Check GitHub Releases from the tray and let the user download and open the
@@ -754,7 +756,8 @@ First release.
   and a fix for waiting on readers in macOS.
 - PM2 and systemd run instructions in the README.
 
-[unreleased]: https://github.com/somprasongd/go-thai-smartcard/compare/v6.0.0...HEAD
+[unreleased]: https://github.com/somprasongd/go-thai-smartcard/compare/v6.1.0...HEAD
+[6.1.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v6.0.0...v6.1.0
 [6.0.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v5.0.1...v6.0.0
 [5.0.1]: https://github.com/somprasongd/go-thai-smartcard/compare/v5.0.0...v5.0.1
 [5.0.0]: https://github.com/somprasongd/go-thai-smartcard/compare/v4.4.0...v5.0.0
